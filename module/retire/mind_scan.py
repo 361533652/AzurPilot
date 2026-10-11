@@ -12,7 +12,7 @@ from module.logger import logger
 from module.retire.assets import DOCK_EMPTY
 from module.retire.dock import DOCK_SCROLL, Dock
 from module.runtime.mind_calculator import RESULT_PATH, calculate, revision
-from module.runtime.mind_recognition import ScanMerger, ScanPolicy, grid_rows, recognize_cards
+from module.runtime.mind_recognition import ScanMerger, ScanPolicy, grid_rows, recognize_cards, second_type_family
 from module.ui.page import page_dock
 
 
@@ -53,9 +53,12 @@ class MindCalculatorScan(Dock):
                     raise MindCalculatorScanError('船坞未能回到顶部，保留旧扫描结果')
             else:
                 raise MindCalculatorScanError('无法识别船坞滚动条，保留旧扫描结果')
-            names = AlOcr(config=self.config, name='ppocr_v6')
-            levels = AlOcr(config=self.config, name='azur_lane')
-            ships = self._scan_pages(names, levels)
+            try:
+                names = AlOcr(config=self.config, name='ppocr_v6', save_debug_images=False)
+                levels = AlOcr(config=self.config, name='azur_lane', save_debug_images=False)
+                ships = self._scan_pages(names, levels)
+            except MemoryError as exc:
+                raise MindCalculatorScanError('扫描内存不足，已停止并保留旧清单；请释放内存后重试') from exc
         # 扫描期间用户可能修改数据；复读当前配置避免覆盖手工修正。
         with config_transaction(filepath_config(self.config.config_name)):
             latest = self.config.read_file(self.config.config_name)
@@ -85,6 +88,18 @@ class MindCalculatorScan(Dock):
             signature[y + 155:y + 185, 85:1225] = gray[y + 155:y + 185, 85:1225]
         signature[55:715, 1238:1250] = gray[55:715, 1238:1250]
         return signature
+
+    def _save_scan_evidence(self, image):
+        """只保存首次编队/排序异常原帧；诊断写盘失败不打断新帧复核。"""
+        from pathlib import Path
+        from time import time_ns
+        path = Path(logger.log_file or 'log/alas.txt').parent / 'mind_scan' / self.config.config_name / f'{time_ns()}.png'
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            image.save(path)
+            logger.attr('编队复核原帧', str(path))
+        except OSError as exc:
+            logger.warning(f'编队复核原帧保存失败，继续新截图核对：{exc}')
 
     def _drag_rows(self, distance):
         """一次最多拖一排行距，终点按住后释放，截图再确认实际位移。"""
@@ -120,7 +135,9 @@ class MindCalculatorScan(Dock):
             self.device.screenshot()
             if self.appear(page_dock.check_button):
                 pixels = self._stable_pixels(self.device.image)
-                if previous is None or pixels.shape != previous.shape or np.mean(np.abs(pixels.astype(float) - previous.astype(float))) > 1:
+                # 保留全像素平均差及原阈值，避免整帧浮点转换产生大块临时分配。
+                if (previous is None or pixels.shape != previous.shape
+                        or cv2.mean(cv2.absdiff(pixels, previous))[0] > 1):
                     previous = pixels.copy()
                     stable.reset()
                     continue
@@ -149,12 +166,23 @@ class MindCalculatorScan(Dock):
                     try:
                         cards = recognize_cards(image, f'自动扫描第 {page + 1} 页', name_ocr=names, level_ocr=levels)
                         invalid = [card for card in cards if not card.level_reliable]
-                        if invalid:
+                        suffixes = [card for card in cards if card.ship['review']
+                                    and second_type_family([card.ship['name']])]
+                        uncertain_fleets = [card for card in cards if card.fleet < 0]
+                        # 正常三排推进不重叠；底部可能重叠，由原合并器和端点证据处理。
+                        order_issue = policy.sort_issue(merger.slots + [[card, card.y + merger.offset] for card in cards]) \
+                            if not at_bottom else ''
+                        if invalid or suffixes or uncertain_fleets or order_issue:
                             read_attempts += 1
-                            locations = '、'.join(f'{card.y}px 行第 {card.col + 1} 列' for card in invalid)
+                            locations = order_issue or '、'.join(f'{card.y}px 行第 {card.col + 1} 列'
+                                                               for card in invalid or suffixes or uncertain_fleets)
+                            reason = '等级' if invalid else 'II 型后缀' if suffixes else '编队/排序'
+                            if (uncertain_fleets or order_issue) and read_attempts == 1:
+                                logger.attr('编队复核标记', ','.join(str(card.fleet) for card in cards))
+                                self._save_scan_evidence(image)
                             if read_attempts >= 3:
-                                raise ValueError(f'等级重读仍未确认：{locations}；未导入零等级，保留旧扫描结果')
-                            logger.warning(f'等级未确认，重新截图核对（{read_attempts}/3）：{locations}')
+                                raise ValueError(f'{reason}重读仍未确认：{locations}；保留旧扫描结果')
+                            logger.warning(f'{reason}未确认，重新截图核对（{read_attempts}/3）：{locations}')
                             previous = None
                             stable.reset()
                             continue
@@ -171,6 +199,7 @@ class MindCalculatorScan(Dock):
                     logger.attr('识别卡片', len(merger.slots))
                     logger.attr('范围内舰船（同名取最高）', len(merger.ships(policy.min_level, policy.max_level)))
                     logger.attr('本页等级', ','.join(str(card.ship['level']) for card in cards))
+                    logger.attr('本页编队', ','.join(str(card.fleet) for card in cards))
                     logger.info(f'[心智扫描] 第 {page} 页，已读取 {len(merger.slots)} 格，'
                                 f'范围内 {len(merger.ships(policy.min_level, policy.max_level))} 艘（同名取最高）')
                     if policy.can_stop(cards, merger.slots):

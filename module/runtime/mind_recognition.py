@@ -209,7 +209,8 @@ def _match_name(texts, frame_rarity):
     votes = Counter()
     # 实机名称条核实过的形近字与罗马数字误读；不做编辑距离猜名。
     corrections = {'酒句': '酒匂', '条鱼': '鲦鱼', '绦鱼': '鲦鱼', '四系乃': '四糸乃', '百雪': '白雪',
-                   '杓鹊改': '杓鹬.改', '约克城iii': '约克城II', '列克星敦iii': '列克星敦II'}
+                   '杓鹊改': '杓鹬.改', '约克城iii': '约克城II', '列克星敦iii': '列克星敦II',
+                   '北安普敦iii': '北安普敦II'}
     for text in texts:
         text = corrections.get(normalize_name(text), text)
         info = find_ship(text)
@@ -236,6 +237,15 @@ def _match_name(texts, frame_rarity):
     return info, f'船名经名单校正：{raw} → {info["name"]}' if normalize_name(raw) != normalize_name(info['name']) else ''
 
 
+def second_type_family(texts):
+    """只筛选需要核对后缀的原舰/II 型家族，不据此推定当前卡片身份。"""
+    for text in texts:
+        base = find_ship(normalize_name(text).rstrip('i'))
+        if base and find_ship(base['name'] + 'II'):
+            return True
+    return False
+
+
 def recognize_cards(image, source='', *, name_ocr=None, level_ocr=None, row_origins=None):
     """识别连续三行；自动扫描与上传共用相同网格、名单和等级校验。"""
     from module.ocr.al_ocr import AlOcr, OcrSettings
@@ -243,8 +253,9 @@ def recognize_cards(image, source='', *, name_ocr=None, level_ocr=None, row_orig
     from module.runtime.mind_level import dock_level_reader
     image = normalize_screenshot(image)
     settings = OcrSettings('onnx', 'cpu', False, 'standard')
-    name_ocr = name_ocr or AlOcr(name='ppocr_v6', settings=settings)
-    level_ocr = level_ocr or AlOcr(name='azur_lane', settings=settings)
+    # 连续扫描不逐字图写盘；需要诊断时可显式传入保留调试图的识别器。
+    name_ocr = name_ocr or AlOcr(name='ppocr_v6', settings=settings, save_debug_images=False)
+    level_ocr = level_ocr or AlOcr(name='azur_lane', settings=settings, save_debug_images=False)
     _, _, fleet_reader = _scanners()
     level_reader = dock_level_reader()
     pixels = np.array(image)
@@ -302,6 +313,13 @@ def recognize_cards(image, source='', *, name_ocr=None, level_ocr=None, row_orig
             candidates.extend(name_ocr.ocr_for_single_lines([color, cv2.resize(_name_image(region), None, fx=2, fy=2,
                                                                                interpolation=cv2.INTER_CUBIC)]))
             info, name_note = _match_name(candidates, frame_rarities[index])
+        if not info and second_type_family(candidates):
+            # 实图中细罗马字形经平滑放大可能并成 I；只对未确认家族补充不平滑的字图。
+            clean = _name_image(name_images[index])
+            candidates.extend(name_ocr.ocr_for_single_lines([
+                cv2.resize(clean, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
+                for scale in (2, 3)]))
+            info, name_note = _match_name(candidates, frame_rarities[index])
         value, level_note = values[index], level_notes[index]
         name = info['name'] if info else candidates[0]
         if not name or all(not char.isalnum() for char in name):
@@ -328,24 +346,34 @@ class ScanPolicy:
         self.sorted_desc = sorted_desc
         self.sort_valid = True
 
-    def can_stop(self, cards, slots):
-        if not self.sorted_desc or not self.sort_valid:
-            return False
+    def sort_issue(self, slots):
+        """只检查候选读数，不改变累计排序状态，便于合并前获取新帧复核。"""
+        if not self.sorted_desc:
+            return ''
         ordered = [card for card, _ in sorted(slots, key=lambda item: (item[1], item[0].col))]
         previous, ordinary = None, False
         for card in ordered:
+            location = f'{card.y}px 行第 {card.col + 1} 列（{card.ship["name"]}）'
             if card.fleet < 0 or not card.level_reliable:
-                return False
+                return f'{location}的编队或等级未确认'
             if card.fleet:
                 if ordinary:
-                    self.sort_valid = False
-                    return False
+                    return f'{location}在普通舰之后出现编队标记'
             elif not ordinary:
                 ordinary, previous = True, None
             if previous is not None and card.ship['level'] > previous:
-                self.sort_valid = False
-                return False
+                return f'{location}的等级高于同段前一艘'
             previous = card.ship['level']
+        return ''
+
+    def can_stop(self, cards, slots):
+        if not self.sorted_desc or not self.sort_valid:
+            return False
+        if any(card.fleet < 0 or not card.level_reliable for card, _ in slots):
+            return False
+        if self.sort_issue(slots):
+            self.sort_valid = False
+            return False
         rows = {}
         for card in cards:
             rows.setdefault(card.y, []).append(card)
@@ -356,8 +384,9 @@ class ScanPolicy:
 
 def estimate_scroll(previous, current):
     """用重叠区域核验正负位移；没有唯一证据时终止而不猜测漏页。"""
-    before = cv2.cvtColor(previous[65:640, 85:1225], cv2.COLOR_RGB2GRAY).astype(np.float32)[:, ::8]
-    after = cv2.cvtColor(current[65:640, 85:1225], cv2.COLOR_RGB2GRAY).astype(np.float32)[:, ::8]
+    # 先取原有采样列再转浮点，使内层逐位移比较读取连续内存；候选和阈值不变。
+    before = cv2.cvtColor(previous[65:640, 85:1225], cv2.COLOR_RGB2GRAY)[:, ::8].astype(np.float32)
+    after = cv2.cvtColor(current[65:640, 85:1225], cv2.COLOR_RGB2GRAY)[:, ::8].astype(np.float32)
     if np.mean(np.abs(before - after)) < 1:
         return 0
     scores = []
