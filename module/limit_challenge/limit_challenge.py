@@ -52,7 +52,7 @@ class LimitChallenge(Combat):
                 or self.handle_urgent_commission())
 
     def enter_challenge_preparation(self, level):
-        """确认指定难度已选中，再进入专用编队页。
+        """进入专用编队页；左侧未识别时沿用游戏自动选择的下一关。
 
         Pages:
             in: page_limit_challenge
@@ -66,8 +66,12 @@ class LimitChallenge(Combat):
                 continue
             if self.is_in_challenge():
                 selected = self.selected_level()
-                if selected == level:
+                if selected is None and TEMPLATE_LEVEL_LOCKED.match(self.image_crop(row.area)):
+                    continue
+                if selected in (None, level):
                     if self.appear_then_click(CHALLENGE_START, offset=(3, 3), interval=2):
+                        if selected is None:
+                            logger.info('[限界挑战] 左侧难度未识别，直接开始游戏当前关卡')
                         continue
                 elif not TEMPLATE_LEVEL_LOCKED.match(self.image_crop(row.area)):
                     if self.get_interval_timer(row, interval=2).reached():
@@ -139,9 +143,11 @@ class LimitChallenge(Combat):
                     # Lua 进入时自动选择最高已解锁等级；解锁本身证明前级已领奖。
                     completed = max(self.config.LimitChallenge_CompletedLevel, selected - 1)
                     self.config.LimitChallenge_CompletedLevel = completed
-                    break
+                else:
+                    logger.info('[限界挑战] 左侧难度未识别，按本月已通关数继续')
+                break
         else:
-            raise GameStuckError('限界挑战难度选中状态未确认')
+            raise GameStuckError('限界挑战页面未确认')
 
         if self.config.LimitChallenge_AttemptedLevel > self.config.LimitChallenge_CompletedLevel:
             logger.warning('[限界挑战] 上次出击未确认通关，本月不重复尝试，等待下月')

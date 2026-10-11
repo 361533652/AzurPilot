@@ -7,6 +7,7 @@ import unittest
 from contextlib import contextmanager, nullcontext
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import numpy as np
@@ -16,7 +17,9 @@ from module.api.config_service import ConfigService
 from module.api.protocol import ApiError, ConfigChange
 from module.base.utils import load_image
 from module.base.base import ModuleBase
-from module.combat.assets import BATTLE_STATUS_S, BATTLE_STATUS_A, BATTLE_STATUS_B, EXP_INFO_C, EXP_INFO_D, OPTS_INFO_D
+from module.combat.assets import (
+    BATTLE_STATUS_S, BATTLE_STATUS_A, BATTLE_STATUS_B, EXP_INFO_C, EXP_INFO_D, GET_ITEMS_1, OPTS_INFO_D,
+)
 from module.combat.result import CombatResult
 from module.config.config import AzurLaneConfig, TaskEnd
 from module.config.config_updater import ConfigUpdater
@@ -52,19 +55,29 @@ def temporary_config_directory():
             raise AssertionError('限界挑战测试临时配置未清理')
 
 
+class OriginalFrameReplay(ScreenReplay):
+    """原图使用真实识别，战斗符号帧沿用共用回放工具。"""
+
+    def appear(self, button, **kwargs):
+        if isinstance(self.device.image, np.ndarray):
+            return ModuleBase.appear(self.campaign, button, **kwargs)
+        return super().appear(button, **kwargs)
+
+
 class ChallengeRecognitionTests(unittest.TestCase):
     def setUp(self):
         self.task = LimitChallenge.__new__(LimitChallenge)
         self.task.device = Mock()
+        self.task.config = SimpleNamespace(BUTTON_OFFSET=(30, 30))
         self.task.interval_timer = {}
         self.images = {name: load_image(str(FIXTURES / f'{name}.png'))
-                       for name in ('menu', 'easy', 'preparation')}
+                       for name in ('menu', 'easy', 'preparation', 'normal', 'hard', 'rewards')}
 
     def test_original_screens_identify_only_their_own_page(self):
         for name, image in self.images.items():
             with self.subTest(screen=name):
                 self.task.device.image = image
-                self.assertEqual(self.task.is_in_challenge(), name == 'easy')
+                self.assertEqual(self.task.is_in_challenge(), name in ('easy', 'normal', 'hard'))
                 self.assertEqual(self.task.is_in_challenge_preparation(), name == 'preparation')
                 self.assertEqual(self.task.appear(CAMPAIGN_MENU_GOTO_LIMIT_CHALLENGE, offset=(3, 3)), name == 'menu')
                 self.assertEqual(image.shape, (720, 1280, 3))
@@ -79,6 +92,20 @@ class ChallengeRecognitionTests(unittest.TestCase):
     def test_reward_overlay_does_not_end_combat_early(self):
         self.task.device.image = (self.images['easy'] * 0.4).astype(np.uint8)
         self.assertFalse(self.task.is_in_challenge())
+
+    def test_normal_and_hard_selected_in_original_images(self):
+        for name, level in (('normal', 2), ('hard', 3)):
+            with self.subTest(level=name):
+                self.task.device.image = self.images[name]
+                self.assertEqual(self.task.selected_level(), level)
+                self.assertTrue(self.task.appear(CHALLENGE_START, offset=(3, 3)))
+                self.assertFalse(TEMPLATE_LEVEL_LOCKED.match(self.task.image_crop(LEVELS[level - 1].area)))
+
+    def test_original_reward_popup_is_dismissed_before_starting(self):
+        self.task.device.image = self.images['rewards']
+        self.assertFalse(self.task.is_in_challenge())
+        self.assertTrue(self.task.handle_challenge_rewards())
+        self.task.device.click.assert_called_once_with(GET_ITEMS_1)
 
     def test_selection_marker_is_unique_and_position_based(self):
         # 只模拟共用菱形的行位置，不把合成帧当作审视/洞察真实截图。
@@ -123,6 +150,43 @@ class ChallengeRecognitionTests(unittest.TestCase):
         self.task.handle_challenge_rewards = Mock(return_value=False)
         self.task.enter_challenge_preparation(1)
         self.task.device.click.assert_called_once_with(CHALLENGE_START)
+
+    def test_unrecognized_level_starts_current_unlocked_stage(self):
+        for name, level in (('easy', 1), ('normal', 2), ('hard', 3)):
+            with self.subTest(level=name):
+                self.task.device.click.reset_mock()
+                self.task.interval_timer = {}
+                self.task.device.image = self.images[name]
+                def frames(**kwargs):
+                    yield self.task.device.image
+                    self.task.device.image = self.images['preparation']
+                    yield self.task.device.image
+                self.task.loop = frames
+                with patch.object(self.task, 'selected_level', return_value=None):
+                    self.task.enter_challenge_preparation(level)
+                self.task.device.click.assert_called_once_with(CHALLENGE_START)
+
+    def test_unrecognized_level_does_not_start_a_known_locked_stage(self):
+        self.task.device.image = self.images['easy']
+        self.task.loop = Mock(return_value=iter(range(4)))
+        self.task.handle_challenge_rewards = Mock(return_value=False)
+        with patch.object(self.task, 'selected_level', return_value=None), self.assertRaises(GameStuckError):
+            self.task.enter_challenge_preparation(2)
+        self.task.device.click.assert_not_called()
+
+    def test_auto_advance_starts_next_level_after_closing_reward_popup(self):
+        for name, level in (('normal', 2), ('hard', 3)):
+            with self.subTest(level=name):
+                self.task.device.click.reset_mock()
+                self.task.interval_timer = {}
+                def frames(**kwargs):
+                    for frame in ('rewards', name, 'preparation'):
+                        self.task.device.image = self.images[frame]
+                        yield self.task.device.image
+                self.task.loop = frames
+                self.task.enter_challenge_preparation(level)
+                self.assertEqual([call.args[0].name for call in self.task.device.click.call_args_list],
+                                 [GET_ITEMS_1.name, CHALLENGE_START.name])
 
 
 class ChallengeProgressTests(unittest.TestCase):
@@ -258,6 +322,21 @@ class ChallengeProgressTests(unittest.TestCase):
         self.task.run()
         self.assertEqual(self.levels, [3])
 
+    def test_unrecognized_level_uses_success_count_until_target(self):
+        for target, count in (('normal', 2), ('hard', 3)):
+            with self.subTest(target=target):
+                self.config.LimitChallenge_Month = 0
+                self.config.LimitChallenge_TargetLevel = target
+                self.task.selected_level.return_value = None
+                self.levels.clear()
+                self.outcomes = ['S', 'A', 'B'][:count]
+                self.task.run()
+                self.assertEqual(self.levels, list(range(1, count + 1)))
+                self.assertEqual(self.config.LimitChallenge_CompletedLevel, count)
+                self.reload()
+                self.task.run()
+                self.task.combat.assert_not_called()
+
     def test_next_month_resets_success_and_defeat(self):
         self.outcomes = ['D']
         self.task.run()
@@ -345,12 +424,7 @@ class ChallengeCombatLifecycleTests(unittest.TestCase):
             ('D', [screen(OPTS_INFO_D), screen(EXP_INFO_D)]),
         ):
             with self.subTest(rank=rank):
-                class Replay(ScreenReplay):
-                    def appear(self, button, **kwargs):
-                        if isinstance(self.device.image, np.ndarray):
-                            return ModuleBase.appear(self.campaign, button, **kwargs)
-                        return super().appear(button, **kwargs)
-                replay = Replay([preparation, screen('LOADING'), screen('COMBAT'), *result_frames, end])
+                replay = OriginalFrameReplay([preparation, screen('LOADING'), screen('COMBAT'), *result_frames, end])
                 task = replay.make_campaign(LimitChallenge)
                 task.config.LimitChallenge_Month = 202610
                 task.config.LimitChallenge_AttemptedLevel = 0
@@ -385,6 +459,26 @@ class ChallengeCombatLifecycleTests(unittest.TestCase):
                 task.emotion.wait.assert_not_called()
                 task.emotion.reduce.assert_not_called()
                 task.emotion.record.assert_not_called()
+
+    def test_combat_status_dismisses_original_reward_before_auto_advanced_page(self):
+        rewards = load_image(str(FIXTURES / 'rewards.png'))
+        for name, level in (('normal', 2), ('hard', 3)):
+            with self.subTest(level=name):
+                end = load_image(str(FIXTURES / f'{name}.png'))
+                replay = OriginalFrameReplay([screen(BATTLE_STATUS_S), rewards, end])
+                task = replay.make_campaign(LimitChallenge)
+                task.handle_get_items = LimitChallenge.handle_get_items.__get__(task)
+                task.handle_in_stage = Mock(return_value=False)
+                task.is_in_challenge = lambda: (
+                    isinstance(task.device.image, np.ndarray) and LimitChallenge.is_in_challenge(task))
+                task.combat_result_reset(emotion_reduce=False)
+                with patch('module.base.timer.time', side_effect=lambda: replay.time):
+                    task.combat_status(expected_end=task.is_in_challenge)
+                self.assertEqual(replay.clicks, [BATTLE_STATUS_S.name, GET_ITEMS_1.name])
+                self.assertEqual(replay.index, 2)
+                self.assertEqual(task.selected_level(), level)
+                self.assertEqual(task.combat_result.rank, 'S')
+                task.emotion.reduce.assert_not_called()
 
 
 class ChallengeConfigurationTests(unittest.TestCase):
