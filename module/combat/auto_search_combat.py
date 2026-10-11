@@ -336,7 +336,7 @@ class AutoSearchCombat(MapOperation, Combat, CampaignStatus):
             # C/D 共用的失败画面优先于通用弹窗；记录结果后交给结算恢复。
             if self.handle_combat_defeat():
                 break
-            if self.appear(FLEET_UNAVAILABLE, offset=(30, 30)):
+            if self.appear(FLEET_UNAVAILABLE, offset=(160, 30)):
                 self.combat_result_record(defeated=True)
                 break
 
@@ -444,9 +444,12 @@ class AutoSearchCombat(MapOperation, Combat, CampaignStatus):
             if self.handle_combat_defeat():
                 continue
             # 该正文意味着游戏将自动换队；不能让通用「确定」误识别成紧急委托。
-            if self.appear(FLEET_UNAVAILABLE, offset=(30, 30)):
+            if self.appear(FLEET_UNAVAILABLE, offset=(160, 30)):
                 self.combat_result_record(defeated=True)
-                self.appear_then_click(FLEET_UNAVAILABLE, offset=(30, 30), interval=2)
+                if self.appear(FLEET_UNAVAILABLE, offset=(160, 30), interval=2):
+                    # 正文随动态舰队名居中偏移，确认按钮本身仍在固定位置。
+                    FLEET_UNAVAILABLE.clear_offset()
+                    self.device.click(FLEET_UNAVAILABLE)
                 continue
 
             if self._withdraw:

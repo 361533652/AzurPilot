@@ -239,7 +239,7 @@ class InfoHandler(ModuleBase):
             GameNotRunningError: 检测到服务器热更新导致游戏进程退出时抛出。
         """
         # 两种弹窗共用同位置的「确定」；先核对换队正文，避免委托处理器抢走战败信号。
-        if self.appear(FLEET_UNAVAILABLE, offset=(30, 30)):
+        if self.appear(FLEET_UNAVAILABLE, offset=(160, 30)):
             return False
         appear = self.appear(GET_MISSION, offset=True, interval=2)
         if appear:

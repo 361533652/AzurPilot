@@ -98,6 +98,32 @@ class CombatScreenshotTests(unittest.TestCase):
         self.assertNotIn(WITHDRAW.name, replay.clicks)
         self.assertNotIn(GET_MISSION.name, replay.clicks)
 
+    def test_centered_body_shift_does_not_move_fixed_confirm_button(self):
+        original = load_image(str(FIXTURES / 'unavailable.png'))
+        x1, y1, x2, y2 = FLEET_UNAVAILABLE.area
+        for shift in (-100, 100):
+            with self.subTest(body_shift=shift):
+                shifted = original.copy()
+                shifted[y1:y2, x1:x2] = 0
+                shifted[y1:y2, x1 + shift:x2 + shift] = original[y1:y2, x1:x2]
+                replay = PixelReplay([
+                    screen('COMBAT'), shifted, shifted,
+                    load_image(str(FIXTURES / 'map_fleet2.png')),
+                    screen(AUTO_SEARCH_MAP_OPTION_ON, FLEET_NUM_2)])
+                campaign = replay.make_campaign(policy='switch_fleet')
+                confirm_areas = []
+
+                def click(button):
+                    if button.name == FLEET_UNAVAILABLE.name:
+                        confirm_areas.append(tuple(button.button))
+                    replay.click(button)
+
+                campaign.device.click.side_effect = click
+                replay.run()
+                self.assertEqual(confirm_areas, [(553, 481, 728, 541)])
+                self.assertNotIn(GET_MISSION.name, replay.clicks)
+                self.assertEqual(campaign.emotion.reduce.call_args_list, [call(1), call(1, shipwreck=True)])
+
 
 class CombatResultTests(unittest.TestCase):
     def test_fleet_popup_without_captured_defeat_still_records_failure_once(self):
