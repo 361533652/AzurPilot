@@ -34,6 +34,7 @@ module/
 ├── exercise/         # 演习 PvP：exercise.py 主任务，combat/opponent 战斗与对手选择，hp_daemon 血量监控，equipment 装备编辑
 ├── gacha/            # 建造：gacha_reward.py 主任务，ui.py 建造页导航
 ├── daily/            # 每日任务：daily.py 单文件（含关卡/舰队映射与执行）
+├── limit_challenge/  # 限界挑战：月度顺序挑战与出击去重
 ├── hard/             # 困难模式：hard.py 主任务，equipment.py 困难专属装备装卸
 ├── sos/              # SOS 信号：sos.py 单文件（含各服务器 UI 适配）
 ├── war_archives/     # 作战档案：war_archives.py 主任务，dictionary.py 活动→模板映射
@@ -63,6 +64,7 @@ module/
 | Exercise（DailyMission） | `exercise()` | `module.exercise.exercise.Exercise` | `Exercise.*` |
 | Gacha（DailyMission） | `gacha()` | `module.gacha.gacha_reward.RewardGacha` | `Gacha.*` |
 | Daily（DailyMission） | `daily()` | `module.daily.daily.Daily` | `Daily.*` |
+| LimitChallenge（DailyMission） | `limit_challenge()` | `module.limit_challenge.limit_challenge.LimitChallenge` | `LimitChallenge.*` |
 | Hard（DailyMission） | `hard()` | `module.hard.hard.CampaignHard` | `Hard.*` |
 | Shipyard（DailyMission） | `shipyard()` | `module.shipyard.shipyard_reward.RewardShipyard` | `Shipyard.*` / `ShipyardDr.*` |
 | Freebies（DailyMission） | `freebies()` | `module.freebies.freebies.Freebies` | `BattlePass.*` / `DataKey.*` / `Mail.*` / `SupplyPack.*` |
@@ -99,6 +101,18 @@ module/
 ### 每日任务（module/daily）
 
 `Daily(Combat)` 按页签轮询每日出击（`daily_current` 1~7）：检测活跃状态与剩余次数（`OCR_REMAIN`），按 `Daily_*` 配置选择关卡与舰队后进入 `combat()`。限时出现「紧急模块开发」入口时（`ENTRANCE_EMERGENCY_MODULE_DEVELOPMENT`），切换到另一套关卡/舰队映射表。每打完一关就退出重进战役菜单重置页签顺序（顺序会乱，因此任务不能停留在 `page_daily`）；破交作战需 `Daily_UseDailySkip`，否则跳过。
+
+### 限界挑战（module/limit_challenge）
+
+任务位于每日任务菜单，默认关闭、目标为窥探。先在游戏内配置专用限界挑战舰队，随后从出击菜单进入限界挑战，点击「开始挑战」与专用编队页的「出击」。`LimitChallenge.TargetLevel` 表示最高目标：窥探为本月通关 1 关，审视为依次通关 2 关，洞察为依次通关 3 关。S/A/B 通关并领奖后，游戏自动选择下一难度，任务继续点击开始；C/D 立即停止剩余难度。
+
+共用选中菱形用于确认难度和恢复已解锁进度。左侧难度未识别或出现多行匹配时，保留本月已通关数，在确认挑战页与「开始挑战」按钮、且待挑战行未命中锁定文字后，直接开始游戏当前关卡，不因缺失难度识别而卡住，也不据此增加通关数。只有已明确选中其他难度时才切换行。国服窥探、审视、洞察与获得道具原图均已离线验证；其他服务器在导航前请求人工处理。
+
+`Month`、`CompletedLevel`、`AttemptedLevel`、`Failed` 是隐藏的月度进度。真正点击出击前，将尝试等级与下次运行时间一并保存，保存失败不点击。已完成的等级本月不重复出击；战败或出击后结果未确认都等到下月。重新运行时，选中更高已解锁等级可确认前级已通关领奖；挑战记录时间可能来自往期，不能作为本月通关证据。游戏解锁依据为前一级奖励已领取，因此结算与领奖完成后才进入下一等级。
+
+每月按服务器时间 1 日零点重置，复用 `get_os_next_reset_after()` 计算本地调度时刻，不用固定 30 天间隔。出击前、战斗后均检查月份，跨月结果不记入新月份；到达目标、战败与未知结果均仅预约下月，不同时传入更短的成功间隔。战斗显式 `emotion_reduce=False`、关闭血量平衡并复用普通执行／结算与潜艇呼叫，不读取或修改心情账本，不受石油停止线限制；原调度清油控制直接放行本任务，保留状态给下一项业务。
+
+机制依据为本地 Lua 的 `LimitChallengeProxy.isLevelUnlock()`、`LimitChallengeConst.GetNextMonthTS()`、`BattleGateLimitChallenge.Exit()` 和 `battle_cost_template[14]`（石油、入场心情与沉船心情均为 0）。原始 1280×720 截图位于 `tests/fixtures/limit_challenge/`，素材来源及裁剪范围见 [限界挑战识别素材](limit-challenge-assets.md)。回归入口 `uv run python -m unittest tests.test_limit_challenge tests.test_oil_control`，覆盖三档原图、自动切换、获得道具弹窗、左侧识别缺失、持久化去重、失败与跨月调度；道具弹窗复用普通战斗处理，关闭后继续截图，由无遮挡挑战页确认退出。截图回放不作为完整实机验收证据。
 
 ### 困难模式（module/hard）
 
