@@ -29,7 +29,7 @@ FIXTURES = Path(__file__).parent / 'fixtures'
 
 def cards_for_levels(levels, fleet=0):
     return [Card(93 + col * 165, 65 + row * 227, col,
-                 dict(name='拉菲', level=level, rarity='SR', source='', review=True), 6, True, fleet)
+                 dict(name='拉菲', level=level, rarity='SR', source='', review=False), 6, True, fleet)
             for index, level in enumerate(levels) for row, col in [divmod(index, 7)]]
 
 
@@ -114,6 +114,7 @@ class ScanFailureTests(unittest.TestCase):
         scanner._policy = Mock(min_level=90, max_level=115)
         scanner._policy.can_stop.return_value = True
         scanner._policy.sort_issue.side_effect = ScanPolicy(90, 115, True).sort_issue
+        scanner._policy.sort_conflicts.side_effect = ScanPolicy(90, 115, True).sort_conflicts
         merger = Mock(slots=[], offset=0)
         if kind == 'order':
             previous = copy.deepcopy(confirmed)
@@ -138,19 +139,23 @@ class ScanFailureTests(unittest.TestCase):
                 merger.add.assert_called_once()
             else:
                 recognize.return_value = [uncertain]
-                with self.assertRaisesRegex(MindCalculatorScanError, f'{reason}重读仍未确认.*保留旧扫描结果'):
-                    scanner._scan_pages(Mock(), Mock())
+                self.assertEqual(scanner._scan_pages(Mock(), Mock()), [confirmed.ship])
                 self.assertEqual(recognize.call_count, 3)
-                merger.add.assert_not_called()
+                merger.add.assert_called_once()
+                self.assertTrue(uncertain.ship['review'])
+                self.assertIn('待人工核对', uncertain.ship['source'])
+                if kind != 'suffix':
+                    self.assertFalse(scanner._policy.sort_valid)
             self.assertEqual(scanner.device.screenshot.call_count, recognize.call_count * 2 + extra_screenshots)
-            self.assertEqual(len(list(Path(temp).rglob('*.png'))), int(kind != 'suffix' and not capture_error))
+            captures = int(kind != 'suffix') + int(not recovered)
+            self.assertEqual(len(list(Path(temp).rglob('*.png'))), captures if not capture_error else 0)
         scanner.device.drag.assert_not_called()
         scanner.device.save_screenshot.assert_not_called()
 
     def test_uncertain_second_type_takes_new_frame_before_merge(self):
         self.check_suffix_reread(recovered=True)
 
-    def test_uncertain_second_type_stops_after_three_frames_without_merge(self):
+    def test_uncertain_second_type_is_marked_review_after_three_frames(self):
         self.check_suffix_reread(recovered=False)
 
     def test_fleet_and_order_conflicts_take_new_frame_before_merge(self):
@@ -158,7 +163,7 @@ class ScanFailureTests(unittest.TestCase):
             with self.subTest(kind=kind):
                 self.check_suffix_reread(recovered=True, kind=kind)
 
-    def test_fleet_and_order_conflicts_stop_after_three_frames_without_merge(self):
+    def test_fleet_and_order_conflicts_are_marked_review_after_three_frames(self):
         for kind in ('unknown_fleet', 'order'):
             with self.subTest(kind=kind):
                 self.check_suffix_reread(recovered=False, kind=kind)
@@ -202,13 +207,25 @@ class RangeTests(unittest.TestCase):
         self.assertEqual(len(merger.slots), 7 * 32)
         self.assertEqual(merger.offset, 227 * 29)
 
-    def test_uncertain_level_is_never_written_as_zero(self):
+    def test_uncertain_level_is_retained_as_unknown_review_without_billing(self):
         card = cards_for_levels([89])[0]
         card.level_reliable = False
         merger = ScanMerger(); merger.slots = [[card, card.y]]
         rows = merger.ships(90, 115)
-        self.assertEqual(rows, [])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['level'], 0)
+        self.assertTrue(rows[0]['review'])
         self.assertEqual(calculate(rows)['mind'], 0)
+
+    def test_review_cards_outside_range_remain_visible_and_never_bill(self):
+        cards = cards_for_levels([118, 89, 100])
+        for card in cards[:2]:
+            card.ship['review'] = True
+        merger = ScanMerger(); merger.slots = [[card, card.y] for card in cards]
+        rows = merger.ships(90, 115)
+        self.assertEqual([row['level'] for row in rows], [118, 89, 100])
+        self.assertEqual(calculate(rows)['review'], 2)
+        self.assertEqual(calculate(rows)['included'], 1)
 
     def test_name_disagreement_does_not_invalidate_matching_levels(self):
         image = Image.new('RGB', (1280, 720), (80, 80, 80))
@@ -219,11 +236,13 @@ class RangeTests(unittest.TestCase):
         merger.add(image, retry)
         self.assertTrue(merger.slots[0][0].level_reliable)
         self.assertIn('跨屏读数不一致', merger.slots[0][0].ship['source'])
-        self.assertEqual(merger.ships(90, 115), [])
+        self.assertEqual(merger.ships(90, 115)[0]['level'], 118)
+        self.assertEqual(calculate(merger.ships(90, 115))['mind'], 0)
         retry[0].ship['level'] = 18
         merger.add(image, retry)
         self.assertFalse(merger.slots[0][0].level_reliable)
-        self.assertEqual(merger.ships(90, 115), [])
+        self.assertEqual(merger.ships(90, 115)[0]['level'], 0)
+        self.assertTrue(merger.ships(90, 115)[0]['review'])
 
     def test_three_rows_without_minimum_but_with_eligible_ships_continue(self):
         cards = cards_for_levels([115] * 7 + [100] * 7 + [91] * 7)

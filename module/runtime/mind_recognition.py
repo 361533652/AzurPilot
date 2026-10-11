@@ -348,23 +348,35 @@ class ScanPolicy:
 
     def sort_issue(self, slots):
         """只检查候选读数，不改变累计排序状态，便于合并前获取新帧复核。"""
+        conflicts = self.sort_conflicts(slots)
+        return conflicts[0][1] if conflicts else ''
+
+    def sort_conflicts(self, slots):
+        """指出冲突涉及的两侧卡片，不猜哪一张的等级或编队标记读错。"""
         if not self.sorted_desc:
-            return ''
+            return []
         ordered = [card for card, _ in sorted(slots, key=lambda item: (item[1], item[0].col))]
         previous, ordinary = None, False
+        conflicts = []
         for card in ordered:
             location = f'{card.y}px 行第 {card.col + 1} 列（{card.ship["name"]}）'
             if card.fleet < 0 or not card.level_reliable:
-                return f'{location}的编队或等级未确认'
+                conflicts.append((card, f'{location}的编队或等级未确认'))
+                previous = None
+                continue
             if card.fleet:
                 if ordinary:
-                    return f'{location}在普通舰之后出现编队标记'
+                    note = f'{location}在普通舰之后出现编队标记'
+                    conflicts.append((card, note))
+                    if previous is not None:
+                        conflicts.append((previous, note))
             elif not ordinary:
                 ordinary, previous = True, None
-            if previous is not None and card.ship['level'] > previous:
-                return f'{location}的等级高于同段前一艘'
-            previous = card.ship['level']
-        return ''
+            if previous is not None and card.ship['level'] > previous.ship['level']:
+                note = f'{location}的等级高于同段前一艘'
+                conflicts.extend(((previous, note), (card, note)))
+            previous = card
+        return conflicts
 
     def can_stop(self, cards, slots):
         if not self.sorted_desc or not self.sort_valid:
@@ -457,5 +469,8 @@ class ScanMerger:
         return shift
 
     def ships(self, min_level=1, max_level=125):
-        return highest_ships([card.ship for card, _ in sorted(self.slots, key=lambda item: (item[1], item[0].col))
-                              if card.level_reliable and min_level <= card.ship['level'] <= max_level])
+        # 疑难卡位必须进入核对清单；不能按存疑身份/等级静默过滤或计费。
+        return highest_ships([card.ship if card.level_reliable else dict(card.ship, level=0, review=True)
+                              for card, _ in sorted(self.slots, key=lambda item: (item[1], item[0].col))
+                              if not card.level_reliable or card.ship['review']
+                              or min_level <= card.ship['level'] <= max_level])
