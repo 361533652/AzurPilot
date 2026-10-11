@@ -11,6 +11,7 @@ class CombatResult:
     emotion_reduce: bool = False
     rank: str | None = None
     defeated: bool = False
+    fleet_unavailable: bool = False
     shipwreck_reduced: bool = False
 
     @property

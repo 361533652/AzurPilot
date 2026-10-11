@@ -18,12 +18,10 @@ from module.base.timer import Timer
 from module.campaign.campaign_status import CampaignStatus
 from module.combat.assets import *
 from module.combat.combat import Combat
-from module.exception import CampaignEnd, ScriptEnd
+from module.exception import CampaignEnd, RequestHumanTakeover, ScriptEnd
 from module.handler.assets import AUTO_SEARCH_MAP_OPTION_ON, FLEET_UNAVAILABLE
 from module.logger import logger
-from module.map.assets import (
-    WITHDRAW, SWITCH_OVER, FLEET_WITHDRAW, FLEET_WITHDRAW_BOSS, FLEET_NUM_1, FLEET_NUM_2,
-)
+from module.map.assets import WITHDRAW, FLEET_NUM_1, FLEET_NUM_2
 from module.map.map_operation import MapOperation
 
 
@@ -108,7 +106,13 @@ class AutoSearchCombat(MapOperation, Combat, CampaignStatus):
             bool: 监控操作是否已执行。
         """
         prev = self.fleet_current_index
-        self.get_fleet_show_index()
+        if self.appear(FLEET_NUM_1, offset=(20, 20)):
+            self.fleet_show_index = 1
+        elif self.appear(FLEET_NUM_2, offset=(20, 20)):
+            self.fleet_show_index = 2
+        else:
+            # 转场读不到编号时保留上一次正向确认，不能把二队改记为默认一队。
+            return checked
         self.get_fleet_current_index()
         if self.fleet_current_index == prev:
             # 与当前舰队一致，仅输出一次日志
@@ -337,7 +341,7 @@ class AutoSearchCombat(MapOperation, Combat, CampaignStatus):
             if self.handle_combat_defeat():
                 break
             if self.appear(FLEET_UNAVAILABLE, offset=(160, 30)):
-                self.combat_result_record(defeated=True)
+                self.combat_result_record(fleet_unavailable=True)
                 break
 
             if self.handle_submarine_call(submarine_mode, call=force_call):
@@ -424,20 +428,23 @@ class AutoSearchCombat(MapOperation, Combat, CampaignStatus):
 
         Raises:
             CampaignEnd: 战斗结束且回到自动搜索菜单，或触发撤退时抛出。
-            ScriptEnd: 连续战败达到上限且配置为撤退停止时抛出。
+            ScriptEnd: 连续战败停止，或接替舰队心情不足，退出后抛出。
+            RequestHumanTakeover: 接替舰队账本不可用，退出后抛出。
 
         Pages:
             in: 任意结算界面
-            out: is_auto_search_running()
+            out: is_auto_search_running()，或恢复自律后进入加载/战斗
         """
         logger.info('[自动搜索-结算] 战斗结算')
         self.device.screenshot_interval_set()
         self.device.stuck_record_clear()
         self.device.click_record_clear()
         withdraw_stable_timer = Timer(2)
-        switch_over_timer = None
-        switch_over_clicked = False
-        switch_confirmed = False
+        handoff_timer = None
+        handoff_failed = False
+        resume_checked = False
+        resume_started = False
+        resume_error = None
 
         for _ in self.loop():
 
@@ -445,7 +452,7 @@ class AutoSearchCombat(MapOperation, Combat, CampaignStatus):
                 continue
             # 该正文意味着游戏将自动换队；不能让通用「确定」误识别成紧急委托。
             if self.appear(FLEET_UNAVAILABLE, offset=(160, 30)):
-                self.combat_result_record(defeated=True)
+                self.combat_result_record(fleet_unavailable=True)
                 if self.appear(FLEET_UNAVAILABLE, offset=(160, 30), interval=2):
                     # 正文随动态舰队名居中偏移，确认按钮本身仍在固定位置。
                     FLEET_UNAVAILABLE.clear_offset()
@@ -453,9 +460,16 @@ class AutoSearchCombat(MapOperation, Combat, CampaignStatus):
                 continue
 
             if self._withdraw:
+                # 开启后可能直接进入加载/战斗，不能一直等地图上的 ON 图标。
+                if resume_started and (self.is_combat_loading() or self.is_combat_executing()):
+                    self._withdraw = False
+                    self._auto_search_status_confirm = False
+                    break
                 # 战败后可能直接回到菜单或选关页，仍须退出并执行关闭任务策略。
                 if self.is_in_stage():
                     self._withdraw = False
+                    if resume_error is not None:
+                        raise resume_error
                     if self.config.Campaign_DefeatWithdraw == 'withdraw_stop' and self._defeat_count >= 3:
                         raise ScriptEnd('DefeatWithdraw=withdraw_stop')
                     raise CampaignEnd('Withdraw')
@@ -489,54 +503,45 @@ class AutoSearchCombat(MapOperation, Combat, CampaignStatus):
             # 撤退处理
             if self._withdraw:
                 defeat_withdraw = self.config.Campaign_DefeatWithdraw
-                allow_switch = defeat_withdraw == 'switch_fleet' and (
-                    self.fleet_alive_multiple or switch_confirmed)
+                allow_switch = defeat_withdraw == 'switch_fleet' and self.combat_result.fleet_unavailable \
+                    and not handoff_failed
                 if allow_switch:
-                    # 读不到舰队编号时不沿用默认值，更不能把自律运行当作换队成功。
-                    target = FLEET_NUM_2 if self.combat_result.fleet_index == 1 else FLEET_NUM_1
+                    if handoff_timer is None:
+                        handoff_timer = Timer(10, count=20).start()
+                    # 只等游戏自动换队；原队仍可用时手动切队会被游戏按职责切回。
+                    target_index = 3 - self.combat_result.fleet_index
+                    target = FLEET_NUM_2 if target_index == 2 else FLEET_NUM_1
                     if self.appear(target, offset=(20, 20)):
-                        switch_confirmed = True
-                    if switch_confirmed:
+                        self.fleet_show_index = target_index
+                        if not resume_checked:
+                            try:
+                                self.emotion.check_fleet(target_index)
+                            except (RequestHumanTakeover, ScriptEnd) as exc:
+                                logger.warning('[战败恢复] 接替舰队心情检查未通过，先撤退再上报')
+                                resume_error = exc
+                                handoff_failed = True
+                                continue
+                            resume_checked = True
                         if self.is_auto_search_running():
-                            self.fleet_alive_multiple = False
                             self._withdraw = False
                             self._auto_search_status_confirm = False
                             break
                         if self.handle_auto_search_map_option():
+                            resume_started = True
                             continue
+                    if handoff_timer.reached():
+                        logger.warning('[战败恢复] 未确认游戏自动换队，改为撤退')
+                        handoff_failed = True
+                    continue
 
                 # 游戏战败时已停止自律。撤退或尚未确认换队时不操作开关；
                 # ON/OFF 的文字模板会互相命中，点击所谓 ON 反而可能开启自律。
-                if not allow_switch:
-                    if self.handle_popup_confirm('WITHDRAW'):
-                        continue
-                    if not self._wait_withdraw_stable(withdraw_stable_timer):
-                        continue
-                    if self.appear_then_click(WITHDRAW, offset=(30, 30), interval=5):
-                        continue
-                else:
-                    if self.appear(FLEET_WITHDRAW_BOSS, offset=(30, 30)):
-                        self.fleet_alive_multiple = False
-                        switch_confirmed = False
-                        continue
-                    if switch_over_timer is None:
-                        if not self._wait_withdraw_stable(withdraw_stable_timer):
-                            continue
-                        switch_over_timer = Timer(10, count=20).start()
-                    # 旧版地图需要撤退战败舰队的确认，新版可能已经自动切换。
-                    if self.appear_then_click(FLEET_WITHDRAW, offset=(30, 30), interval=2):
-                        continue
-                    if self.handle_popup_confirm('combat_status'):
-                        continue
-                    if not switch_confirmed and not switch_over_clicked \
-                            and self.appear_then_click(SWITCH_OVER, interval=2):
-                        switch_over_clicked = True
-                        continue
-                    if switch_over_timer.reached():
-                        logger.warning('舰队切换超时，改为撤退')
-                        self.fleet_alive_multiple = False
-                        switch_confirmed = False
-                        continue
+                if self.handle_popup_confirm('WITHDRAW'):
+                    continue
+                if not self._wait_withdraw_stable(withdraw_stable_timer):
+                    continue
+                if self.appear_then_click(WITHDRAW, offset=(30, 30), interval=5):
+                    continue
                 continue
 
             # 战斗结算状态处理

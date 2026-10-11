@@ -67,11 +67,15 @@ class Combat(Level, HPBalancer, Retirement, SubmarineCall, CombatAuto, CombatMan
         """在战斗入口重置结果；基础心情仍在确认进入战斗后扣减。"""
         self.combat_result = CombatResult(fleet_index=fleet_index, emotion_reduce=emotion_reduce)
 
-    def combat_result_record(self, rank=None, defeated=False):
+    def combat_result_record(self, rank=None, defeated=False, fleet_unavailable=False):
         """记录正向识别结果，同一场非 S 或战败最多额外扣减一次。"""
         result = self.combat_result
         if rank is not None:
             result.rank = rank
+        if fleet_unavailable and not result.fleet_unavailable:
+            logger.info('[战斗-结算] 战败舰队已无法成型，等待游戏自动换队')
+        result.fleet_unavailable |= fleet_unavailable
+        defeated |= fleet_unavailable
         first_defeat = defeated and not result.defeated
         result.defeated |= defeated
         if result.emotion_reduce and self.combat_shipwreck_emotion \

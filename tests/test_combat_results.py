@@ -43,6 +43,9 @@ class PixelReplay(ScreenReplay):
         campaign = super().make_campaign(*args, **kwargs)
         campaign.is_combat_executing.side_effect = lambda: (
             isinstance(self.device.image, frozenset) and 'COMBAT' in self.device.image)
+        campaign.is_combat_loading.side_effect = lambda: (
+            AutoSearchCombat.is_combat_loading(campaign) if isinstance(self.device.image, np.ndarray)
+            else 'LOADING' in self.device.image)
         campaign.is_in_stage.side_effect = lambda: (
             isinstance(self.device.image, frozenset) and 'STAGE' in self.device.image)
         campaign.is_in_auto_search_menu.side_effect = lambda: False
@@ -100,7 +103,7 @@ class CombatScreenshotTests(unittest.TestCase):
     def test_logged_four_toggle_sequence_retires_with_zero_auto_search_clicks(self):
         stopped_map = load_image(str(FIXTURES / 'map_fleet2.png'))
         for cls, policy in product((AutoSearchCombat, GemsCampaignOverride),
-                                   ('withdraw_stop', 'withdraw_continue', 'switch_fleet')):
+                                   ('withdraw_stop', 'withdraw_continue')):
             with self.subTest(cls=cls.__name__, policy=policy):
                 # 实机日志顺序：经验页、地图过渡、无可用舰队、自动换二队后的地图。
                 replay = PixelReplay([
@@ -109,8 +112,6 @@ class CombatScreenshotTests(unittest.TestCase):
                     load_image(str(FIXTURES / 'unavailable.png')),
                     *[stopped_map] * 8, screen('STAGE')])
                 campaign = replay.make_campaign(cls, policy)
-                if policy == 'switch_fleet':
-                    campaign.fleet_alive_multiple = False
                 with self.assertRaises(CampaignEnd):
                     replay.run()
                 self.assertIn(FLEET_UNAVAILABLE.name, replay.clicks)
@@ -221,22 +222,14 @@ class CombatResultTests(unittest.TestCase):
                 ('withdraw_stop', 'withdraw_continue', 'switch_fleet')):
             with self.subTest(cls=cls.__name__, grade=grade.name, policy=policy):
                 prefix = [screen('COMBAT'), screen(grade), screen(OPTS_INFO_D)]
-                if policy == 'switch_fleet':
-                    frames = [*prefix, *[screen(WITHDRAW, SWITCH_OVER, FLEET_NUM_1)] * 5,
-                              screen(AUTO_SEARCH_MAP_OPTION_OFF, FLEET_NUM_2),
-                              screen(AUTO_SEARCH_MAP_OPTION_ON, FLEET_NUM_2)]
-                else:
-                    frames = retreat_frames(*prefix, screen(AUTO_SEARCH_MAP_OPTION_ON, FLEET_NUM_1))
+                frames = retreat_frames(*prefix, screen(AUTO_SEARCH_MAP_OPTION_ON, FLEET_NUM_1))
                 replay = ScreenReplay(frames)
                 campaign = replay.make_campaign(cls, policy)
-                if policy == 'switch_fleet':
+                with self.assertRaises(CampaignEnd):
                     replay.run()
-                    self.assertIn(SWITCH_OVER.name, replay.clicks)
-                    self.assertNotIn(WITHDRAW.name, replay.clicks)
-                else:
-                    with self.assertRaises(CampaignEnd):
-                        replay.run()
-                    self.assertNotIn(AUTO_SEARCH_MAP_OPTION_OFF.name, replay.clicks)
+                self.assertIn(WITHDRAW.name, replay.clicks)
+                self.assertNotIn(SWITCH_OVER.name, replay.clicks)
+                self.assertNotIn(AUTO_SEARCH_MAP_OPTION_OFF.name, replay.clicks)
                 self.assertTrue(campaign.combat_result.defeated)
                 self.assertEqual(campaign.emotion.reduce.call_args_list, [call(1), call(1, shipwreck=True)])
 
@@ -245,14 +238,14 @@ class CombatResultTests(unittest.TestCase):
             screen('COMBAT'), screen(OPTS_INFO_D), screen(EXP_INFO_C),
             screen(AUTO_SEARCH_MAP_OPTION_ON, FLEET_NUM_1),
             *[screen(WITHDRAW, SWITCH_OVER, FLEET_NUM_1, AUTO_SEARCH_MAP_OPTION_OFF)] * 5,
-            screen(AUTO_SEARCH_MAP_OPTION_OFF, FLEET_NUM_2),
-            screen(AUTO_SEARCH_MAP_OPTION_ON, FLEET_NUM_2)])
+            screen('STAGE')])
         campaign = replay.make_campaign(policy='switch_fleet')
-        replay.run()
-        enabled = [i for i, name in replay.click_frames if name == AUTO_SEARCH_MAP_OPTION_OFF.name]
-        self.assertEqual(enabled, [9])
+        with self.assertRaises(CampaignEnd):
+            replay.run()
+        self.assertIn(WITHDRAW.name, replay.clicks)
+        self.assertNotIn(AUTO_SEARCH_MAP_OPTION_OFF.name, replay.clicks)
         self.assertNotIn(AUTO_SEARCH_MAP_OPTION_ON.name, replay.clicks)
-        self.assertEqual(replay.clicks.count(SWITCH_OVER.name), 1)
+        self.assertNotIn(SWITCH_OVER.name, replay.clicks)
 
     def test_normal_and_scuttle_tasks_share_defeat_but_keep_separate_policies(self):
         classes = (RaidCombat, RaidScuttleCombat, RaidScuttleRun,
