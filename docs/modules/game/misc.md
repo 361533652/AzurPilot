@@ -114,7 +114,7 @@ module/
 
 ### 突袭共斗（module/raid）
 
-`raid.py` 是资源映射层：`raid_name_shorten()` 把 `raid_YYYYMMDD` 映射到资源前缀（ESSEX…BIGSHOT），`raid_entrance()/raid_ocr()` 按活动+难度取按钮与 OCR 实例（各活动字体颜色不同，部分需 `RaidCounter` 预处理或 `RaidCounterPostMixin` 修正）。`RaidRun.run()` 主循环：检查总次数/油/币/PT 停止条件，无油图标的活动先到战役菜单检查，EX 模式门票为 0 即停，RPG 型活动走 `page_rpg_stage`。`RaidDaily` 用 `RaidDaily_StageFilter` 依次刷 easy/normal/hard，EX 最后执行且先领通关奖励，RPG 型无每日直接禁用。`RaidScuttleRun`（弃船）与联盟沉船一致：整关只扣一次 2 点心情、红脸弹窗直接确认、D 评价不额外扣心情且不算失败。
+`raid.py` 是资源映射层：`raid_name_shorten()` 把 `raid_YYYYMMDD` 映射到资源前缀（ESSEX…BIGSHOT），`raid_entrance()/raid_ocr()` 按活动+难度取按钮与 OCR 实例（各活动字体颜色不同，部分需 `RaidCounter` 预处理或 `RaidCounterPostMixin` 修正）。`RaidRun.run()` 主循环：检查总次数/油/币/PT 停止条件，无油图标的活动先到战役菜单检查，EX 模式门票为 0 即停，RPG 型活动走 `page_rpg_stage`。`RaidDaily` 用 `RaidDaily_StageFilter` 依次刷 easy/normal/hard，EX 最后执行且先领通关奖励，RPG 型无每日直接禁用。`RaidScuttleRun`（弃船）整关只扣一次基础心情、红脸弹窗直接确认，通过 `combat_shipwreck_emotion=False` 豁免额外 10 点；仍记录 C/D 战败，但不执行主线自律寻敌的撤退策略。
 
 ### 活动日常与 SP（module/event）
 
@@ -132,7 +132,7 @@ module/
 
 ### 联动活动（module/coalition）
 
-`Coalition(CoalitionCombat, CampaignEvent)` 主循环：`Coalition_Mode`（含 tc1/tc2/tc3 与 easy/normal/hard 的双向兼容转换）与 `Coalition_Fleet` 决定目标，`coalition_ensure_mode()` 切换 story/battle，按 PT 与金币停止条件刷战斗；无油图标的活动先到战役菜单检查停止条件。`CoalitionSP` 只跑一次 SP 后延迟到次日。`CoalitionScuttleRun`（沉船）重写心情预估（整关只扣一次）、红脸弹窗确认与结算按钮识别，不因舰船被击沉而停止。
+`Coalition(CoalitionCombat, CampaignEvent)` 主循环：`Coalition_Mode`（含 tc1/tc2/tc3 与 easy/normal/hard 的双向兼容转换）与 `Coalition_Fleet` 决定目标，`coalition_ensure_mode()` 切换 story/battle，按 PT 与金币停止条件刷战斗；无油图标的活动先到战役菜单检查停止条件。`CoalitionSP` 只跑一次 SP 后延迟到次日。正常多队整关扣一次基础心情，单队每轮扣基础心情，各内部战斗独立记录非 S 额外消耗。`CoalitionScuttleRun`（沉船）整关只扣一次基础心情并豁免额外消耗，通过确认按钮集合处理 `SCUTTLE_CONFIRM`，复用公共战斗循环；SP 只有明确 S 且没有战败才按成功收尾。
 
 ### 私人休息室（module/private_quarters）
 
@@ -194,7 +194,7 @@ module/
 - **assets.py 一律生成**：各目录 `assets.py` 由 `uv run -m dev_tools.button_extract` 从截图提取，手改会被覆盖；新活动按钮先补对应服务器的截图资源。
 - **服务器差异有两套写法**：`@Config.when(SERVER=...)`（SOS、装备更换等按服务器生成属性）与 `module.config.server` 的模块级 if 分支（minigame、private_quarters.status、daily 的 OCR 颜色）。新增适配时沿用所在模块的既有写法，避免混用。
 - **活动映射是手工维护点**：`raid.raid_name_shorten`、`war_archives.dictionary.dic_archives_template`、`eventstory` 的特判活动列表、`raid_ocr` 的各活动 OCR 参数。新活动要同时补 assets、映射与（必要时）campaign 地图；作战档案优先用 `dev_tools.war_archives_update` 生成而不是手写。
-- **沉船链路重写了战斗结算**：`RaidScuttleRun`、`CoalitionScuttleRun` 覆写心情扣减、红脸弹窗与 D 评价格子。修改 `module/combat` 结算或心情逻辑时，必须回归验证这两条链路。
+- **沉船链路通过政策复用结算**：`RaidScuttleRun`、`CoalitionScuttleRun` 豁免额外心情，联盟沉船再指定整关基础消耗及专用确认按钮；红脸继续确认。修改公共结算时同时回归正常/沉船的共斗和联盟，详见 [战败与结果记账](../defeat-handling.md)。
 - **收尾语义不要混用**：日常类任务用 `task_delay(server_update=True)`；一次性/耗尽类用 `Scheduler_Enable=False`（必要时配合 `task_stop()`）；进度型状态（`EventDaily_LastStage`、`WarArchives_DailyRunCountRemain`、演习刷新计数）依赖配置持久化，不要在循环中无保护地直写。
 - **每日任务顺序依赖退出重进**：`Daily` 与 `EventStory` 等模块对「打完一关后界面顺序会乱」做了退出重进处理，改动导航逻辑时保持该行为。
 - **OCR 修正绑定当前字体**：`DatedDuration`、`RaidCounterPostMixin`、`OcrDataKey` 等后处理针对当前游戏 UI 字体，游戏改版后先拿旧截图离线验证。

@@ -18,9 +18,11 @@ from module.combat.auto_search_combat import AutoSearchCombat
 from module.exception import CampaignEnd, GameStuckError, ScriptEnd
 from module.handler.assets import (
     AUTO_SEARCH_MAP_OPTION_OFF, AUTO_SEARCH_MAP_OPTION_ON, AUTO_SEARCH_MENU_EXIT, GET_MISSION,
-    POPUP_CANCEL, POPUP_CONFIRM,
+    POPUP_CANCEL, POPUP_CONFIRM, FLEET_UNAVAILABLE,
 )
-from module.map.assets import FLEET_SWITCH_CONFIRM, FLEET_WITHDRAW, FLEET_WITHDRAW_BOSS, SWITCH_OVER, WITHDRAW
+from module.map.assets import (
+    FLEET_NUM_2, FLEET_WITHDRAW, FLEET_WITHDRAW_BOSS, SWITCH_OVER, WITHDRAW,
+)
 
 
 def screen(*buttons):
@@ -156,22 +158,22 @@ class AutoSearchDefeatTests(unittest.TestCase):
                 replay = ScreenReplay([screen(OPTS_INFO_D)])
                 campaign = replay.make_campaign()
                 campaign.map_is_auto_search = auto
-                campaign._auto_search_emotion_reduce = True
+                campaign.combat_result_reset(emotion_reduce=True)
                 with patch('module.base.timer.time', side_effect=lambda: replay.time):
                     self.assertTrue(campaign.handle_exp_info())
                 self.assertEqual(replay.clicks, [OPTS_INFO_D.name])
                 self.assertEqual(campaign._defeat_count, int(auto))
                 self.assertEqual(campaign._withdraw, auto)
-                self.assertEqual(campaign.emotion.reduce.call_count, int(auto))
+                self.assertEqual(campaign.emotion.reduce.call_count, 1)
 
     def test_shipwreck_is_recorded_even_while_click_is_on_cooldown(self):
         replay = ScreenReplay([screen(OPTS_INFO_D)])
         campaign = replay.make_campaign()
         with patch('module.base.timer.time', side_effect=lambda: replay.time):
             campaign.interval_reset(OPTS_INFO_D, interval=2)
-            self.assertFalse(campaign.handle_auto_search_shipwreck())
+            self.assertFalse(campaign.handle_combat_defeat())
         self.assertTrue(campaign._withdraw)
-        self.assertTrue(campaign._auto_search_defeated)
+        self.assertTrue(campaign.combat_result.defeated)
         self.assertEqual(campaign._defeat_count, 1)
         self.assertEqual(replay.clicks, [])
 
@@ -275,15 +277,15 @@ class AutoSearchDefeatTests(unittest.TestCase):
             with self.subTest(handoff=handoff):
                 frames = [screen('COMBAT'), screen(EXP_INFO_D), screen(OPTS_INFO_D), screen(GET_MISSION)]
                 if handoff == 'confirm':
-                    frames.extend([screen(FLEET_SWITCH_CONFIRM, POPUP_CANCEL, POPUP_CONFIRM),
-                                   screen(AUTO_SEARCH_MAP_OPTION_OFF)])
-                replay = ScreenReplay([*frames, screen(AUTO_SEARCH_MAP_OPTION_ON)])
+                    frames.extend([screen(FLEET_UNAVAILABLE, GET_MISSION),
+                                   screen(AUTO_SEARCH_MAP_OPTION_OFF, FLEET_NUM_2)])
+                replay = ScreenReplay([*frames, screen(AUTO_SEARCH_MAP_OPTION_ON, FLEET_NUM_2)])
                 campaign = replay.make_campaign(policy='switch_fleet')
                 campaign._defeat_count = 2
                 del campaign.handle_popup_confirm
                 replay.run()
                 if handoff == 'confirm':
-                    self.assertIn(FLEET_SWITCH_CONFIRM.name, replay.clicks)
+                    self.assertIn(FLEET_UNAVAILABLE.name, replay.clicks)
                     self.assertIn(AUTO_SEARCH_MAP_OPTION_OFF.name, replay.clicks)
                 self.assertNotIn(WITHDRAW.name, replay.clicks)
                 self.assertFalse(campaign.fleet_alive_multiple)
@@ -303,7 +305,8 @@ class AutoSearchDefeatTests(unittest.TestCase):
         replay = ScreenReplay([
             screen('COMBAT'), screen(EXP_INFO_D), screen(OPTS_INFO_D), *[screen(WITHDRAW)] * 4,
             screen(SWITCH_OVER), screen(SWITCH_OVER), screen(GET_MISSION), screen(FLEET_WITHDRAW),
-            screen(AUTO_SEARCH_MAP_OPTION_OFF), screen(AUTO_SEARCH_MAP_OPTION_ON)])
+            screen(AUTO_SEARCH_MAP_OPTION_OFF, FLEET_NUM_2),
+            screen(AUTO_SEARCH_MAP_OPTION_ON, FLEET_NUM_2)])
         campaign = replay.make_campaign(policy='switch_fleet')
         replay.run()
         self.assertEqual(replay.clicks.count(SWITCH_OVER.name), 1)
