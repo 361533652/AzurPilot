@@ -53,12 +53,9 @@ class MindCalculatorScan(Dock):
                     raise MindCalculatorScanError('船坞未能回到顶部，保留旧扫描结果')
             else:
                 raise MindCalculatorScanError('无法识别船坞滚动条，保留旧扫描结果')
-            try:
-                names = AlOcr(config=self.config, name='ppocr_v6', save_debug_images=False)
-                levels = AlOcr(config=self.config, name='azur_lane', save_debug_images=False)
-                ships = self._scan_pages(names, levels)
-            except MemoryError as exc:
-                raise MindCalculatorScanError('扫描内存不足，已停止并保留旧清单；请释放内存后重试') from exc
+            names = AlOcr(config=self.config, name='ppocr_v6')
+            levels = AlOcr(config=self.config, name='azur_lane')
+            ships = self._scan_pages(names, levels)
         # 扫描期间用户可能修改数据；复读当前配置避免覆盖手工修正。
         with config_transaction(filepath_config(self.config.config_name)):
             latest = self.config.read_file(self.config.config_name)
@@ -89,20 +86,6 @@ class MindCalculatorScan(Dock):
         signature[55:715, 1238:1250] = gray[55:715, 1238:1250]
         return signature
 
-    def _save_scan_evidence(self, image):
-        """保存核对原帧；诊断写盘失败不影响扫描继续。"""
-        from pathlib import Path
-        from time import time_ns
-        path = Path(logger.log_file or 'log/alas.txt').parent / 'mind_scan' / self.config.config_name / f'{time_ns()}.png'
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            image.save(path)
-            logger.attr('扫描核对原帧', str(path))
-            return str(path)
-        except OSError as exc:
-            logger.warning(f'扫描核对原帧保存失败，继续新截图核对：{exc}')
-            return ''
-
     def _drag_rows(self, distance):
         """一次最多拖一排行距，终点按住后释放，截图再确认实际位移。"""
         # 游戏开始滚动前会消耗一段触控距离；实机 13px 校正可能完全不动。
@@ -131,17 +114,13 @@ class MindCalculatorScan(Dock):
         target = pitch = origin_y = None
         attempts = 0
         read_attempts = 0
-        evidence_path = ''
-        last_page_image = None
         page = 0
         progress = Timer(20, count=10).start()
         while True:
             self.device.screenshot()
             if self.appear(page_dock.check_button):
                 pixels = self._stable_pixels(self.device.image)
-                # 保留全像素平均差及原阈值，避免整帧浮点转换产生大块临时分配。
-                if (previous is None or pixels.shape != previous.shape
-                        or cv2.mean(cv2.absdiff(pixels, previous))[0] > 1):
+                if previous is None or pixels.shape != previous.shape or np.mean(np.abs(pixels.astype(float) - previous.astype(float))) > 1:
                     previous = pixels.copy()
                     stable.reset()
                     continue
@@ -170,58 +149,19 @@ class MindCalculatorScan(Dock):
                     try:
                         cards = recognize_cards(image, f'自动扫描第 {page + 1} 页', name_ocr=names, level_ocr=levels)
                         invalid = [card for card in cards if not card.level_reliable]
-                        uncertain_names = [card for card in cards if card.ship['review'] and card.level_reliable]
-                        uncertain_fleets = [card for card in cards if card.fleet < 0]
-                        # 正常三排推进不重叠；底部可能重叠，由原合并器和端点证据处理。
-                        current_slots = [[card, card.y + merger.offset] for card in cards]
-                        # 已接受的异常不反复重读；后续页和末页仍检查本页，末页不重复拼接重叠行。
-                        candidate_slots = merger.slots + current_slots if policy.sort_valid and not at_bottom else current_slots
-                        order_issue = policy.sort_issue(candidate_slots)
-                        if invalid or uncertain_names or uncertain_fleets or order_issue:
+                        if invalid:
                             read_attempts += 1
-                            locations = order_issue or '、'.join(f'{card.y}px 行第 {card.col + 1} 列'
-                                                               for card in invalid or uncertain_names or uncertain_fleets)
-                            reason = '等级' if invalid else '舰名/身份' if uncertain_names else '编队/排序'
-                            if (uncertain_fleets or order_issue) and read_attempts == 1:
-                                logger.attr('编队复核标记', ','.join(str(card.fleet) for card in cards))
-                                evidence_path = self._save_scan_evidence(image)
+                            locations = '、'.join(f'{card.y}px 行第 {card.col + 1} 列' for card in invalid)
                             if read_attempts >= 3:
-                                # 核对项对应最终接受的新帧；首次冲突原帧仍单独保留作诊断。
-                                evidence_path = self._save_scan_evidence(image)
-                                affected = [(card, '等级未确认') for card in invalid]
-                                affected += [(card, '舰名/身份未确认') for card in uncertain_names]
-                                affected += [(card, '编队标记未确认') for card in uncertain_fleets]
-                                if order_issue:
-                                    affected += policy.sort_conflicts(candidate_slots)
-                                positions = {id(card): y for card, y in merger.slots}
-                                positions.update({id(card): card.y + merger.offset for card in cards})
-                                current_ids = {id(card) for card in cards}
-                                previous_evidence = self._save_scan_evidence(last_page_image) \
-                                    if last_page_image is not None and any(id(card) not in current_ids for card, _ in affected) else ''
-                                marked = set()
-                                for card, note in affected:
-                                    if id(card) in marked:
-                                        continue
-                                    marked.add(id(card))
-                                    location = f'第 {page + 1} 页发现，累计 {positions[id(card)]}px 行第 {card.col + 1} 列'
-                                    path = evidence_path if id(card) in current_ids else previous_evidence
-                                    evidence = f'；原帧：{path}' if path else ''
-                                    card.ship = dict(card.ship, review=True,
-                                                     source=f'{location}；{note}，待人工核对{evidence}；{card.ship["source"]}'[:200])
-                                if invalid or uncertain_fleets or order_issue:
-                                    policy.sort_valid = False
-                                logger.warning(f'[心智扫描] {reason}重读仍未确认：{locations}；已标记待核对，继续扫描')
-                            else:
-                                logger.warning(f'{reason}未确认，重新截图核对（{read_attempts}/3）：{locations}')
-                                previous = None
-                                stable.reset()
-                                continue
+                                raise ValueError(f'等级重读仍未确认：{locations}；未导入零等级，保留旧扫描结果')
+                            logger.warning(f'等级未确认，重新截图核对（{read_attempts}/3）：{locations}')
+                            previous = None
+                            stable.reset()
+                            continue
                         merger.add(image, cards)
-                        last_page_image = image
                     except ValueError as exc:
                         raise MindCalculatorScanError(str(exc)) from exc
                     read_attempts = 0
-                    evidence_path = ''
                     page += 1
                     if page == 1:
                         progress.reset()
@@ -231,7 +171,6 @@ class MindCalculatorScan(Dock):
                     logger.attr('识别卡片', len(merger.slots))
                     logger.attr('范围内舰船（同名取最高）', len(merger.ships(policy.min_level, policy.max_level)))
                     logger.attr('本页等级', ','.join(str(card.ship['level']) for card in cards))
-                    logger.attr('本页编队', ','.join(str(card.fleet) for card in cards))
                     logger.info(f'[心智扫描] 第 {page} 页，已读取 {len(merger.slots)} 格，'
                                 f'范围内 {len(merger.ships(policy.min_level, policy.max_level))} 艘（同名取最高）')
                     if policy.can_stop(cards, merger.slots):

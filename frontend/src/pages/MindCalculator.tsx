@@ -11,18 +11,12 @@ import '../mind/mind.css'
 const rarities: Rarity[] = ['UR', 'SSR', 'SR', 'R', 'N']
 const bands = ['≤100', '101–105', '106–110', '111–115', '116–119', '≥120']
 const number = (value: number) => value.toLocaleString()
-function ShipLevel({value, label, placeholder, disabled, onCommit}: {value: number; label: string; placeholder: string; disabled: boolean; onCommit: (level: number) => void}) {
-  const draft = useDraftInput(value ? String(value) : '', text => {
+function ShipLevel({value, label, disabled, onCommit}: {value: number; label: string; disabled: boolean; onCommit: (level: number) => void}) {
+  const draft = useDraftInput(String(value), text => {
     const level = Number(text)
     if (text.trim() && Number.isInteger(level) && level >= 1 && level <= 125) onCommit(level)
   })
-  return <input type="number" min={1} max={125} step={1} aria-label={label} placeholder={placeholder} disabled={disabled} {...draft}/>
-}
-function ReviewName({value, label, disabled, onCommit}: {value: string; label: string; disabled: boolean; onCommit: (name: string) => void}) {
-  const draft = useDraftInput(value, text => {
-    if (text.trim() && text.trim() !== value) onCommit(text.trim())
-  })
-  return <input list="mind-ship-catalog" maxLength={100} aria-label={label} disabled={disabled} {...draft}/>
+  return <input type="number" min={1} max={125} step={1} aria-label={label} disabled={disabled} {...draft}/>
 }
 function fileContent(file: File) {
   if (file.size > 5_500_000) throw new Error('文件超过 5.5 MB 限制')
@@ -180,12 +174,6 @@ export function MindCalculator() {
   function change(index: number, patch: Partial<MindShip>, saveAutomatically = false) {
     edit(ships.map((ship, i) => i === index ? {...ship, ...patch} : ship), saveAutomatically)
   }
-  function correctName(index: number, value: string) {
-    const info = catalog?.ships.find(ship => ship.name === value)
-    if (!info) {setError(ui('mind.reviewChooseName')); return}
-    change(index, {name: info.name, rarity: info.rarity, base_rarity: info.base_rarity, review: true,
-      source: `人工校正舰名：${ships[index].name} → ${info.name}；${ships[index].source ?? ''}`.slice(0, 200)}, true)
-  }
   async function action(work: () => Promise<void>) {
     setBusy(true); setError('')
     try {await work()} catch (error) {if (alive.current) setError((error as Error).message)}
@@ -285,12 +273,11 @@ export function MindCalculator() {
           <Select aria-label={ui('mind.filterRarity')} value={filterRarity} onChange={event => {setFilterRarity(event.target.value); setPage(0)}}><option value="">{ui('mind.allRarities')}</option>{rarities.map(value => <option key={value} value={value}>{labels(value)}</option>)}</Select>
           <Select aria-label={ui('mind.filter')} value={filter} onChange={event => {setFilter(event.target.value); setPage(0)}}>{(['all', 'included', 'review', 'merged', 'excluded'] as const).map(status => <option key={status} value={status}>{ui(`mind.${status}`)}</option>)}</Select><span className="muted">{ui('mind.rowCount', {count: rows.length})}</span></div>
         {visible.length ? <div className="mind-table-wrap"><table className="mind-ship-table"><thead><tr><th>{ui('mind.name')}</th><th>{ui('mind.level')}</th><th>{ui('mind.baseRarity')}</th><th>{ui('mind.status')}</th><th>{ui('mind.mind')}</th><th>{ui('mind.actions')}</th></tr></thead><tbody>{visible.map(({ship, index, row}) => <tr key={`${index}:${ship.name}`}>
-          <td>{row?.status === 'review' ? <ReviewName label={`${ui('mind.name')} ${index + 1}`} value={ship.name} disabled={busy || running} onCommit={value => correctName(index, value)}/>
-            : <input aria-label={`${ui('mind.name')} ${index + 1}`} value={ship.name} readOnly/>}<small className="muted" title={ship.source}>{ship.source}</small></td>
-          <td><ShipLevel label={`${ui('mind.level')} ${index + 1}`} placeholder={ui('mind.unknownLevel')} value={ship.level} disabled={busy || running} onCommit={value => change(index, {level: value}, true)}/></td>
+          <td><input aria-label={`${ui('mind.name')} ${index + 1}`} value={ship.name} readOnly/><small className="muted" title={ship.source}>{ship.source}</small></td>
+          <td><ShipLevel label={`${ui('mind.level')} ${index + 1}`} value={ship.level} disabled={busy || running} onCommit={value => change(index, {level: value}, true)}/></td>
           <td><span className={`mind-rarity rarity-${row?.base_rarity}`}>{row?.base_rarity ? labels(row.base_rarity) : '—'}</span></td>
-          <td><Select aria-label={`${ui('mind.status')} ${index + 1}`} className={`mind-status status-${row?.status}`} value={row?.status ?? 'review'} disabled={busy || running || !row || (row.automatic_excluded && row.status !== 'review')} title={row?.automatic_excluded ? ui('mind.autoExcluded') : undefined} onChange={event => change(index, {excluded: event.target.value === 'excluded', review: event.target.value === 'review'}, true)}>
-            <option value="included" disabled={!ship.level || !row?.base_rarity || row.automatic_excluded}>{ui('mind.included')}</option><option value="review">{ui('mind.review')}</option><option value="excluded">{ui('mind.excluded')}</option>{row?.status === 'merged' && <option value="merged" disabled>{ui('mind.merged')}</option>}
+          <td><Select aria-label={`${ui('mind.status')} ${index + 1}`} className={`mind-status status-${row?.status}`} value={row?.status ?? 'review'} disabled={busy || running || !row || row.automatic_excluded} title={row?.automatic_excluded ? ui('mind.autoExcluded') : undefined} onChange={event => change(index, {excluded: event.target.value === 'excluded', review: event.target.value === 'review'}, true)}>
+            <option value="included" disabled={!ship.level || !row?.base_rarity}>{ui('mind.included')}</option><option value="review">{ui('mind.review')}</option><option value="excluded">{ui('mind.excluded')}</option>{row?.status === 'merged' && <option value="merged" disabled>{ui('mind.merged')}</option>}
           </Select></td><td>{number(row?.mind ?? 0)}</td>
           <td><button className="button secondary" aria-label={`${ui('mind.delete')} ${ship.name}`} disabled={busy || running} onClick={() => edit(ships.filter((_, i) => i !== index), true)}><Trash2 size={15}/>{ui('mind.delete')}</button></td>
         </tr>)}</tbody></table></div> : <Empty title={ui('mind.empty')}>{ui('mind.emptyHint')}</Empty>}
