@@ -218,7 +218,7 @@ class AutoSearchDefeatTests(unittest.TestCase):
         campaign.emotion.reduce.assert_called_once_with(1)
         self.assertNotIn(WITHDRAW.name, replay.clicks)
 
-    def test_running_auto_search_cannot_cancel_pending_retreat(self):
+    def test_matching_on_template_cannot_toggle_or_cancel_pending_retreat(self):
         for policy in ('withdraw_continue', 'withdraw_stop'):
             with self.subTest(policy=policy):
                 replay = ScreenReplay(retreat_frames(
@@ -229,7 +229,7 @@ class AutoSearchDefeatTests(unittest.TestCase):
                 expected = ScriptEnd if policy == 'withdraw_stop' else CampaignEnd
                 with self.assertRaises(expected):
                     replay.run()
-                self.assertIn(AUTO_SEARCH_MAP_OPTION_ON.name, replay.clicks)
+                self.assertNotIn(AUTO_SEARCH_MAP_OPTION_ON.name, replay.clicks)
                 self.assertIn(WITHDRAW.name, replay.clicks)
                 self.assertNotIn(AUTO_SEARCH_MAP_OPTION_OFF.name, replay.clicks)
                 self.assertEqual(campaign._defeat_count, 3 if policy == 'withdraw_stop' else 2)
@@ -330,7 +330,7 @@ class AutoSearchDefeatTests(unittest.TestCase):
                 with self.assertRaises(CampaignEnd):
                     replay.run()
                 self.assertIn(WITHDRAW.name, replay.clicks)
-                self.assertIn(AUTO_SEARCH_MAP_OPTION_ON.name, replay.clicks)
+                self.assertNotIn(AUTO_SEARCH_MAP_OPTION_ON.name, replay.clicks)
                 self.assertNotIn(AUTO_SEARCH_MAP_OPTION_OFF.name, replay.clicks)
                 self.assertNotIn('POPUP_CONFIRM_combat_status', replay.clicks)
                 self.assertFalse(campaign.fleet_alive_multiple)

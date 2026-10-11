@@ -505,10 +505,8 @@ class AutoSearchCombat(MapOperation, Combat, CampaignStatus):
                         if self.handle_auto_search_map_option():
                             continue
 
-                # 无论是否换队，先停止当前舰队自律，避免受损舰队再次进入战斗。
-                if self.appear_then_click(AUTO_SEARCH_MAP_OPTION_ON, offset=self._auto_search_offset, interval=2):
-                    continue
-
+                # 游戏战败时已停止自律。撤退或尚未确认换队时不操作开关；
+                # ON/OFF 的文字模板会互相命中，点击所谓 ON 反而可能开启自律。
                 if not allow_switch:
                     if self.handle_popup_confirm('WITHDRAW'):
                         continue

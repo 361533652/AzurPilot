@@ -83,7 +83,41 @@ class CombatScreenshotTests(unittest.TestCase):
                 self.assertIn(FLEET_UNAVAILABLE.name, replay.clicks)
                 self.assertIn(WITHDRAW.name, replay.clicks)
                 self.assertNotIn(GET_MISSION.name, replay.clicks)
+                self.assertNotIn(AUTO_SEARCH_MAP_OPTION_ON.name, replay.clicks)
                 self.assertNotIn(AUTO_SEARCH_MAP_OPTION_OFF.name, replay.clicks)
+
+    def test_stopped_auto_search_matches_on_template_but_not_running_state(self):
+        replay = PixelReplay([load_image(str(FIXTURES / 'map_fleet2.png'))])
+        campaign = replay.make_campaign()
+        # 开关文字相同，模板会同时命中两态；颜色才区分开关状态。
+        self.assertTrue(campaign.appear(AUTO_SEARCH_MAP_OPTION_ON, offset=campaign._auto_search_offset))
+        self.assertTrue(campaign.appear(AUTO_SEARCH_MAP_OPTION_OFF, offset=campaign._auto_search_offset))
+        self.assertFalse(campaign.appear(AUTO_SEARCH_MAP_OPTION_ON))
+        self.assertTrue(campaign.appear(AUTO_SEARCH_MAP_OPTION_OFF))
+        self.assertFalse(campaign.is_auto_search_running())
+        self.assertEqual(replay.clicks, [])
+
+    def test_logged_four_toggle_sequence_retires_with_zero_auto_search_clicks(self):
+        stopped_map = load_image(str(FIXTURES / 'map_fleet2.png'))
+        for cls, policy in product((AutoSearchCombat, GemsCampaignOverride),
+                                   ('withdraw_stop', 'withdraw_continue', 'switch_fleet')):
+            with self.subTest(cls=cls.__name__, policy=policy):
+                # 实机日志顺序：经验页、地图过渡、无可用舰队、自动换二队后的地图。
+                replay = PixelReplay([
+                    screen('COMBAT'), load_image(str(FIXTURES / 'defeat.png')),
+                    screen(EXP_INFO_D), stopped_map,
+                    load_image(str(FIXTURES / 'unavailable.png')),
+                    *[stopped_map] * 8, screen('STAGE')])
+                campaign = replay.make_campaign(cls, policy)
+                if policy == 'switch_fleet':
+                    campaign.fleet_alive_multiple = False
+                with self.assertRaises(CampaignEnd):
+                    replay.run()
+                self.assertIn(FLEET_UNAVAILABLE.name, replay.clicks)
+                self.assertIn(WITHDRAW.name, replay.clicks)
+                self.assertNotIn(AUTO_SEARCH_MAP_OPTION_ON.name, replay.clicks)
+                self.assertNotIn(AUTO_SEARCH_MAP_OPTION_OFF.name, replay.clicks)
+                self.assertEqual(campaign.emotion.reduce.call_args_list, [call(1), call(1, shipwreck=True)])
 
     def test_actual_fleet2_frame_allows_explicit_switch_policy(self):
         replay = PixelReplay([
@@ -217,7 +251,7 @@ class CombatResultTests(unittest.TestCase):
         replay.run()
         enabled = [i for i, name in replay.click_frames if name == AUTO_SEARCH_MAP_OPTION_OFF.name]
         self.assertEqual(enabled, [9])
-        self.assertIn(AUTO_SEARCH_MAP_OPTION_ON.name, replay.clicks)
+        self.assertNotIn(AUTO_SEARCH_MAP_OPTION_ON.name, replay.clicks)
         self.assertEqual(replay.clicks.count(SWITCH_OVER.name), 1)
 
     def test_normal_and_scuttle_tasks_share_defeat_but_keep_separate_policies(self):
