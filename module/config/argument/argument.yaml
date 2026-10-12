@@ -2518,6 +2518,7 @@ Benchmark:
         phone_cloud_without_adb,
         android_phone,
         android_phone_vmos,
+        azurpilot_android,
       ]
   TestScene:
     value: screenshot_click

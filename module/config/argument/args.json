@@ -20325,7 +20325,8 @@
           "plone_cloud_with_adb",
           "phone_cloud_without_adb",
           "android_phone",
-          "android_phone_vmos"
+          "android_phone_vmos",
+          "azurpilot_android"
         ]
       },
       "TestScene": {

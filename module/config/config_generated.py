@@ -1199,7 +1199,7 @@ class GeneratedConfig:
     AutoEquip_EnableSlot5 = True  # True, False
 
     # 配置组 `Benchmark`
-    Benchmark_DeviceType = 'emulator'  # emulator, plone_cloud_with_adb, phone_cloud_without_adb, android_phone, android_phone_vmos
+    Benchmark_DeviceType = 'emulator'  # emulator, plone_cloud_with_adb, phone_cloud_without_adb, android_phone, android_phone_vmos, azurpilot_android
     Benchmark_TestScene = 'screenshot_click'  # screenshot_click, screenshot, click
 
     # 配置组 `AzurLaneUncensored`

@@ -6836,7 +6836,8 @@
       "plone_cloud_with_adb": "パブリックネットワークADB付きクラウド端末",
       "phone_cloud_without_adb": "パブリックネットワークADBなしクラウド端末",
       "android_phone": "Android の実機",
-      "android_phone_vmos": "Android 実機 VMOS 仮想マシン"
+      "android_phone_vmos": "Android 実機 VMOS 仮想マシン",
+      "azurpilot_android": "azurpilot_android"
     },
     "TestScene": {
       "name": "テストシナリオ",

@@ -6836,7 +6836,8 @@
       "plone_cloud_with_adb": "Cloud mobile phone with public network ADB",
       "phone_cloud_without_adb": "Cloud mobile phone without public network ADB",
       "android_phone": "Android real phone",
-      "android_phone_vmos": "Android real machine VMOS virtual machine"
+      "android_phone_vmos": "Android real machine VMOS virtual machine",
+      "azurpilot_android": "azurpilot_android"
     },
     "TestScene": {
       "name": "Test scene",
