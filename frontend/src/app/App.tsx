@@ -34,6 +34,7 @@ import { usePageMotion } from './pageMotion'
 import { useGlassPointerLight } from './pointerLight'
 import { recordDevLogoClick } from './devMode'
 import { useDevOverride } from './devOverride'
+import { useSystemNotifications } from './systemNotifications'
 import { usesLegacyLayout, usesLegacyShell, showsRightRail } from './theme'
 import { cycleTabSize, readLastPath, readTabSize, readTopbarMode, setTopbarMode, subscribeTabSize, subscribeTopbarMode, writeLastPath } from './topbarPrefs'
 import { INSTANCE_NAME_PATTERN } from './instanceName'
@@ -147,6 +148,7 @@ export function App() {
   const announcement = useAnnouncement()
   usePageMotion()
   useGlassPointerLight()
+  useSystemNotifications()
   const current = instances.find(item => item.name === instance)
   const base = instance ? `/i/${instance}` : ''
   const taskMatch = location.pathname.match(/\/task\/([^/]+)/)
@@ -195,7 +197,8 @@ export function App() {
   useEffect(() => { setMobileOpen(false); setRailOpen(false) }, [location.pathname])
   useEffect(() => {
     if (connection !== 'ready') return
-    void api.request('events.subscribe', {instance: instance ?? null, topics: instance ? stockExchange ? ['instances', 'stock'] : previewEnabled ? ['instances', 'overview', 'logs', 'preview'] : ['instances', 'overview', 'logs'] : ['instances']}).catch(error => notify(error.message, true))
+    /* notifications 与当前实例无关：任何工作区都要订，任务出错时才能弹系统通知。 */
+    void api.request('events.subscribe', {instance: instance ?? null, topics: instance ? stockExchange ? ['notifications', 'instances', 'stock'] : previewEnabled ? ['notifications', 'instances', 'overview', 'logs', 'preview'] : ['notifications', 'instances', 'overview', 'logs'] : ['notifications', 'instances']}).catch(error => notify(error.message, true))
   }, [instance, connection, notify, previewEnabled, stockExchange])
   // 旧版主题下点进实例后，外壳回到「顶栏跨全宽 + 单列侧栏」；主页视图一律沿用新版外壳。
   const legacyShell = usesLegacyShell(theme, instance)

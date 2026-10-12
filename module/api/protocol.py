@@ -195,7 +195,7 @@ class RevisionParams(InstanceParams):
 class SubscribeParams(Params):
     """WebSocket 主题订阅请求参数模型。"""
     instance: StrictStr | None = None
-    topics: list[Literal['instances', 'overview', 'logs', 'preview', 'stock']] = Field(max_length=5)
+    topics: list[Literal['instances', 'overview', 'logs', 'preview', 'stock', 'notifications']] = Field(max_length=6)
 
 
 class LogsParams(InstanceParams):
