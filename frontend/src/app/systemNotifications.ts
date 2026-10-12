@@ -7,11 +7,25 @@ import {api} from '../api/client'
 
 type TaskNotification = {instance?: string; title?: string; content?: string}
 
+let permissionArmed = false
+
+function armPermissionRequest(data: TaskNotification) {
+  // 授权框必须由用户手势触发：等下一次点击页面时申请，授权后补弹错过的一条。
+  if (permissionArmed) return
+  permissionArmed = true
+  const request = () => {
+    permissionArmed = false
+    void Notification.requestPermission().then(permission => {
+      if (permission === 'granted') show(data)
+    })
+  }
+  document.addEventListener('pointerdown', request, {once: true})
+}
+
 function show(data: TaskNotification) {
   if (typeof Notification === 'undefined' || Notification.permission === 'denied') return
   if (Notification.permission === 'default') {
-    // 首条通知到达时才向浏览器要权限，用户允许后立即补弹这一条。
-    void Notification.requestPermission().then(permission => { if (permission === 'granted') show(data) })
+    armPermissionRequest(data)
     return
   }
   const notification = new Notification(data.title ?? 'AzurPilot', {

@@ -17,9 +17,9 @@ ROOT = Path(__file__).resolve().parents[1]
 class FakeRequest:
     """最小可用的 Starlette 请求替身：只需要处理器真正读取的那几个属性。"""
 
-    def __init__(self, *, body=None, host='127.0.0.1'):
+    def __init__(self, *, body=None, host='127.0.0.1', content_type='application/json'):
         self.client = SimpleNamespace(host=host)
-        self.headers = {'host': '127.0.0.1:25548'}
+        self.headers = {'host': '127.0.0.1:25548', 'content-type': content_type}
         self._body = body
 
     async def json(self):
@@ -42,7 +42,7 @@ class TestNotifyRoutes(unittest.TestCase):
 
 class TestNotifyEndpoint(unittest.TestCase):
     def setUp(self):
-        notify_api._notification_queue = asyncio.Queue()
+        notify_api._notification_queue = asyncio.Queue(maxsize=notify_api._NOTIFICATION_QUEUE_MAXSIZE)
 
     def test_local_post_queues_payload(self):
         """本机 POST 成功入队，且只保留 instance/title/content 三个字段。"""
@@ -52,6 +52,25 @@ class TestNotifyEndpoint(unittest.TestCase):
         self.assertEqual(json.loads(bytes(response.body)), {'success': True})
         notification = notify_api._notification_queue.get_nowait()
         self.assertEqual(notification, {'instance': 'alas', 'title': '标题', 'content': '内容'})
+
+    def test_cross_site_content_type_rejected(self):
+        """跨站表单只能发 text/plain 类请求体：非 application/json 一律 400，不入队。"""
+        response = asyncio.run(notify_api.notify(FakeRequest(
+            body={'instance': 'alas', 'title': '伪造', 'content': '钓鱼'},
+            content_type='text/plain')))
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(notify_api._notification_queue.empty())
+
+    def test_queue_overflow_drops_oldest(self):
+        """队列满时挤掉最旧一条再入队，无人消费也不会无限堆积。"""
+        queue = asyncio.Queue(maxsize=2)
+        notify_api._notification_queue = queue
+        for title in ('旧1', '旧2'):
+            asyncio.run(notify_api.notify(FakeRequest(body={'instance': 'alas', 'title': title, 'content': ''})))
+        asyncio.run(notify_api.notify(FakeRequest(body={'instance': 'alas', 'title': '新', 'content': ''})))
+        self.assertEqual(queue.get_nowait()['title'], '旧2')
+        self.assertEqual(queue.get_nowait()['title'], '新')
+        self.assertTrue(queue.empty())
 
     def test_remote_post_rejected(self):
         """非本机请求 403，且不入队。"""
@@ -80,7 +99,7 @@ class TestWebSocketNotification(unittest.TestCase):
     """TestClient 的 WS 握手 Host 写死 testserver，会误判为远程客户端，这里显式覆盖。"""
     def setUp(self):
         """按 test_api 的隔离模式构造应用：临时配置目录、不启真实进程。"""
-        notify_api._notification_queue = asyncio.Queue()
+        notify_api._notification_queue = asyncio.Queue(maxsize=notify_api._NOTIFICATION_QUEUE_MAXSIZE)
         self.temp = tempfile.TemporaryDirectory()
         root = Path(self.temp.name)
         (root / 'config').mkdir()

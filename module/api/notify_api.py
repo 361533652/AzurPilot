@@ -6,6 +6,7 @@
 端点路径与报文格式是旧版 WebUI 传下来的对接面，外部启动器按它写死——改名即断连。
 """
 import asyncio
+import contextlib
 import json
 
 from starlette.responses import JSONResponse, StreamingResponse
@@ -17,14 +18,18 @@ from module.runtime.notify_hub import hub
 #: 通知流空闲多久发一次保活帧（秒）。
 STREAM_IDLE_TIMEOUT = 30
 
-#: 待推送通知队列；无人消费时按旧版行为无界堆积，通知频率低（任务出错/结算时才发）。
-_notification_queue: asyncio.Queue = asyncio.Queue()
+#: 待推送通知队列上限；启动器离线时丢弃最旧，防止无人消费无限堆积。
+_NOTIFICATION_QUEUE_MAXSIZE = 100
+_notification_queue: asyncio.Queue = asyncio.Queue(maxsize=_NOTIFICATION_QUEUE_MAXSIZE)
 
 
 async def notify(request):
     """POST /api/notify — 接收调度器推送的通知，入队等待启动器取走。"""
     if not is_local_request(request):
         return JSONResponse({"success": False, "error": "通知接收只允许本机调用"}, status_code=403)
+    if request.headers.get("content-type", "").split(";")[0].strip().lower() != "application/json":
+        # 浏览器跨站请求发不出 application/json（预检不会通过），据此阻断恶意网页伪造推送。
+        return JSONResponse({"success": False, "error": "Content-Type 必须是 application/json"}, status_code=400)
     try:
         data = await request.json()
     except Exception:
@@ -36,7 +41,11 @@ async def notify(request):
         "title": data.get("title", ""),
         "content": data.get("content", ""),
     }
-    await _notification_queue.put(notification)
+    if _notification_queue.full():
+        with contextlib.suppress(asyncio.QueueEmpty):
+            _notification_queue.get_nowait()
+    # 无 await 间隙，检查与写入不会和并发 POST 交错。
+    _notification_queue.put_nowait(notification)
     hub.publish(notification)
     return JSONResponse({"success": True})
 
