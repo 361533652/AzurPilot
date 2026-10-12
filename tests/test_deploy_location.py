@@ -60,7 +60,7 @@ class TestDeployLocation(unittest.TestCase):
         for config_module in (deploy_config, windows_config):
             with self.subTest(config_module=config_module.__name__):
                 self.assertIn('https://cnb.cool/AzurPilot/AzurPilot', config_module.GIT_OVER_CDN_FALLBACK_REPOSITORIES)
-                self.assertIn('https://gitcode.com/ddl2/AzurLaneAutoScript', config_module.GIT_OVER_CDN_FALLBACK_REPOSITORIES)
+                self.assertIn('https://gitcode.com/ddl2/AzurPilot', config_module.GIT_OVER_CDN_FALLBACK_REPOSITORIES)
 
     def test_cnb_alias_and_repository(self):
         for config_module in (deploy_config, windows_config):
@@ -119,18 +119,18 @@ class TestDeployLocation(unittest.TestCase):
             with self.subTest(git_module=git_mod.__name__):
                 self.assertEqual(
                     git_mod.peer_fallback_repository('https://cnb.cool/AzurPilot/AzurPilot'),
-                    'https://gitcode.com/ddl2/AzurLaneAutoScript',
+                    'https://gitcode.com/ddl2/AzurPilot',
                 )
                 self.assertEqual(
                     git_mod.peer_fallback_repository('https://cnb.cool/AzurPilot/AzurPilot.git'),
-                    'https://gitcode.com/ddl2/AzurLaneAutoScript',
+                    'https://gitcode.com/ddl2/AzurPilot',
                 )
                 self.assertEqual(
-                    git_mod.peer_fallback_repository('https://gitcode.com/ddl2/AzurLaneAutoScript'),
+                    git_mod.peer_fallback_repository('https://gitcode.com/ddl2/AzurPilot'),
                     'https://cnb.cool/AzurPilot/AzurPilot',
                 )
                 self.assertEqual(
-                    git_mod.peer_fallback_repository('https://gitcode.com/ddl2/AzurLaneAutoScript.git'),
+                    git_mod.peer_fallback_repository('https://gitcode.com/ddl2/AzurPilot.git'),
                     'https://cnb.cool/AzurPilot/AzurPilot',
                 )
                 self.assertIsNone(git_mod.peer_fallback_repository('https://github.com/wess09/AzurPilot'))

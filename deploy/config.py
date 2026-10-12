@@ -11,7 +11,7 @@ from deploy.utils import *
 GIT_OVER_CDN_REPOSITORY = 'git://git.pull/AzurPilot'
 GIT_OVER_CDN_FALLBACK_REPOSITORIES = [
     'https://cnb.cool/AzurPilot/AzurPilot',
-    'https://gitcode.com/ddl2/AzurLaneAutoScript',
+    'https://gitcode.com/ddl2/AzurPilot',
 ]
 GIT_OVER_CDN_FALLBACK_REPOSITORY = GIT_OVER_CDN_FALLBACK_REPOSITORIES[1]
 
