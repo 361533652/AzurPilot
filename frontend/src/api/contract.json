@@ -2802,11 +2802,12 @@
                 "overview",
                 "logs",
                 "preview",
-                "stock"
+                "stock",
+                "notifications"
               ],
               "type": "string"
             },
-            "maxItems": 5,
+            "maxItems": 6,
             "title": "Topics",
             "type": "array"
           }
