@@ -140,7 +140,7 @@ class MindCalculatorService:
         ships = saved.get('ships', [])
         fields = data.get(TASK, {}).get(GROUP, {})
         return dict(instance=instance, revision=revision(ships), updated_at=saved.get('updated_at', ''),
-                    min_level=fields.get('MinLevel', 95), max_level=fields.get('MaxLevel', 120),
+                    min_level=fields.get('MinLevel', 95), max_level=fields.get('MaxLevel', 125),
                     **calculate(ships))
 
     def save(self, instance, expected_revision, ships):
@@ -151,6 +151,8 @@ class MindCalculatorService:
             if revision(fields.get('Result', {}).get('ships', [])) != expected_revision:
                 raise ApiError('CONFLICT', '舰船数据已变化，请重新载入后再保存')
             fields['Result'] = dict(ships=ships, updated_at=datetime.now().isoformat(timespec='seconds'))
+            from module.runtime.fleet_tech import merge_mind
+            fields['FleetTechRecord'] = merge_mind(fields.get('FleetTechRecord', {}), ships)
             atomic_write(str(self.configs.path(instance)), json.dumps(data, ensure_ascii=False, indent=2))
             return self.report(instance)
 

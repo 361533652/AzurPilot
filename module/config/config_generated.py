@@ -1168,8 +1168,9 @@ class GeneratedConfig:
 
     # 配置组 `MindCalculator`
     MindCalculator_MinLevel = 95
-    MindCalculator_MaxLevel = 120
+    MindCalculator_MaxLevel = 125
     MindCalculator_Result = {}
+    MindCalculator_FleetTechRecord = {}
 
     # 配置组 `FleetInfo`
     FleetInfo_Result = {}

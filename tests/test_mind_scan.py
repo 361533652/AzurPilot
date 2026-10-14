@@ -300,7 +300,7 @@ class RangeTests(unittest.TestCase):
             configs = ConfigService(fixture(temp))
             service = MindCalculatorService(configs)
             report = service.report('testpilot')
-            self.assertEqual((report['min_level'], report['max_level']), (95, 120))
+            self.assertEqual((report['min_level'], report['max_level']), (95, 125))
             configs.patch('testpilot', configs.get('testpilot')['revision'], [
                 ConfigChange(path='MindCalculatorScan.MindCalculator.MinLevel', value=90),
                 ConfigChange(path='MindCalculatorScan.MindCalculator.MaxLevel', value=115),
