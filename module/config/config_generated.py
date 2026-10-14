@@ -663,6 +663,7 @@ class GeneratedConfig:
     Gacha_UseTicket = True
     Gacha_TicketAmount = 1  # 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
     Gacha_ClearTicket = True
+    Gacha_ClearTicketTime = '09:30'
     Gacha_UseDrill = False
 
     # 配置组 `BattlePass`
