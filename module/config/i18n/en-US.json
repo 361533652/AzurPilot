@@ -6724,6 +6724,10 @@
     "Result": {
       "name": "Ship scan results",
       "help": "Stores ships, levels and review states per instance."
+    },
+    "FleetTechRecord": {
+      "name": "Fleet technology records",
+      "help": "Stores cumulative scan evidence, manual overrides and faction technology levels per instance."
     }
   },
   "FleetInfo": {

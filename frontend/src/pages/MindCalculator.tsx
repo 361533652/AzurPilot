@@ -51,7 +51,7 @@ export function MindCalculator() {
   const [filterMin, setFilterMin] = useState(''), [filterMax, setFilterMax] = useState(''), [filterRarity, setFilterRarity] = useState('')
   const [name, setName] = useState(''), [level, setLevel] = useState('100'), [rarity, setRarity] = useState<Rarity | ''>('')
   const [exportFormat, setExportFormat] = useState<'xlsx' | 'csv' | 'json'>('xlsx')
-  const [scanMin, setScanMin] = useState('95'), [scanMax, setScanMax] = useState('120')
+  const [scanMin, setScanMin] = useState('95'), [scanMax, setScanMax] = useState('125')
   const [progress, setProgress] = useState('')
   const dirtyRef = useRef(false), savedRef = useRef<MindReport | undefined>(undefined), requestVersion = useRef(0), alive = useRef(true)
   const draftKey = `azurpilot.mind-draft.${instance}`
@@ -72,7 +72,7 @@ export function MindCalculator() {
     const next = report.ships.map(editableShip)
     calculatedShips.current = next
     setSaved(report); setShips(next); setResult(report)
-    setScanMin(String(report.min_level ?? 95)); setScanMax(String(report.max_level ?? 120))
+    setScanMin(String(report.min_level ?? 95)); setScanMax(String(report.max_level ?? 125))
     dirtyRef.current = false; setDirty(false)
     if (resetPage) setPage(0)
     setAutoSave(false)
@@ -104,7 +104,7 @@ export function MindCalculator() {
       .then(([data, report]) => {if (active) {
         setCatalog(data)
         if (!savedRef.current) {
-          setScanMin(String(report.min_level ?? 95)); setScanMax(String(report.max_level ?? 120))
+          setScanMin(String(report.min_level ?? 95)); setScanMax(String(report.max_level ?? 125))
           try {
             const draft = JSON.parse(sessionStorage.getItem(draftKey) ?? 'null') as {revision: string; ships: MindShip[]} | null
             if (draft && typeof draft.revision === 'string' && Array.isArray(draft.ships) && draft.ships.length <= 5000 &&

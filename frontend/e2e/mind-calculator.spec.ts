@@ -275,19 +275,21 @@ test('等级自动保存冲突保留草稿，不覆盖已保存的数据', async
 })
 
 test('等级保存期间切换实例，返回后不会恢复已成功保存的旧草稿', async ({page}) => {
-  let delay = false, saving = false, delivered = false
+  let delay = false, release: (() => void) | undefined
   const pending = new Set<string>()
   await page.routeWebSocket('**/api/v1/ws', socket => {
     const server = socket.connectToServer()
     socket.onMessage(message => {
       const request = JSON.parse(String(message))
-      if (delay && request.method === 'mind.save') {pending.add(request.id); saving = true}
+      if (delay && request.method === 'mind.save') pending.add(request.id)
       server.send(message)
     })
     server.onMessage(message => {
       const response = JSON.parse(String(message))
-      if (pending.delete(response.id)) setTimeout(() => {socket.send(message); delivered = true}, 1200)
-      else socket.send(message)
+      if (pending.delete(response.id)) {
+        expect(response.ok).toBe(true)
+        release = () => socket.send(message)
+      } else socket.send(message)
     })
   })
   await page.goto('/#/i/demo-alt/mind-calculator')
@@ -299,10 +301,13 @@ test('等级保存期间切换实例，返回后不会恢复已成功保存的�
   delay = true
   await page.getByLabel('等级 1', {exact: true}).fill('105')
   await page.getByLabel('等级 1', {exact: true}).press('Enter')
-  await expect.poll(() => saving).toBe(true)
-  await page.goto('/#/i/demo-main/mind-calculator')
-  await expect.poll(() => delivered).toBe(true)
-  await page.goto('/#/i/demo-alt/mind-calculator')
+  // 等到服务端确认保存后再切换，以显式放行响应验证时序，不依赖固定延迟。
+  await expect.poll(() => !!release).toBe(true)
+  await page.evaluate(() => {location.hash = '/i/demo-main/task/MindCalculator'})
+  await expect(page).toHaveURL(/demo-main\/task\/MindCalculator$/)
+  release!()
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem('azurpilot.mind-draft.demo-alt'))).toBeNull()
+  await page.evaluate(() => {location.hash = '/i/demo-alt/task/MindCalculator'})
   await expect(page.getByLabel('等级 1', {exact: true})).toHaveValue('105')
   await expect(page.locator('.mind-intro')).toContainText('数据已保存到当前实例')
 })

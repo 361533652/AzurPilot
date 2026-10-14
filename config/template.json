@@ -3792,8 +3792,9 @@
   "MindCalculatorScan": {
     "MindCalculator": {
       "MinLevel": 95,
-      "MaxLevel": 120,
-      "Result": {}
+      "MaxLevel": 125,
+      "Result": {},
+      "FleetTechRecord": {}
     },
     "Storage": {
       "Storage": {}
