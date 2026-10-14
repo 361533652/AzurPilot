@@ -2591,6 +2591,7 @@
       "UseTicket": true,
       "TicketAmount": 1,
       "ClearTicket": true,
+      "ClearTicketTime": "09:30",
       "UseDrill": false
     },
     "Storage": {

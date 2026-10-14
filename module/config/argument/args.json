@@ -14082,6 +14082,12 @@
         "type": "checkbox",
         "value": true
       },
+      "ClearTicketTime": {
+        "type": "input",
+        "value": "09:30",
+        "valuetype": "str",
+        "validate": "^([01]?[0-9]|2[0-3]):[0-5][0-9]$"
+      },
       "UseDrill": {
         "type": "checkbox",
         "value": false
