@@ -203,7 +203,7 @@ flowchart TB
         ├─ after_process() 纠错与结构化
         └─> str / int / (current, remain, total) / timedelta → 业务逻辑
 
-副产物: ocr_debug/*.png（预处理后图像 + 结果命名，保留 100 张）
+副产物: save_debug_images=True 时写 ocr_debug/*.png（预处理后图像 + 结果命名，保留 100 张）
 ```
 
 数据在模块内的两次关键转换：一是色彩空间层面的「字色→二值」（`extract_letters` 或 Yuv 的亮度差），它决定模型看到的输入质量；二是字符串层面的「原始文本→结构化数值」（纠错映射与正则解析），它决定业务代码拿到的类型。
@@ -271,7 +271,7 @@ OCR 推理的线程模型围绕「模型实例非线程安全」这一前提设�
 | 逻辑模型属性 | `OcrModel` 的 `cached_property`（进程内存） | 首次访问创建；空闲期由 `release_resources()` 按下一任务用 `del_cached_property` 删除 |
 | 推理模型缓存 | `al_ocr._model_cache` / `_det_model_cache`，键为 `(模型名, OcrSettings)` | 按后端/设备/档位组合缓存；`release_ocr_models(names)` 定向释放，`reset_ocr_model()` 全量释放并重读配置 |
 | 默认配置快照 | `_default_config` | 按 `ALAS_CONFIG_NAME` 环境变量或默认配置名惰性读取；reset 时置空以在下次使用时重读 |
-| OCR 调试图 | `ocr_debug/` 目录 | 每次识别写入一张 PNG，超过 100 张按修改时间清理最旧的 |
+| OCR 调试图 | `ocr_debug/` 目录 | 识别器的 `save_debug_images=True`（默认）时每次单行识别写入一张 PNG，超过 100 张按修改时间清理最旧的 |
 
 空闲释放策略（`module/base/resource.py` 的 `release_resources`）：下一任务是大世界/委托时保留全部模型；有后续任务时仅保留 `azur_lane`；完全空闲时释放全部语言模型与独立检测缓存，并触发一次 `gc.collect(2)`。`UseOcrServer` 模式下空闲时改为断开 RPC 连接。
 
@@ -312,7 +312,7 @@ OCR 推理的线程模型围绕「模型实例非线程安全」这一前提设�
 
 ## 17. 已知限制
 
-- **调试图无条件写盘**：本地推理的每次识别都会向 `ocr_debug/` 写一张 PNG（保留 100 张），7×24 运行下是持续的磁盘 IO；文本检测有 `DET_DEBUG` 开关而单行识别没有对应开关。
+- **调试图磁盘开销**：单行识别默认仍写 `ocr_debug/`（保留 100 张）；调用方可用 `AlOcr(..., save_debug_images=False)` 按识别器关闭写盘及目录整理。此开关不进入模型缓存、不改变推理与队列，也不影响其他实例；心智计算器的自动扫描和上传识别默认关闭。文本检测沿用独立的 `DET_DEBUG`。
 - **RPC 单向回退**：`ModelProxy` 一旦连接失败即永久 `online=False` 回退本地，不会自动重试服务器；服务器恢复需重建代理。
 - **pickle 传输**：RPC 图像序列化用 pickle，仅适合本机或可信内网。
 - **首次调用延迟高**：模型懒加载意味着进程启动后的第一次 OCR 需承担模型初始化耗时。
@@ -354,7 +354,7 @@ class OcrDataKey(DigitCounter):
 ## 19. 调试方法
 
 - **识别结果与耗时**：每次 `ocr()` 经 `logger.attr` 输出 `名称 耗时 结果`，是排查识别异常的第一入口；将识别器 `SHOW_LOG = False` 可降噪。
-- **送入模型的图像**：本地推理自动把预处理后的图像存入 `ocr_debug/`（保留最新 100 张），文件名含模型名与识别结果，可直接核对预处理质量。
+- **送入模型的图像**：`save_debug_images=True` 时将预处理后的字图存入 `ocr_debug/`（保留最新 100 张），文件名含模型名与识别结果。心智计算器默认关闭；离线诊断向 `recognize_cards()` 显式传入开启此选项的识别器即可恢复，不需要重置共享模型。
 - **纠错可视化**：`Ocr.SHOW_REVISE_WARNING = True` 会记录每次数字纠错的前后值。
 - **基准测试**：`alas.py` 的 `benchmark/ocr_benchmark` 任务对 azur_lane/azur_lane_jp/cn 三个模型跑数据集精度与平均耗时（Rich 表格输出）；首次连接设备时 `Optimization_OcrDevice=auto` 会自动跑单模型基准并回写 `OcrDevice`（见[守护模式](infra/daemon.md)）。
 - **模型与设备问题**：日志中 `[OCR] Windows ML 选择 …`、`[OCR-NCNN] 已加载ncnnOCR模型 …` 说明实际选用的设备；加载失败按提示安装 VC++ 运行库或关闭 GPU 加速。
