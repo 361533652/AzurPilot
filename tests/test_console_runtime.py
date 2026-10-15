@@ -3,6 +3,7 @@ import asyncio
 import base64
 import io
 import multiprocessing
+import queue
 import tempfile
 import unittest
 from datetime import datetime
@@ -143,6 +144,60 @@ class RuntimeTests(unittest.TestCase):
                 with patch('module.device.screenshot.publish') as publish:
                     self.assertIs(frame, device.screenshot())
                     publish.assert_called_once_with(frame)
+
+    def test_preview_copy_memory_failure_preserves_screenshot_and_next_frame(self):
+        from module.device.screenshot import Screenshot
+        from module.runtime import preview
+
+        class CopyFailure(np.ndarray):
+            def copy(self, *args, **kwargs):
+                raise MemoryError('模拟预览副本分配失败')
+
+        frame = np.zeros((720, 1280, 3), dtype=np.uint8).view(CopyFailure)
+        device = Screenshot.__new__(Screenshot)
+        device.config = SimpleNamespace(Emulator_ScreenshotMethod='test', Emulator_ScreenshotDedithering=False,
+                                        Error_SaveError=False)
+        backend = Mock(return_value=frame)
+        device.__dict__['screenshot_methods'] = {'test': backend}
+        device._screenshot_interval = Mock()
+        device.check_screen_size = device.check_screen_black = lambda: True
+        pending = queue.Queue(maxsize=1)
+        with patch.object(preview, '_images', pending):
+            self.assertIs(frame, device.screenshot())
+            self.assertTrue(pending.empty())
+            recovered = np.full((720, 1280, 3), 100, np.uint8)
+            backend.return_value = recovered
+            self.assertIs(recovered, device.screenshot())
+            copied, timestamp = pending.get_nowait()
+            self.assertIsNot(copied, recovered)
+            np.testing.assert_array_equal(copied, recovered)
+            self.assertTrue(timestamp)
+            backend.side_effect = MemoryError('模拟真实截图分配失败')
+            with self.assertRaisesRegex(MemoryError, '真实截图'):
+                device.screenshot()
+            self.assertTrue(pending.empty())
+
+    def test_preview_encoder_recovers_after_memory_failure(self):
+        from module.runtime import preview
+
+        class EncoderDone(Exception):
+            pass
+
+        pixels = np.full((720, 1280, 3), (235, 30, 10), dtype=np.uint8)
+        images = SimpleNamespace(get=Mock(side_effect=[(pixels, 'failed'), (pixels, 'recovered'), EncoderDone()]))
+        output = queue.Queue(maxsize=2)
+        with patch.object(preview, '_images', None), patch.object(preview.queue, 'Queue', return_value=images), \
+                patch.object(preview.threading, 'Thread') as thread, \
+                patch('module.runtime.worker_events.initialize'), \
+                patch('PIL.Image.fromarray', side_effect=[MemoryError('模拟预览编码分配失败'), Image.fromarray(pixels)]):
+            preview.initialize('pilot', output, lambda _: None, 'test-run')
+            with self.assertRaises(EncoderDone):
+                thread.call_args.kwargs['target']()
+        frame = output.get_nowait()
+        self.assertEqual(frame['capturedAt'], 'recovered')
+        self.assertEqual(frame['runId'], 'test-run')
+        self.assertTrue(frame['image'].startswith('data:image/jpeg;base64,'))
+        self.assertTrue(output.empty())
 
     def test_slow_preview_replaces_frame_without_filling_control_queue(self):
         async def check():
