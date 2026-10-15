@@ -115,7 +115,7 @@ flowchart BT
 | `scheduling.py` | `OpsiScheduling(CoinTaskMixin, OSMap)` | `run_smart_scheduling` | 智能调度：黄币/AP 决策与子任务代理 |
 | `coin_task_mixin.py` | `CoinTaskMixin` | —— | 补黄币任务的公共逻辑（阈值/通知/选派/月末清理） |
 | `prevent_action_point_overflow.py` | `OpsiPreventActionPointOverflow(OpsiScheduling)` | `run_prevent_action_point_overflow` | 防行动力自然恢复溢出（每 600 秒 1 点，上限 200） |
-| `hazard_leveling.py` | `OpsiHazard1Leveling` | `os_hazard1_leveling` / `run_hazard1_leveling_once` / `os_check_leveling` | 侵蚀 1 练级（120 AP 一轮）与练度检查 |
+| `hazard_leveling.py` | `OpsiHazard1Leveling` | `os_hazard1_leveling` / `run_hazard1_leveling_once` / `os_check_leveling` | 侵蚀 1 练级（当前 AP 达到 100 即开工）与练度检查 |
 | `meowfficer_farming.py` | `OpsiMeowfficerFarming` | `run_meowfficer_farming(_once)` | 耄耋相接（指挥喵刷黄币，多种目标海域模式） |
 | `daily.py` | `OpsiDaily` | `os_daily` | 大世界日常：接任务→完成→领成就 |
 | `shop.py` | `OpsiShop` | `os_shop` / `perform_port_shop_purchase` | 港口商店扫货（购买流程供智能调度复用） |
@@ -254,7 +254,7 @@ OCR：行动力面板 / 黄币 / 紫币 ──▶ 决策（智能调度状态机
 | 配置组 | 关键项 | 说明 |
 | --- | --- | --- |
 | `OpsiGeneral.*` | `DoRandomMapEvent`、`UseLogger`、`BuyActionPointLimit` | 随机事件、日志仪、每周石油购买上限等通用行为 |
-| `OpsiGeneral.ActionPointCheckInterval` | 默认 0 分钟 | 侵蚀一、智能调度和短猫常规完整面板的最小检查间隔；必要补给及其他任务保持原流程 |
+| `OpsiHazard1Leveling.ActionPointCheckInterval` | 默认 0 分钟，关闭定时读取 | 侵蚀一、智能调度和短猫的后台行动力检查间隔；补给及首次确认仍读面板 |
 | `OpsiScheduling.*` | `Scheduler.Enable`、黄币保留、行动力保留、通知阈值 | 智能调度开关与决策参数 |
 | `OpsiHazard1Leveling.*` | `TargetZone`（0/44/22）、`MinimumActionPointReserve` | 侵蚀 1 目标海域与保留 |
 | `OpsiMeowfficerFarming.*` | `StayInZone` 等 | 耄耋相接模式 |
@@ -283,7 +283,7 @@ OCR：行动力面板 / 黄币 / 紫币 ──▶ 决策（智能调度状态机
 
 ## 12. 并发与线程模型
 
-- 单线程状态循环，无自有线程；`OSSimulator`（辅助包，见[大世界辅助模块](auxiliary.md)）是唯一含后台线程的例外。
+- 游戏操作保持单线程状态循环；常规资源识别在独立后台队列执行，观察与仪表盘事务交给串行执行器。后台不能截图或点击；详情见[大世界辅助模块](auxiliary.md)。`OSSimulator` 另有独立模拟线程。
 - `OSStatus` 的 `_cache_lock`（threading.Lock）保护黄币缓存值的读写，防御未来多线程访问。
 - 与调度器的并发点在配置：代理上下文用 `_temporary_attributes` 写 `config.task` 等属性，`multi_set()` 保证批量写原子生效；防溢出开关用 `cross_set` 直接改配置文件字段，与其他进程的配置事务互斥。
 

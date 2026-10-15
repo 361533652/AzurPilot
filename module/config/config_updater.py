@@ -641,6 +641,10 @@ class ConfigGenerator:
 class ConfigUpdater:
     # 格式：source, target, (可选) convert_func
     redirection = [
+        ('OpsiGeneral.OpsiGeneral.ActionPointCheckInterval',
+         'OpsiHazard1Leveling.OpsiHazard1Leveling.ActionPointCheckInterval'),
+        ('OpsiGeneral.OpsiGeneral.SkipStrategicSearchCheck',
+         'OpsiHazard1Leveling.OpsiHazard1Leveling.SkipStrategicSearchCheck'),
         ('OpsiScheduling.OpsiSmartExplore.BuyActionPoint', 'OpsiScheduling.OpsiScheduling.BuyActionPoint'),
         ('OpsiExplore.OpsiExplore.MeowfficerCleanup', 'OpsiExploreCleanup.Scheduler.Enable'),
         ('OpsiExplore.OpsiFleet', 'OpsiExploreCleanup.OpsiFleet'),
