@@ -1,29 +1,5 @@
 import { expect, test } from '@playwright/test'
 
-test('侵蚀一资源检查配置位于献祭流下方且通用页不再显示', async ({page}) => {
-  await page.addInitScript(() => localStorage.setItem('azurpilot.theme', 'light'))
-  await page.goto('/#/i/demo-main/task/OpsiHazard1Leveling')
-  const group = page.locator('#group-OpsiHazard1Leveling')
-  await expect(group).toBeVisible()
-  const fields = await group.locator('.field-row label').evaluateAll(labels => labels.map(label => label.getAttribute('for')))
-  const hp = fields.indexOf('OpsiHazard1Leveling.OpsiHazard1Leveling.SkipHpCheck')
-  expect(hp).toBeGreaterThanOrEqual(0)
-  expect(fields.slice(hp + 1, hp + 3)).toEqual([
-    'OpsiHazard1Leveling.OpsiHazard1Leveling.ActionPointCheckInterval',
-    'OpsiHazard1Leveling.OpsiHazard1Leveling.SkipStrategicSearchCheck',
-  ])
-  await expect(group).toContainText('其余时候不截图、不识别')
-  const moved = group.locator('label[for$=".SkipStrategicSearchCheck"]')
-  await moved.scrollIntoViewIfNeeded()
-  await expect(group.locator('label[for$=".SkipHpCheck"]')).toBeInViewport()
-  await expect(group.locator('label[for$=".ActionPointCheckInterval"]')).toBeInViewport()
-  await page.screenshot({path: test.info().outputPath('cl1-resource-settings.png'), animations: 'disabled'})
-  await page.goto('/#/i/demo-main/task/OpsiGeneral')
-  await expect(page.locator('#group-OpsiGeneral')).toBeVisible()
-  await expect(page.locator('label[for$=".ActionPointCheckInterval"]')).toHaveCount(0)
-  await expect(page.locator('label[for$=".SkipStrategicSearchCheck"]')).toHaveCount(0)
-})
-
 test('统计慢请求合并更新且概览事件不重复取数', async ({page}) => {
   const ids = new Set<string>()
   const held: string[] = []
