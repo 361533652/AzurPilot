@@ -66,6 +66,7 @@ bin/ocr_models/     # 模型文件（非代码）
 | 入口 | 用途 |
 | --- | --- |
 | `from module.ocr.ocr import Ocr / Digit / DigitCounter / Duration` | 业务构造识别器的唯一常规入口（含 `*Yuv` 变体） |
+| `ocr_batch(image, readers)` | 同帧、同语言及字符表的单区域合并队列提交，逐字段保持预处理、后处理和有效性 |
 | `OCR_MODEL.<lang>` | 框架内获取 `AlOcr` 实例；导入时按部署配置决定本地模型或 RPC 代理 |
 | `AlOcr(config=…, settings=…)` | 框架内部（models.py、ocr_benchmark）直接构造；业务代码不应使用 |
 | `release_ocr_models()` / `reset_ocr_model()` | 空闲释放内存 / 配置变更后重置模型缓存 |
@@ -253,6 +254,8 @@ flowchart TB
 | 调试图保存失败 | 磁盘写入异常 | 仅 warning，不影响识别流程 |
 
 ## 12. 并发与线程模型
+
+大世界资源提速复用已有 OCR 队列。`ocr_batch` 合并队列提交；数量识别可显式使用 `batch_first=True` 合并首轮，逐项未裁剪与超限重试仍走原路径。合批不代表后端一定支持张量批推理，性能比较须使用相同裁剪与已预热模型。
 
 OCR 推理的线程模型围绕「模型实例非线程安全」这一前提设计：
 
