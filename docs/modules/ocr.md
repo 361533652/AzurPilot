@@ -16,6 +16,8 @@
 
 统一使用 PP-OCRv6 系列识别模型（lite/standard/pro 三档），各语言逻辑模型通过不同字典区分输出空间；旧版 AlOCR 专用模型（英文 `alocr_en_v2_6`、简中 `alocr_cn_v3`）作为 `auto` 档默认值保留。
 
+多实例资源控制：本地 ONNX Runtime（包括 ncnn 混合模式的 ONNX 检测端）默认每个 OCR 推理会话最多使用 **2 个 intra-op 线程、1 个 inter-op 线程**，以避免多实例分别按整机 CPU 核数创建线程池。启动前可以设置环境变量 `AZURPILOT_OCR_THREADS=1..16` 调整 intra-op 上限；最终不超过设备逻辑 CPU 数。修改只对新创建的模型会话生效，已有工作进程须在任务允许时重新启动才能采用新值。该限制不控制 ncnn 原生推理线程或 MuMu 虚拟机的 CPU 配额，实际效果需按实例监测。
+
 ## 2. 模块职责
 
 ### 负责
