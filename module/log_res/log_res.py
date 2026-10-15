@@ -61,7 +61,7 @@ class LogRes:
                 if original['Value'] != value:
                     _key = _key_group + '.Value'
                     self.config.modified[_key] = value
-                    _time = self.__dict__.get('_recorded_at') or datetime.now().replace(microsecond=0)
+                    _time = datetime.now().replace(microsecond=0)
                     _key_time = _key_group + f'.Record'
                     self.config.modified[_key_time] = _time
                     if key == 'YellowCoin':
@@ -84,7 +84,7 @@ class LogRes:
                     _key = _key_group + f'.{value_name}'
                     self.config.modified[_key] = _value
                     _key_time = _key_group + f'.Record'
-                    _time = self.__dict__.get('_recorded_at') or datetime.now().replace(microsecond=0)
+                    _time = datetime.now().replace(microsecond=0)
                     self.config.modified[_key_time] = _time
                     _mod = True
                 if _mod:
@@ -121,12 +121,12 @@ class LogRes:
             logger.info('[日志资源] 仪表盘中无此资源')
             super().__setattr__(name=key, value=value)
 
-    def record(self, name, value, *, observed=True, source=None, defer_history=False, observed_at=None):
+    def record(self, name, value, *, observed=True, source=None, defer_history=False):
         """缓存回退与失败读数可以保留旧记录，但不能更新成功观察时间。"""
         self.__dict__['_observation_enabled'] = observed
         self.__dict__['_observation_source'] = source
         self.__dict__['_defer_history'] = defer_history
-        self.__dict__['_recorded_at'] = observed_at or datetime.now()
+        self.__dict__['_recorded_at'] = datetime.now()
         try:
             setattr(self, name, value)
         finally:
@@ -148,10 +148,9 @@ class LogRes:
         from module.config.time_source import now
         task = getattr(getattr(self.config, 'task', None), 'command', None)
         source = self.__dict__.get('_observation_source') or task or 'task_observation'
-        stamp = self.__dict__.get('_recorded_at') or now()
-        ProgramStore(Path(filepath_config(instance)).parent).observe(instance, name, value, stamp.isoformat(sep=' '), source)
+        ProgramStore(Path(filepath_config(instance)).parent).observe(instance, name, value, now().isoformat(sep=' '), source)
         from module.statistics.resource_flow import observe
-        observe(self.config, name, current, source, observed_at=stamp)
+        observe(self.config, name, current, source)
 
     def _record_all_resource_snapshot(self, overrides=None):
         """读取当前所有 Dashboard 资源值并记录快照。

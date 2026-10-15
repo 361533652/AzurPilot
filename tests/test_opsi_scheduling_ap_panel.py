@@ -37,7 +37,6 @@ class TestSchedulingActionPointPanel(unittest.TestCase):
         self.runner.check_and_notify_action_point_threshold = Mock()
         self.runner.is_running_prevent_action_point_overflow_task = Mock(return_value=False)
         self.runner.get_yellow_coins = Mock(return_value=145321)
-        self.runner.get_routine_yellow_coins = Mock(return_value=145321)
         self.now = datetime(2026, 10, 3, 23)
         for name, value in (
             ('current_time', self.now), ('get_server_next_update', self.now + timedelta(hours=1)),
