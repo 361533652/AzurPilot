@@ -111,6 +111,8 @@ class FleetTechChange(Params):
     lv120: StrictBool | None = None
     level: StrictInt | None = Field(default=None, ge=1, le=125)
     restore: StrictBool = False
+    toggle: Literal['owned', 'complete', 'star'] | None = None
+    target: StrictBool | None = None
 
 
 class FleetTechPatchParams(InstanceParams):

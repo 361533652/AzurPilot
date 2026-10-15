@@ -151,8 +151,6 @@ class MindCalculatorService:
             if revision(fields.get('Result', {}).get('ships', [])) != expected_revision:
                 raise ApiError('CONFLICT', '舰船数据已变化，请重新载入后再保存')
             fields['Result'] = dict(ships=ships, updated_at=datetime.now().isoformat(timespec='seconds'))
-            from module.runtime.fleet_tech import merge_mind
-            fields['FleetTechRecord'] = merge_mind(fields.get('FleetTechRecord', {}), ships)
             atomic_write(str(self.configs.path(instance)), json.dumps(data, ensure_ascii=False, indent=2))
             return self.report(instance)
 

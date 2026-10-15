@@ -439,6 +439,33 @@
               "restore": {
                 "title": "Restore",
                 "type": "boolean"
+              },
+              "toggle": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "owned",
+                      "complete",
+                      "star"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Toggle"
+              },
+              "target": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Target"
               }
             },
             "required": [
