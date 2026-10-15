@@ -158,6 +158,11 @@ class CalculatorTests(unittest.TestCase):
             self.assertEqual(data['11']['retrofit_names'], ['舰名.改'])
             self.assertTrue(data['11']['is_child'])
             self.assertNotIn('retrofit_names', data['900001'])
+            (root / 'sharecfg/ship_skin_template.lua').rename(root / 'sharecfgdata/ship_skin_template.lua')
+            with patch('sys.stdout', io.StringIO()):
+                data = extract_ship_data(directory)
+            self.assertEqual(data['11']['retrofit_names'], ['舰名.改'])
+            self.assertNotIn('retrofit_names', data['900001'])
 
     def test_collaboration_catalog_has_original_rarity_without_frame_guessing(self):
         for name in ('帕特莉夏·阿贝尔海姆', 'DEAD MASTER', '雪泉', '雫', '穗香', '环', '八舞耶俱矢·八舞夕弦'):

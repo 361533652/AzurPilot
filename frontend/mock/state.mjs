@@ -53,7 +53,7 @@ export function createMockState({ empty = false } = {}) {
   const mindShips = new Map()
   const fleetRecords = new Map()
   function fleetPython(action, params) {
-    const fields = get(params.instance).values.MindCalculatorScan.MindCalculator
+    const fields = get(params.instance).values.FleetTechScan.FleetTech
     const output = mindPython(`tech.${action}`, {...params, ships: mindShips.get(params.instance) ?? [],
       record: fleetRecords.get(params.instance) ?? {}, min_level: fields.MinLevel, max_level: fields.MaxLevel})
     if (['patch', 'syncMind'].includes(action)) fleetRecords.set(params.instance, output.record)
@@ -530,7 +530,6 @@ export function createMockState({ empty = false } = {}) {
         const current = mindPython('report', {ships: mindShips.get(name) ?? []})
         if (current.revision !== params.revision) fail('CONFLICT', '舰船数据已变化，请重新载入后再保存')
         mindShips.set(name, params.ships)
-        fleetPython('syncMind', {instance: name})
         return dispatch('mind.report', {instance: name})
       }
       case 'mind.import': return mindPython('import', params)

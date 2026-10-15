@@ -19,14 +19,14 @@ class FleetTechService:
 
     def report(self, instance):
         data, _ = self.configs.read(instance)
-        fields = data.get('MindCalculatorScan', {}).get('MindCalculator', {})
+        fields = data.get('FleetTechScan', {}).get('FleetTech', {})
         return dict(instance=instance, min_level=fields.get('MinLevel', 95), max_level=fields.get('MaxLevel', 125),
-                    **tech.report(deep_get(data, tech.RECORD_PATH, {})))
+                    **tech.report(tech.read_record(data)))
 
     def patch(self, instance, expected_revision, changes, nations):
         with self.configs.lock, config_transaction(self.configs.path(instance)):
             data, _ = self.configs.read(instance)
-            record = deep_get(data, tech.RECORD_PATH, {})
+            record = tech.read_record(data)
             if tech.revision(record) != expected_revision:
                 raise ApiError('CONFLICT', '科技记录已更新，请重新载入后再编辑')
             known = {row['group_type'] for row in tech.catalog()['ships']}
@@ -38,13 +38,23 @@ class FleetTechService:
                     raise ApiError('INVALID_PARAMS', '舰船群组不存在或重复')
                 seen.add(gid)
                 key = str(gid)
+                if change.toggle is not None:
+                    if (change.target is None or change.restore
+                            or change.model_fields_set - {'group_type', 'restore', 'toggle', 'target'}):
+                        raise ApiError('INVALID_PARAMS', '快捷切换不能同时指定人工值或恢复自动记录')
+                    tech.toggle(record, gid, change.toggle, change.target)
+                    continue
+                if 'target' in change.model_fields_set:
+                    raise ApiError('INVALID_PARAMS', '快捷切换目标必须同时指定操作')
                 if change.restore:
                     if change.model_fields_set - {'group_type', 'restore'}:
                         raise ApiError('INVALID_PARAMS', '恢复自动记录不能同时指定人工值')
                     manual.pop(key, None)
                     continue
-                values = change.model_dump(exclude_unset=True, exclude={'group_type', 'restore'})
+                values = change.model_dump(exclude_unset=True, exclude={'group_type', 'restore', 'toggle', 'target'})
                 entry = manual.setdefault(key, {})
+                if 'level' in values or 'lv120' in values:
+                    entry.pop('level_toggle', None)
                 entry.update(values)
                 # 设置任一正向里程碑也确认已获得，避免不一致的组合。
                 if values.get('level') or values.get('lv120') is True or values.get('full_star') is True:
@@ -67,7 +77,7 @@ class FleetTechService:
     def sync_mind(self, instance):
         with self.configs.lock, config_transaction(self.configs.path(instance)):
             data, _ = self.configs.read(instance)
-            record = deep_get(data, tech.RECORD_PATH, {})
+            record = tech.read_record(data)
             merged = tech.merge_mind(record, deep_get(data, RESULT_PATH, {}).get('ships', []))
             if merged != record:
                 deep_set(data, tech.RECORD_PATH, merged)

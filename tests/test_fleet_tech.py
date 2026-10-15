@@ -41,10 +41,10 @@ class FleetTechTests(unittest.TestCase):
                     self.assertIsInstance(attr, int)
                     self.assertIsInstance(value, int)
 
-    def test_unknown_is_distinct_from_not_obtained(self):
+    def test_missing_evidence_defaults_to_not_obtained(self):
         row = tech.report({})['ships'][0]
-        self.assertIsNone(row['owned'])
-        self.assertEqual(row['status'], 'pending')
+        self.assertFalse(row['owned'])
+        self.assertEqual(row['status'], 'unowned')
 
     def test_partial_scan_retirement_and_125_keep_history(self):
         record = tech.merge_mind({}, [ship(), ship('卡辛', 95)])
@@ -92,7 +92,7 @@ class FleetTechTests(unittest.TestCase):
         row = dict(data['ships'][0], group_type=99999999)
         data['ships'].append(row)
         with patch.object(tech, 'catalog', return_value=data):
-            self.assertEqual(tech.report(record)['ships'][-1]['status'], 'pending')
+            self.assertEqual(tech.report(record)['ships'][-1]['status'], 'unowned')
         self.assertEqual(record, original)
 
     def test_service_transactions_conflicts_restore_and_instance_isolation(self):
@@ -109,6 +109,7 @@ class FleetTechTests(unittest.TestCase):
             self.assertEqual(error.exception.code, 'CONFLICT')
             mind = MindCalculatorService(configs)
             mind.save('testpilot', mind.report('testpilot')['revision'], [ship()])
+            service.sync_mind('testpilot')
             row = next(row for row in service.report('testpilot')['ships'] if row['group_type'] == 10102)
             self.assertFalse(row['owned'])
             self.assertNotEqual(updated['revision'], service.report('testpilot')['revision'])
@@ -141,8 +142,8 @@ class FleetTechTests(unittest.TestCase):
             root = fixture(directory)
             path = root / 'config/testpilot.json'
             data = json.loads(path.read_text(encoding='utf-8'))
-            data['MindCalculatorScan']['MindCalculator']['MinLevel'] = 90
-            data['MindCalculatorScan']['MindCalculator']['MaxLevel'] = 120
+            data['FleetTechScan']['FleetTech']['MinLevel'] = 90
+            data['FleetTechScan']['FleetTech']['MaxLevel'] = 120
             path.write_text(json.dumps(data), encoding='utf-8')
             result = FleetTechService(ConfigService(root)).report('testpilot')
             self.assertEqual((result['min_level'], result['max_level']), (90, 120))
@@ -160,7 +161,7 @@ class FleetTechTests(unittest.TestCase):
             row = next(row for row in updated['ships'] if row['group_type'] == 10102)
             self.assertTrue(row['full_star'])
             self.assertTrue(row['owned'])
-            self.assertIsNone(row['lv120'])
+            self.assertFalse(row['lv120'])
             with patch.dict('os.environ', {'DEMO': '1'}):
                 self.assertTrue(router.dispatch('fleetTech.catalog', {'instance': 'testpilot'})['ships'])
                 with self.assertRaises(ApiError): router.dispatch('fleetTech.syncMind', {'instance': 'testpilot'})
@@ -172,7 +173,8 @@ class FleetTechTests(unittest.TestCase):
         """使用真实配置 save，模拟扫描中途另一客户端写入人工校正。"""
         from contextlib import ExitStack
         from module.config.config import AzurLaneConfig
-        from module.retire.mind_scan import MindCalculatorScan
+        from module.retire.fleet_tech_scan import FleetTechScan
+        from module.retire.assets import DOCK_SEARCH_CLOSED
         with tempfile.TemporaryDirectory() as directory, ExitStack() as stack:
             configs = ConfigService(fixture(directory))
             path = configs.path('testpilot')
@@ -182,27 +184,32 @@ class FleetTechTests(unittest.TestCase):
             stack.enter_context(patch('module.ocr.al_ocr.AlOcr'))
             stack.enter_context(patch('module.retire.mind_scan.server.server', 'cn'))
             scroll = SimpleNamespace(set_top=lambda _: None, appear=lambda _: True, at_top=lambda _: True, length=1, total=2)
-            stack.enter_context(patch('module.retire.mind_scan.DOCK_SCROLL', scroll))
+            stack.enter_context(patch('module.retire.fleet_tech_scan.DOCK_SCROLL', scroll))
+            stack.enter_context(patch('module.retire.fleet_tech_scan.filepath_config', return_value=str(path)))
             config = AzurLaneConfig('testpilot')
             config.data = configs.read('testpilot')[0]
             config._loaded_data = copy.deepcopy(config.data)
-            runner = object.__new__(MindCalculatorScan)
+            runner = object.__new__(FleetTechScan)
             runner.config = config
+            runner.device = SimpleNamespace(image=None)
+            runner._close_search = lambda: None
+            stack.enter_context(patch('module.retire.enhancement.OCR_DOCK_AMOUNT.ocr', return_value=(1, 0, 1)))
             runner.ui_ensure = runner.dock_reset = runner.dock_sort_method_dsc_set = lambda *args: None
-            runner.appear = lambda *args: False
+            runner.appear = lambda button, *args: button is DOCK_SEARCH_CLOSED
 
             def scan(*args):
                 service = FleetTechService(configs)
                 service.patch('testpilot', service.report('testpilot')['revision'], [FleetTechChange(group_type=10102, owned=False)], {})
-                return [ship()]
+                runner._scan_metadata = dict(reached_bottom=False, physical_count=1)
+                return [dict(ship(), group_type=10102)]
 
             runner._scan_pages = scan
             runner.run()
             saved, _ = configs.read('testpilot')
-            fields = saved['MindCalculatorScan']['MindCalculator']
-            self.assertEqual(fields['Result']['ships'][0]['level'], 125)
-            self.assertEqual(fields['FleetTechRecord']['observed']['10102'], 125)
-            self.assertFalse(fields['FleetTechRecord']['manual']['10102']['owned'])
+            fields = saved['FleetTechScan']['FleetTech']
+            self.assertEqual(fields['Record']['observed']['10102'], 125)
+            self.assertFalse(fields['Record']['manual']['10102']['owned'])
+            self.assertFalse(saved['MindCalculatorScan']['MindCalculator']['Result'].get('ships'))
 
     def test_extractor_parses_nested_faction_bonuses_and_rejects_duplicate_groups(self):
         from dev_tools.ship_data_extractor import extract_fleet_tech
