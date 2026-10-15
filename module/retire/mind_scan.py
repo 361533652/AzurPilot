@@ -175,10 +175,15 @@ class MindCalculatorScan(Dock):
             if not len(gaps):
                 return thumb
             if len(gaps) == 1:
-                # 滑块圆角的采样像素可能恰好等于严格颜色阈值；只补内部
-                # 一行且复核原色，不扩大首尾端点或接受真正的遮挡。
-                pixels = self.image_crop(DOCK_SCROLL.area, copy=False)[gaps]
-                if np.max(color_similarity_2d(pixels, color=DOCK_SCROLL.color)) >= DOCK_SCROLL.color_threshold:
+                # 圆角采样可能恰在阈值；缺口与前后行须有至多两列偏移的
+                # 颜色连接，避免不同列的分离色点被一维掩码拼成底部端点。
+                gap = gaps[0]
+                pixels = self.image_crop(DOCK_SCROLL.area, copy=False)[gap - 1:gap + 2]
+                scores = color_similarity_2d(pixels, color=DOCK_SCROLL.color)
+                above = np.flatnonzero(scores[0] > DOCK_SCROLL.color_threshold)
+                bridge = np.flatnonzero(scores[1] >= DOCK_SCROLL.color_threshold)
+                below = np.flatnonzero(scores[2] > DOCK_SCROLL.color_threshold)
+                if any(np.any(abs(above - col) <= 2) and np.any(abs(below - col) <= 2) for col in bridge):
                     return np.arange(thumb[0], thumb[-1] + 1)
         raise MindCalculatorScanError('船坞滚动条被遮挡，无法确认底部，保留旧扫描结果')
 

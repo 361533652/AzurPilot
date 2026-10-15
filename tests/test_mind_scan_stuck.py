@@ -306,6 +306,18 @@ class ScrollThumbRegressionTests(unittest.TestCase):
                 self.assertEqual((repaired[0], repaired[-1]), (strict[0], strict[-1]))
                 self.assertEqual(repaired[-1] >= self.scroll.total - 2, end == self.scroll.total - 1)
 
+    def test_threshold_row_cannot_bridge_a_separate_bottom_speck(self):
+        strip = np.zeros_like(self.strip)
+        strip[-77:] = self.strip[3:80]
+        strip[-1] = 0
+        strip[-1, 0] = self.scroll.color
+        scanner = self.scanner(strip=strip)
+        strict = np.flatnonzero(self.scroll.match_color(scanner))
+        self.assertEqual(strict[-1], self.scroll.total - 1)
+        self.assertEqual(strict[-2], self.scroll.total - 3)
+        with self.assertRaisesRegex(MindCalculatorScanError, '被遮挡'):
+            scanner._dock_scroll_thumb()
+
 
 class ScanLoopRegressionTests(unittest.TestCase):
     def setUp(self):
@@ -390,6 +402,19 @@ class ScanLoopRegressionTests(unittest.TestCase):
         self.assertEqual(self.reads, [0, 681, 1362])
         self.assertEqual(len(ships), 42)
         self.assertFalse(self.scanner._scan_metadata['reached_bottom'])
+
+    def test_real_scroll_occlusion_stops_the_loop_before_reading_cards(self):
+        from module.retire.dock import DOCK_SCROLL
+        strip = np.array(Image.open(FIXTURES / 'mind_dock_scroll_gap.png').convert('RGB'))
+        strip[78] = 0
+        x1, y1, x2, y2 = DOCK_SCROLL.area
+        for image in self.images.values():
+            image[y1:y2, x1:x2] = strip
+        with patch('module.retire.mind_scan.DOCK_SCROLL', DOCK_SCROLL):
+            with self.assertRaisesRegex(MindCalculatorScanError, '被遮挡'):
+                self.scan()
+        self.assertEqual(self.reads, [])
+        self.scanner.device.drag.assert_not_called()
 
     def test_local_name_failure_continues_and_preserves_safe_early_stop(self):
         self.kind = 'name'
