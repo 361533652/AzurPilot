@@ -861,6 +861,13 @@ Emotion:
     value: calculate
     option: [calculate, ignore, calculate_ignore]
   IgnoreShipwreck: false
+  MinReserve:
+    value: 0
+    validate: [0, 150]
+  RecoveryWait:
+    type: stored
+    value: null
+    display: hide
   Fleet1Value:
     value: 119
     validate: [0, 150]
