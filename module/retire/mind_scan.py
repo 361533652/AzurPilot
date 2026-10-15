@@ -10,6 +10,7 @@ from PIL import Image
 
 import module.config.server as server
 from module.base.timer import Timer
+from module.base.utils import color_similarity_2d
 from module.exception import GameStuckError, MindCalculatorScanError
 from module.logger import logger
 from module.retire.assets import DOCK_EMPTY
@@ -163,6 +164,29 @@ class MindCalculatorScan(Dock):
             # 不使用 Device.drag 的不支持分支，避免其松手后回退点击舰船。
             self.device.swipe(start, end, duration=.6, name='心智单元船坞三排定位')
 
+    def _dock_scroll_thumb(self):
+        """核实滑块连续性，仅容许一个颜色恰在阈值上的内部采样缺口。"""
+        if not DOCK_SCROLL.appear(self):
+            raise MindCalculatorScanError('无法识别船坞滚动条，保留旧扫描结果')
+        mask = np.asarray(DOCK_SCROLL.match_color(self), dtype=bool)
+        thumb = np.flatnonzero(mask)
+        if len(thumb):
+            gaps = np.flatnonzero(~mask[thumb[0]:thumb[-1] + 1]) + thumb[0]
+            if not len(gaps):
+                return thumb
+            if len(gaps) == 1:
+                # 圆角采样可能恰在阈值；缺口与前后行须有至多两列偏移的
+                # 颜色连接，避免不同列的分离色点被一维掩码拼成底部端点。
+                gap = gaps[0]
+                pixels = self.image_crop(DOCK_SCROLL.area, copy=False)[gap - 1:gap + 2]
+                scores = color_similarity_2d(pixels, color=DOCK_SCROLL.color)
+                above = np.flatnonzero(scores[0] > DOCK_SCROLL.color_threshold)
+                bridge = np.flatnonzero(scores[1] >= DOCK_SCROLL.color_threshold)
+                below = np.flatnonzero(scores[2] > DOCK_SCROLL.color_threshold)
+                if any(np.any(abs(above - col) <= 2) and np.any(abs(below - col) <= 2) for col in bridge):
+                    return np.arange(thumb[0], thumb[-1] + 1)
+        raise MindCalculatorScanError('船坞滚动条被遮挡，无法确认底部，保留旧扫描结果')
+
     def _scan_pages(self, names, levels):
         """分段核验三排位移，目标位置连续稳定后识别整页，末页确认到底。"""
         merger = self._make_merger()
@@ -208,11 +232,7 @@ class MindCalculatorScan(Dock):
                     # 只有已核实的位移才清除连击历史，停滞仍沿用设备检测和超时恢复。
                     self.device.click_record_clear()
                     logger.attr('船坞实际位移', f'{moved:+d}px，累计 {merger.offset}px')
-                if not DOCK_SCROLL.appear(self):
-                    raise MindCalculatorScanError('无法识别船坞滚动条，保留旧扫描结果')
-                thumb = np.flatnonzero(DOCK_SCROLL.match_color(self))
-                if not len(thumb) or thumb[-1] - thumb[0] + 1 != len(thumb):
-                    raise MindCalculatorScanError('船坞滚动条被遮挡，无法确认底部，保留旧扫描结果')
+                thumb = self._dock_scroll_thumb()
                 at_bottom = len(thumb) and thumb[-1] >= DOCK_SCROLL.total - 2
                 visible_rows = grid_rows(self.device.image)
                 aligned = (target is not None and len(visible_rows) == 3
