@@ -224,7 +224,7 @@ class OpsiHazard1Leveling(CoinTaskMixin, OSMap):
         # 读数再关掉，复用它跳过；不足 100 时仍需弹窗开箱/购买。
         if self.action_point_reusable(fresh_ap, cost=120, avoid_ap_overflow=True):
             _fresh_total, _fresh_current = fresh_ap
-            logger.info(
+            logger.debug(
                 f'[大世界-侵蚀1练级] 复用刚读到的行动力'
                 f'(当前={_fresh_current}, 总={_fresh_total})，跳过行动点弹窗'
             )
@@ -272,26 +272,25 @@ class OpsiHazard1Leveling(CoinTaskMixin, OSMap):
 
     def os_check_leveling(self):
         """检查大世界阵容练级进度。"""
-        logger.hr("大世界-侵蚀1练级检查", level=1)
-        logger.attr("大世界危险海域上次运行", self.config.OpsiCheckLeveling_LastRun)
-        
         check_interval = self.config.OpsiCheckLeveling_CheckInterval
         if not isinstance(check_interval, int) or check_interval < 1:
             check_interval = 24
             logger.warning("[大世界-侵蚀1练级] 检测间隔无效，使用默认值 24 小时")
         
         time_run = self.config.OpsiCheckLeveling_LastRun + timedelta(hours=check_interval)
-        logger.info(f"[大世界-侵蚀1练级] 练级检查下次运行时间: {time_run}")
         if current_time().replace(microsecond=0) < time_run:
-            logger.info("[大世界-侵蚀1练级] 未到运行时间，跳过")
+            logger.debug(f"[大世界-侵蚀1练级] 练级检查未到期，下次运行: {time_run}")
             return
         target_level = self.config.OpsiCheckLeveling_TargetLevel
         if not isinstance(target_level, int) or target_level < 0 or target_level > 125:
             logger.error(f"[大世界-侵蚀1练级] 目标等级无效: {target_level}，必须是 0 到 125 之间的整数")
             raise ScriptError(f"Invalid opsi ship target level: {target_level}")
         if target_level == 0:
-            logger.info("[大世界-侵蚀1练级] 目标等级为 0，跳过")
+            logger.debug("[大世界-侵蚀1练级] 目标等级为 0，跳过")
             return
+
+        logger.hr("大世界-侵蚀1练级检查", level=1)
+        logger.attr("大世界危险海域上次运行", self.config.OpsiCheckLeveling_LastRun)
 
         # 到期的练度检查需要进入舰队界面，不能带着决策面板导航。
         self._cl1_next_search_ready = False
