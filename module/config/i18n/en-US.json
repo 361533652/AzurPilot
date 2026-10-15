@@ -2137,6 +2137,14 @@
       "name": "Ignore shipwreck morale penalty",
       "help": "When enabled, the extra 10 morale penalty for sinking ships in battle (non-S rating) is no longer counted. Only effective when the morale mode includes \"Calculate morale consumption\"."
     },
+    "MinReserve": {
+      "name": "Minimum morale reserve",
+      "help": "0 disables this setting; range: 0–150. Applies only to modes that calculate morale consumption. When morale cannot cover the next sortie while staying above the control threshold, delay the task until morale recovers to this value. After recovery, keep running with the original control threshold. For example, reserve 150 with threshold 30 waits for 150 when the next sortie cannot maintain 30. The reserve is capped at the current recovery maximum; a higher sortie requirement takes precedence."
+    },
+    "RecoveryWait": {
+      "name": "Morale reserve recovery state",
+      "help": ""
+    },
     "Fleet1Value": {
       "name": "Fleet 1 morale value",
       "help": "Pause sorties, confirm recovery settings, then enter the lowest measured fleet morale (an integer from 0 to 150). Saving establishes a new baseline immediately. The value and timestamp must describe the same observed state; recheck if recovery occurs while entering it. Displays an estimate; sortie decisions use the conservative lower bound. Even if the value is unchanged, clear and re-enter it, then press Enter; also save in the TUI. Reliable complete readings from existing fleet scans can narrow recovery timing uncertainty without extra screenshots or waits. Accuracy is unchanged when no valid observations are available."
