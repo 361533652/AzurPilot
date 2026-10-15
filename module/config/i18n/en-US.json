@@ -3870,10 +3870,6 @@
       "4": "4 times (6000 Oil, 600 AP)",
       "5": "5 times (10000 Oil, 1000 AP)"
     },
-    "ActionPointCheckInterval": {
-      "name": "Routine AP check interval (minutes)",
-      "help": "0 disables the interval. Applies only to corrosion 1 leveling, smart scheduling and meowfficer farming. Time is measured from the last successful full AP panel read; only current AP is read from the map during the interval. Replenishment, inventory changes and recognition failures force a full check. Purchases and box use are always confirmed."
-    },
     "OilLimit": {
       "name": "When buying AP, keep X oil",
       "help": ""
@@ -3925,10 +3921,6 @@
     "AutoSearchTimeLimit": {
       "name": "Auto-search time limit",
       "help": "Unit: minutes. During auto search, the script will assume the game is stuck if no event is detected for this period."
-    },
-    "SkipStrategicSearchCheck": {
-      "name": "Skip plan battle option checks",
-      "help": "When looping a single zone (Corrosion 1 leveling / Meowfficer farming), open the plan battle panel and confirm directly without scroll-checking every option. The panel options must already be configured in-game (zone mode: repeat, stop on merchant/device, auto-submit missions); let the task run once normally, or configure them manually first."
     }
   },
   "OpsiAshBeacon": {
@@ -4256,6 +4248,14 @@
       "help": "Skip HP check after combat. Fleet will continue even if ships are sunk.",
       "True": "Enabled",
       "False": "Disabled"
+    },
+    "ActionPointCheckInterval": {
+      "name": "Routine AP check interval (minutes)",
+      "help": "0 disables scheduled checks. Read AP only for resupply, when the interval expires, or for the first confirmation after recovery. Otherwise skip screenshots and OCR. Applies to CL1, smart scheduling and Meowfficer farming."
+    },
+    "SkipStrategicSearchCheck": {
+      "name": "Skip plan battle option checks",
+      "help": "When looping a single zone (Corrosion 1 leveling / Meowfficer farming), open the plan battle panel and confirm directly without scroll-checking every option. The panel options must already be configured in-game (zone mode: repeat, stop on merchant/device, auto-submit missions); let the task run once normally, or configure them manually first."
     },
     "Cl1Filter": {
       "name": "Akashi purchase filter",

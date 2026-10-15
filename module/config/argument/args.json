@@ -14670,12 +14670,6 @@
           5
         ]
       },
-      "ActionPointCheckInterval": {
-        "type": "input",
-        "value": 0,
-        "valuetype": "int",
-        "validate": "^\\d+$"
-      },
       "OilLimit": {
         "type": "input",
         "value": 1000
@@ -14732,10 +14726,6 @@
           1,
           240
         ]
-      },
-      "SkipStrategicSearchCheck": {
-        "type": "checkbox",
-        "value": false
       }
     },
     "Storage": {
@@ -16006,6 +15996,16 @@
           true,
           false
         ]
+      },
+      "ActionPointCheckInterval": {
+        "type": "input",
+        "value": 0,
+        "valuetype": "int",
+        "validate": "^\\d+$"
+      },
+      "SkipStrategicSearchCheck": {
+        "type": "checkbox",
+        "value": false
       },
       "Cl1Filter": {
         "type": "textarea",
