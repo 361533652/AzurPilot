@@ -184,11 +184,13 @@ OpsiAshBeacon.run() → META 页攻击 → MetaReward 领奖 → task_delay(serv
 
 ## 8. 数据流
 
-石油购买缓存按实例与服务器周记录实际已购数，配置上限增减不重置实际次数；已达上限或月末封锁直接跳过石油选项，无效计数不当作买满。检查间隔仅限制侵蚀一、智能调度和短猫常规完整面板读取，从成功完整读取以单调时钟计时，跳过不续期；间隔内识别地图当前值并复用有效箱子库存，库存变化、无法确认奖励、识别失败与必要补给仍刷新。初始化及原地重启恢复清除缓存，下次重新读取。
+石油购买缓存按实例与服务器周记录实际已购数，配置上限增减不重置实际次数；已达上限或月末封锁直接跳过石油选项，无效计数不当作买满。`OpsiHazard1Leveling.ActionPointCheckInterval` 与 `SkipStrategicSearchCheck` 位于献祭流血量开关下方，旧通用配置值自动迁移。常规行动力仅在定时到期时从已有地图帧后台读取；0 关闭定时读取。未到期不截图、不 OCR，按已确认的出击扣减库存下界；奖励增加箱子不强制开面板。首次确认、补给和恢复仍实时读取，开箱与购买后确认实际值。
 
-侵蚀一与短猫的事件检索通过 `wait_until_walk_stable(allow_event_finish=True)` 在商店正常退出、最终领奖、档案领取或战斗处理完成后，用新截图确认地图及计划作战入口并快速收尾。后续选项会撤销旧完成标记，意外页面恢复仍要求重新定位；下一轮保留任务收尾、EMP、修理和计划作战选项检查。
+侵蚀一与短猫的事件检索通过 `wait_until_walk_stable(allow_event_finish=True)` 在商店正常退出、最终领奖、档案领取或战斗处理完成后，用新截图确认地图及计划作战入口并快速收尾。后续选项会撤销旧完成标记，意外页面恢复仍要求重新定位；下一轮保留任务收尾、EMP、修理和任务切换检查；同一海域完成事件后复用刚确认的地图位置，省略开工前重复的海域名称 OCR，随即进入计划作战。
 
-历史快照固定采样时间、月份与来源后后台写入；业务观察、收支对账及配置合并仍在主线程执行。分段性能日志为 `[大世界-货币耗时]` 与 `[大世界-行动力耗时]`。
+常规黄币与紫币使用 `resource_read.py` 的有界后台队列识别固定截图，两张有效地图帧同值才接受；每次最多一个待识别帧。识别器状态与按钮坐标在提交时复制，实例、服务器和货币修订不匹配的结果丢弃。到期时同帧附带当前行动力，扣除采样后的已知消耗，补给后拒绝旧结果。海里数附带的缓存 AP 历史样本标为 `hazard1_estimate`，不作为成功库存观察。商店预算及开箱决策保留同步识别。
+
+资源观察、收支复核及仪表盘保存由 `resource_write.py` 串行提交；固定采样时间和任务上下文，后台只事务合并仪表盘字段，不修改运行中的配置对象。收支复核按采样时间计算已发生交易，旧观察不能覆盖新读数。后台确认侵蚀一黄币低于当前保留值时，由主线程通过 `interrupt_auto_search(goto_main=False, end_task=False)` 返回地图，智能调度下一轮立即执行补币决策；补币任务不被自己的低黄币状态打断。日志入口为 `[大世界-资源后台]`，离线回归见 `tests/test_opsi_background_resources.py`。
 
 ```
 行动力面板截图 → OCR(当前/总/购买次数) → ActionPointLimit 或放行
@@ -203,7 +205,7 @@ META 页截图 → MetaState 状态机 → 攻击/领奖循环
 | 配置 | 说明 |
 | --- | --- |
 | `OpsiGeneral.BuyActionPointLimit` 等行动力参数 | 决定 `action_point_buy` 的行为 |
-| `OpsiGeneral.ActionPointCheckInterval` | 非负整数分钟，默认 0；仅侵蚀一、智能调度和短猫常规完整面板检查使用 |
+| `OpsiHazard1Leveling.ActionPointCheckInterval` | 非负整数分钟，默认 0 关闭定时读取；侵蚀一、智能调度和短猫共用 |
 | `OpsiAshBeacon.*`（Enable/AttackMode/EnsureFullyCollected） | 信标任务开关与触发条件 |
 | `OpsiMeowfficerFarming.OpsiShopFilter` 等货架策略 | 经 `Selector` 生效 |
 | `OpsiSimulator.OpsiSimulatorParameters.*` | 模拟器参数（仅模拟器读取） |
@@ -288,3 +290,7 @@ if self.appear(PORT_ENTER, offset=(20, 20), interval=30):
 - [商店系统](../game/shop.md) —— 通用商店框架与 `ShopClerk` 的复用关系
 - [战斗系统](../combat.md) —— `Combat_` 基类与本页 `os_combat` 的适配关系
 - [统计与数据提交](../infra/statistics.md) —— 黄币/紫币写入 LogRes 的去向
+
+配置页效果（模拟服务）：
+
+![侵蚀一资源检查配置](images/cl1-resource-settings.png)

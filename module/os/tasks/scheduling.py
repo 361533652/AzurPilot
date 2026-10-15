@@ -45,6 +45,7 @@ from module.os.map import OSMap
 from module.os.tasks.task_context import TaskDelayRequest, current_opsi_context, opsi_task_context
 from module.os.tasks.smart_explore import SmartExploreMixin
 from module.os_handler.action_point import ActionPointLimit
+from module.os_handler.resource_read import CoinReplenishRequired
 
 
 class CoinTaskMixin:
@@ -1021,7 +1022,7 @@ class OpsiScheduling(SmartExploreMixin, CoinTaskMixin, OSMap):
             allow_cached (bool): 仅常规调度允许按用户间隔复用库存，月末等强制读取不复用。
 
         Returns:
-            tuple[int, int]: (总行动力, 当前真实行动力)。
+            tuple[int, int]: (总行动力, 当前行动力)，缓存路径均为保守下界。
 
         Pages:
             in: page_os
@@ -1030,8 +1031,7 @@ class OpsiScheduling(SmartExploreMixin, CoinTaskMixin, OSMap):
         self._close_scheduling_action_point()
         if allow_cached:
             cached = self.action_point_cached_read()
-            if cached is not None:
-                self.check_and_notify_action_point_threshold()
+            if cached is not None and cached[1] >= 100 and cached[0] > self._get_effective_cl1_ap_preserve():
                 return cached
         self.action_point_enter()
         self.action_point_safe_get()
@@ -1264,10 +1264,13 @@ class OpsiScheduling(SmartExploreMixin, CoinTaskMixin, OSMap):
         ):
             return
 
-        yellow_coins = self.get_yellow_coins()
+        yellow_coins = self.get_routine_yellow_coins()
         try:
             total_ap, current_ap = self._get_scheduling_action_point(keep_open=True, allow_cached=True)
             return self._run_smart_scheduling_decision(yellow_coins, total_ap, current_ap)
+        except CoinReplenishRequired:
+            logger.info('[大世界-智能调度] 本轮计划作战已退出，下一轮立即执行补黄币决策')
+            return
         except (GameStuckError, GameTooManyClickError, RequestHumanTakeover):
             # 已进入设备恢复流程，不再追加界面操作干扰原异常。
             self._scheduling_ap_panel_open = False
