@@ -815,20 +815,18 @@ class OpsiHazard1Leveling(CoinTaskMixin, OSMap):
         return last_record is None or (current_time() - last_record).days >= interval
 
     def _record_ap_and_coins(self, sea_miles=None):
-        """记录体力和货币到仪表盘数据库（始终执行）。
+        """记录货币及独立海里数；行动力实测由完整面板读取入口记录。
 
         Args:
             sea_miles (int | None): 海里数，由 `detect_and_record_sea_miles` 识别传入。
         """
         try:
-            if self._action_point_current > 0 and sea_miles is not None:
+            if sea_miles is not None:
                 from module.statistics.opsi_runtime import record_ap_snapshot
                 record_ap_snapshot(
                     config=self.config,
-                    ap_current=self._action_point_current,
-                    # 统计口径使用始终含体力箱的总行动力，避免防溢出上下文关闭开箱后丢箱
-                    ap_total=getattr(self, '_action_point_total_with_box', self._action_point_total),
-                    source='hazard1_estimate',
+                    ap_current=None,
+                    source='sea_miles',
                     distance=sea_miles,
                 )
 
