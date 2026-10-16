@@ -204,7 +204,7 @@ class BackgroundRuntimeTests(unittest.TestCase):
         config.is_task_enabled = Mock(return_value=False)
         config.OpsiHazard1Leveling_MinimumActionPointReserve = 200
         config.OpsiHazard1Leveling_TargetZone = 22
-        config.OpsiHazard1Leveling_RecordSeaMiles = False
+        config.OpsiHazard1Leveling_RecordSeaMiles = -1
         config.OpsiFleet_Fleet = 1
         self.runner._cl1_next_search_ready = True
         self.runner.zone = SimpleNamespace(zone_id=22, hazard_level=1)
