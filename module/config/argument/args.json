@@ -12557,6 +12557,15 @@
         "type": "textarea",
         "value": "20000 > 10000 > 5000 > 3000 > 2000 > 1000"
       },
+      "ReserveFood": {
+        "type": "checkbox",
+        "value": false
+      },
+      "FeedReserveState": {
+        "type": "stored",
+        "value": null,
+        "display": "hide"
+      },
       "BuyFood": {
         "type": "checkbox",
         "value": false,

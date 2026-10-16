@@ -2908,6 +2908,14 @@
       "name": "Feed filter",
       "help": "Generally no modification is required"
     },
+    "ReserveFood": {
+      "name": "Keep one food item for the next day",
+      "help": "Keep one item across all six food types. Days reset at server midnight. No exemption on the first enabled day. On each following day's first eligible feeding, a single remaining item may be used; more than one item cancels that day's exemption. Keep one item from food obtained later that day."
+    },
+    "FeedReserveState": {
+      "name": "Food reserve state",
+      "help": "Automatically records the server date of the first eligible feeding check to prevent repeated exemptions after restarting."
+    },
     "BuyFood": {
       "name": "Automatically purchase food",
       "help": "For status display only. Disable setting. Do not ask anything about this switch."
