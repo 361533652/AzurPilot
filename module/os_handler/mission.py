@@ -413,8 +413,7 @@ class MissionHandler(GlobeOperation, ZoneManager):
         enable = self.config.is_task_enabled('OpsiExplore')
         next_run = self.config.cross_get(keys='OpsiExplore.Scheduler.NextRun', default=DEFAULT_TIME)
         next_reset = get_os_next_reset()
-        logger.attr('大世界下次重置', next_reset)
-        logger.attr('每月开荒', (enable, next_run))
+        logger.debug(f'[大世界-每月开荒] 启用={enable}，下次运行={next_run}，下次重置={next_reset}')
         # -12 小时以处理夏令时
         # `next_run` 可能在夏令时之前计算，但现在是夏令时
         # 2023-03-14 11:15:28.423 | INFO | [OpsiNextReset] 2023-04-01 03:00:00
@@ -424,5 +423,4 @@ class MissionHandler(GlobeOperation, ZoneManager):
             logger.info('每月开荒仍在运行，仅接取任务。每月开荒访问所有区域时会完成这些任务，不必担心遗漏。')
             return True
         else:
-            logger.info('未处于每月开荒，可以执行大世界每日')
             return False
