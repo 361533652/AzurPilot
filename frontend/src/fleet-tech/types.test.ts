@@ -19,6 +19,15 @@ describe('科技联合筛选', () => {
     expect(scanRows(catalog, {...scan, ships: []})).toEqual([])
     expect(scanRows(catalog, {...scan, ships: [[10103, 120]]}).map(ship => ship.group_type)).toEqual([10103])
   })
+  it('本轮快照仅在等级大于100时默认满星并计入满星点数', () => {
+    const catalog: Catalog = {ships: [row], nations: {}, updated_at: '', source_commit: '', max_points: 0, nation_points: {}}
+    const scan: ScanSummary = {min_level: 1, max_level: 125, complete: false, reached_bottom: false,
+      physical_count: 1, expected_count: 1, matched_count: 1, review_count: 0, updated_at: '', fingerprint: '', ships: []}
+    for (const [level, star, points] of [[100, null, 3], [101, true, 10], [120, true, 15], [125, true, 15]] as const) {
+      const actual = scanRows(catalog, {...scan, ships: [[row.group_type, level]]})[0]!
+      expect([actual.full_star, actual.points]).toEqual([star, points])
+    }
+  })
   it('组内并集、组间交集，并支持编号和外文名称搜索', () => {
     expect(matches(row, {type: ['1', '2'], nation: ['1'], status: ['complete']}, '004', 'tech', 'all')).toBe(true)
     expect(matches(row, {nation: ['2']}, '', 'all', 'all')).toBe(false)

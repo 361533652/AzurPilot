@@ -15,9 +15,11 @@ export function scanRows(catalog: Catalog, scan: ScanSummary): Row[] {
     const level = levels.get(ship.group_type)
     if (level === undefined) return []
     const lv120 = level >= 120
-    return [{...ship, owned: true, full_star: null, lv120, level, observed_level: level,
+    const fullStar = level > 100 ? true : null
+    return [{...ship, owned: true, full_star: fullStar, lv120, level, observed_level: level,
       status: lv120 ? 'complete' as const : 'unfinished' as const, manual: false,
-      points: ship.technology ? ship.technology.pt_get + (lv120 ? ship.technology.pt_level : 0) : 0,
+      points: ship.technology ? ship.technology.pt_get + (fullStar ? ship.technology.pt_upgrage : 0)
+        + (lv120 ? ship.technology.pt_level : 0) : 0,
       completion_target: lv120 ? 100 : 120, acquire_level: level, acquire_lv120: lv120}]
   })
 }
