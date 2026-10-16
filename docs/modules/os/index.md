@@ -131,6 +131,14 @@ flowchart BT
 | `fleet_auto_change.py` | `OpsiFleetAutoChange` | `run()` | 练级队列轮换舰队 |
 | `task_context.py` | 上下文管理器 | —— | 代理任务的临时身份与延迟请求（见下） |
 
+### 侵蚀 1 海里检测间隔
+
+`OpsiHazard1Leveling.OpsiHazard1Leveling.RecordSeaMiles` 为整数天数：默认 `-1` 关闭，`0` 每轮检测，正整数表示每隔指定天数检测。未有成功记录时在下一轮立即检测；间隔从上次成功识别且返回地图的时间起计算，按完整的 24 小时计天，到期后的下一轮执行。
+
+隐藏字段 `SeaMilesLastRecord` 持久化上次成功检测时间，重启与智能调度代理共用同一任务记录。失败不更新时间，下轮仍可重试；未到期仅跳过情报页检测，行动力、货币记录及练级继续执行，海里数统计仅提交本轮实际识别值。旧布尔设置在运行器和 WebUI 读取时迁移：`true → 0`，`false → -1`，已有数字间隔保持不变。离线回归见 `tests/test_opsi_sea_miles.py`。
+
+配置界面对比：[原复选框](images/sea-miles-interval-before.png)、[天数输入框](images/sea-miles-interval-after.png)。
+
 ### 智能调度的身份机制（tasks/task_context.py）
 
 代理执行的核心问题：`OpsiScheduling` 以自己的配置身份跑 `OpsiHazard1Leveling` 的逻辑时，「当前任务是谁」必须临时换成子任务，否则延迟、统计、日志都记错账。`opsi_task_context` 用一组临时属性完成这件事：
