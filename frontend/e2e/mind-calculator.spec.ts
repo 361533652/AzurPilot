@@ -274,6 +274,41 @@ test('等级自动保存冲突保留草稿，不覆盖已保存的数据', async
   await expect(page.getByLabel('等级 1', {exact: true})).toHaveValue('100')
 })
 
+test('同名舰船按群组保留，约克新月先待核对并可明确选择阵营保存', async ({page}) => {
+  await page.goto('/#/i/demo-main/mind-calculator')
+  for (const name of ['天城（战巡）', '天城（正航）', '加贺（战列）', '加贺（正航）',
+    '约克（皇家）', '约克（铁血）', '新月（皇家）', '新月（重樱）']) {
+    await expect(page.locator(`#mind-ship-catalog option[value="${name}"]`)).toHaveCount(1)
+  }
+  await importList(page, ['天城（战巡）', '天城（正航）', '加贺（战列）', '加贺（正航）', '约克', '新月']
+    .map(name => ({name, level: 100, rarity: 'SSR'})))
+  await expect(page.locator('.mind-ship-table tbody tr')).toHaveCount(6)
+  await expect(page.locator('.mind-totals strong').nth(3)).toHaveText('2')
+  await expect(page.locator('.mind-totals strong').first()).toHaveText('9,900')
+  await page.getByRole('button', {name: '保存舰船数据'}).click()
+  await expect(page.locator('.mind-intro')).toContainText('数据已保存到当前实例')
+  await page.getByLabel('船名 5', {exact: true}).fill('约克（铁血）')
+  await page.getByLabel('船名 5', {exact: true}).press('Enter')
+  await expect(page.locator('.mind-intro')).toContainText('数据已保存到当前实例')
+  await choose(page, '状态 5', '计入舰船')
+  await expect(page.locator('.mind-totals strong').nth(3)).toHaveText('1')
+  await expect(page.locator('.mind-totals strong').first()).toHaveText('11,220')
+  await expect(page.locator('.mind-intro')).toContainText('数据已保存到当前实例')
+  await page.reload()
+  await expect(page.getByLabel('船名 5', {exact: true})).toHaveValue('约克（铁血）')
+  await expect(page.getByLabel('船名 6', {exact: true})).toHaveValue('新月')
+  await expect(page.locator('.mind-totals strong').nth(3)).toHaveText('1')
+  await page.locator('.mind-ship-table').screenshot({path: test.info().outputPath('same-name-groups.png'), animations: 'disabled'})
+  await page.setViewportSize({width: 390, height: 844})
+  if ((await page.locator('.app-shell').getAttribute('class'))?.includes('mobile-open')) {
+    await page.getByRole('button', {name: '关闭导航', exact: true}).click()
+  }
+  await expect.poll(() => page.locator('.sidebar').evaluate(el => el.getBoundingClientRect().right)).toBeLessThanOrEqual(3)
+  await page.getByLabel('船名 6', {exact: true}).scrollIntoViewIfNeeded()
+  await expect(page.getByLabel('船名 6', {exact: true})).toBeInViewport()
+  await page.screenshot({path: test.info().outputPath('same-name-groups-mobile.png'), fullPage: true, animations: 'disabled'})
+})
+
 test('等级保存期间切换实例，返回后不会恢复已成功保存的旧草稿', async ({page}) => {
   let delay = false, release: (() => void) | undefined
   const pending = new Set<string>()

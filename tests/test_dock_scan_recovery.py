@@ -150,6 +150,24 @@ class LocalLoopTests(unittest.TestCase):
         self.assertTrue(failed)
         self.assertEqual(loop.reads, [0, 681, 1362])
 
+    def test_same_type_name_ambiguity_keeps_each_slot_without_repeated_page_ocr(self):
+        loop = self.loop()
+        recognize = loop.recognize
+
+        def ambiguous(*args, **kwargs):
+            cards = recognize(*args, **kwargs)
+            if loop.position == 0:
+                for card in cards[:2]:
+                    card.ship.update(name='约克', review=True)
+                    card.identity_ambiguous = True
+            return cards
+
+        with patch('module.retire.mind_scan.recognize_cards', side_effect=ambiguous):
+            ships = loop.scan()
+        self.assertEqual(loop.reads, [0, 681, 1362])
+        reviews = [ship for ship in ships if ship['review']]
+        self.assertEqual([ship['name'] for ship in reviews], ['约克', '约克'])
+
     def test_slow_page_ocr_is_not_charged_to_the_next_scroll_timeout(self):
         loop = self.loop()
         recognize = loop.recognize

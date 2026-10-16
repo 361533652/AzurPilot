@@ -227,7 +227,8 @@ class CalculatorTests(unittest.TestCase):
         self.assertEqual(rows[5]['name'], '灵敏·META')
         self.assertEqual(rows[13]['name'], '热心.改')
         self.assertEqual(rows[13]['level'], 105)
-        self.assertTrue(all(not row['review'] for row in rows))
+        self.assertEqual([row['name'] for row in rows if row['review']], ['新月'])
+        self.assertIn('同名同舰种', rows[7]['source'])
         self.assertGreater(calculate(rows)['mind'], 0)
         self.assertEqual([row['level'] for row in rows], [125, 100, 125, 105, 125, 63, 99, 99, 117, 122, 99, 98, 105, 105,
                                                        120, 105, 105, 120, 120, 120, 120])

@@ -9,7 +9,7 @@ from functools import lru_cache
 import cv2
 import numpy as np
 
-from module.runtime.mind_calculator import RARITIES, find_ship, highest_ships, normalize_name
+from module.runtime.mind_calculator import RARITIES, find_ship, find_ships, highest_ships, normalize_name
 
 
 @dataclass
@@ -24,6 +24,7 @@ class Card:
     fleet: int = 0
     name_reads: tuple = ()
     name_ellipsis: bool = False
+    identity_ambiguous: bool = False
 
 
 def normalize_screenshot(image):
@@ -240,7 +241,7 @@ def _has_name_ellipsis(region):
     return False
 
 
-def _match_name(texts, frame_rarity, *, ellipsis=False):
+def _match_name(texts, frame_rarity, *, ellipsis=False, aviation=False, surface=False):
     """复用舰队管理名单，只有精确命中或唯一截断补全才接受身份。"""
     matcher, _, _ = _scanners()
     candidates = {}
@@ -249,6 +250,9 @@ def _match_name(texts, frame_rarity, *, ellipsis=False):
     corrections = {'酒句': '酒匂', '条鱼': '鲦鱼', '绦鱼': '鲦鱼', '四系乃': '四糸乃', '百雪': '白雪',
                    '杓鹊改': '杓鹬.改', '约克城iii': '约克城II', '列克星敦iii': '列克星敦II',
                    '北安普敦iii': '北安普敦II', '自凤': '白凤', '龙骥': '龙骧', '华甲改': '华甲.改'}
+    if any(len(find_ships(text.strip().strip('、,，\'"‘’“”'))) > 1 for text in texts):
+        from module.runtime.mind_name import match_lua_name
+        return match_lua_name(texts, frame_rarity, ellipsis=ellipsis, aviation=aviation, surface=surface)
     for text in texts:
         # 名称两侧的引号或顿号为字图残影；不删除中间字符或 II/META 后缀。
         text = text.strip().strip('、,，\'"‘’“”')
@@ -376,14 +380,17 @@ def recognize_cards(image, source='', *, name_ocr=None, level_ocr=None, row_orig
         ellipsis = _has_name_ellipsis(name_images[index])
         is_meta = meta_frame(pixels, x, y)
         context = {}
+        from module.runtime.fleet_tech_identity import surface_icon
         if identity is not None:
-            from module.runtime.fleet_tech_identity import aviation_icon, surface_icon
+            from module.runtime.fleet_tech_identity import aviation_icon
             context = dict(meta_frame=is_meta, aviation=aviation_icon(pixels, x, y),
                            surface=surface_icon(pixels, x, y))
+        else:
+            context = dict(aviation=aircraft_icon(pixels, x, y), surface=surface_icon(pixels, x, y))
 
         def match_names(texts, rarity, *, ellipsis=False):
             return identity.match(texts, rarity, ellipsis=ellipsis, **context) if identity is not None \
-                else _match_name(texts, rarity, ellipsis=ellipsis)
+                else _match_name(texts, rarity, ellipsis=ellipsis, **context)
 
         info, name_note = match_names(candidates, frame_rarities[index], ellipsis=ellipsis)
         if info and is_meta and info.get('group') != 'META':
@@ -480,7 +487,7 @@ def recognize_cards(image, source='', *, name_ocr=None, level_ocr=None, row_orig
             else:
                 from module.runtime.mind_name import match_lua_name
                 matched, match_note = match_lua_name(candidates, frame_rarities[index], ellipsis=ellipsis,
-                                                     meta_frame=is_meta, aviation=aircraft_icon(pixels, x, y))
+                                                     meta_frame=is_meta, **context)
             if matched:
                 info, name_note = matched, match_note
             elif '罗马后缀未确认' not in name_note:
@@ -506,7 +513,8 @@ def recognize_cards(image, source='', *, name_ocr=None, level_ocr=None, row_orig
                         candidates=identity.candidates(candidates, ellipsis=ellipsis) if not info else [],
                         identity_ambiguous='同名同舰种' in name_note)
         quality = (4 if info else 0) + (2 if reliable else 0)
-        cards.append(Card(x, y, col, ship, quality, reliable, fleets[index], tuple(candidates), ellipsis))
+        cards.append(Card(x, y, col, ship, quality, reliable, fleets[index], tuple(candidates), ellipsis,
+                          identity_ambiguous='同名同舰种' in name_note))
     return cards
 
 
