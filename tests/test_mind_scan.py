@@ -384,8 +384,9 @@ class ScreenshotTests(unittest.TestCase):
         # 名单、等级和基础稀有度已确认的原始结果直接计费，无需修改核对字段。
         selected = [c.ship for c in self.cards if 90 <= c.ship['level'] <= 115]
         report = calculate(selected)
-        self.assertTrue(all(not ship['review'] for ship in selected))
-        self.assertEqual(report['included'], len(selected) - 1)
+        self.assertEqual([ship['name'] for ship in selected if ship['review']], ['新月'])
+        self.assertEqual(report['review'], 1)
+        self.assertEqual(report['included'], len(selected) - 2)
         self.assertEqual(report['excluded'], 1)  # 帕特莉夏为联动舰，保存但不计费。
         self.assertGreater(report['mind'], 0)
 

@@ -214,6 +214,28 @@ class MindCalculatorScan(Dock):
                     source='当前卡位三帧仍未加载，保留位置待核对'), fleet=-1))
         return sorted(recovered, key=lambda card: (card.y, card.col))
 
+    def _dock_scroll_at_bottom(self, thumb):
+        """严格滑块或与其连通、收窄到轨道末端的圆角端帽证明到底。"""
+        if thumb is None:
+            return False
+        if thumb[-1] >= DOCK_SCROLL.total - 2:
+            return True
+        if thumb[-1] != DOCK_SCROLL.total - 3:
+            return False
+        # 原生圆角的最后两行受抗锯齿混色影响，可能低于严格阈值。
+        # 仅核对轨道末端两行的正向颜色、逐行收窄及八邻接；不扩展
+        # 滑块读数或改变运动标定，也不把静止、近底部当作到底。
+        pixels = self.image_crop(DOCK_SCROLL.area, copy=False)[-3:]
+        scores = color_similarity_2d(pixels, color=DOCK_SCROLL.color)
+        cap = scores >= DOCK_SCROLL.color_threshold - 18
+        widths = cap.sum(axis=1)
+        if not widths[0] > widths[1] > widths[2] >= 1:
+            return False
+        connected = np.flatnonzero(scores[0] > DOCK_SCROLL.color_threshold)
+        for row in cap[1:]:
+            connected = np.array([col for col in np.flatnonzero(row) if np.any(abs(connected - col) <= 1)])
+        return bool(len(connected))
+
     def _scan_pages(self, names, levels):
         """分段核验三排位移，目标位置连续稳定后识别整页，末页确认到底。"""
         merger = self._make_merger()
@@ -281,7 +303,7 @@ class MindCalculatorScan(Dock):
                     # 只有已核实的位移才清除连击历史，停滞仍沿用设备检测和超时恢复。
                     self.device.click_record_clear()
                     logger.attr('船坞实际位移', f'{moved:+d}px，累计 {merger.offset}px')
-                at_bottom = thumb is not None and thumb[-1] >= DOCK_SCROLL.total - 2
+                at_bottom = self._dock_scroll_at_bottom(thumb)
                 visible_rows = grid_rows(self.device.image)
                 aligned = (target is not None and len(visible_rows) == 3
                            and abs(visible_rows[0] + merger.offset - origin_y - target) <= 6)
@@ -307,7 +329,7 @@ class MindCalculatorScan(Dock):
                             logger.warning('当前页局部缺格已保留为待核对卡位，继续处理其余舰船')
                         invalid = [card for card in cards if not card.level_reliable]
                         uncertain_names = [card for card in cards if card.ship['review'] and card.level_reliable
-                                           and not card.ship.get('identity_ambiguous')]
+                                           and not (card.identity_ambiguous or card.ship.get('identity_ambiguous'))]
                         uncertain_fleets = [card for card in cards if card.fleet < 0]
                         # 复核本页与前一船位的边界；历史疑点保留在原卡位，
                         # 不让单点读数问题持续污染后续完整页面的早停证据。
@@ -412,7 +434,9 @@ class MindCalculatorScan(Dock):
                     logger.attr('早停检查', policy.stop_reason(cards, merger.slots))
                     if at_bottom:
                         self._scan_metadata = dict(reached_bottom=True, physical_count=len(merger.slots))
-                        logger.info(f'[{self.scan_label}] 已确认滚动条底部（{thumb[-1] + 1}/{DOCK_SCROLL.total}px），扫描结束')
+                        cap_note = '，已核实连通圆角端帽' if thumb[-1] < DOCK_SCROLL.total - 2 else ''
+                        logger.info(f'[{self.scan_label}] 已确认滚动条底部（严格颜色 {thumb[-1] + 1}/{DOCK_SCROLL.total}px'
+                                    f'{cap_note}），扫描结束')
                         break
                     rows = sorted({card.y for card in cards})
                     if len(rows) != 3:
