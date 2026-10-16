@@ -403,7 +403,7 @@ class ScanLoopRegressionTests(unittest.TestCase):
         self.assertEqual(len(ships), 42)
         self.assertFalse(self.scanner._scan_metadata['reached_bottom'])
 
-    def test_real_scroll_occlusion_stops_the_loop_before_reading_cards(self):
+    def test_real_scroll_occlusion_does_not_block_independently_verified_range_scan(self):
         from module.retire.dock import DOCK_SCROLL
         strip = np.array(Image.open(FIXTURES / 'mind_dock_scroll_gap.png').convert('RGB'))
         strip[78] = 0
@@ -411,10 +411,10 @@ class ScanLoopRegressionTests(unittest.TestCase):
         for image in self.images.values():
             image[y1:y2, x1:x2] = strip
         with patch('module.retire.mind_scan.DOCK_SCROLL', DOCK_SCROLL):
-            with self.assertRaisesRegex(MindCalculatorScanError, '被遮挡'):
-                self.scan()
-        self.assertEqual(self.reads, [])
-        self.scanner.device.drag.assert_not_called()
+            ships = self.scan()
+        self.assertEqual(self.reads, [0, 681, 1362])
+        self.assertEqual(len(ships), 42)
+        self.assertFalse(self.scanner._scan_metadata['reached_bottom'])
 
     def test_local_name_failure_continues_and_preserves_safe_early_stop(self):
         self.kind = 'name'
@@ -463,16 +463,17 @@ class ScanLoopRegressionTests(unittest.TestCase):
         self.assertTrue(self.scanner._policy.sort_valid)
         self.assertLess(self.position, self.bottom)
 
-    def test_persistent_sort_level_or_fleet_doubt_continues_to_real_bottom(self):
+    def test_local_sort_level_or_fleet_doubt_does_not_poison_later_clean_pages(self):
         for kind in ('order', 'level', 'fleet'):
             with self.subTest(kind=kind):
                 self.setUp()
                 self.kind = kind
                 ships = self.scan()
-                self.assertEqual(self.reads, [0, 0, 0, 681, 1362, 2043])
-                self.assertEqual(self.position, self.bottom)
+                self.assertEqual(self.reads, [0, 0, 0, 681, 1362])
+                self.assertLess(self.position, self.bottom)
                 self.assertTrue(any(ship['review'] for ship in ships))
-                self.assertFalse(self.scanner._policy.sort_valid)
+                self.assertTrue(self.scanner._policy.sort_valid)
+                self.assertLessEqual(sum(ship['review'] for ship in ships), 2)
                 if kind == 'level':
                     unknown = [ship for ship in ships if ship['level'] == 0]
                     self.assertEqual(len(unknown), 1)
@@ -506,6 +507,7 @@ class ScanLoopRegressionTests(unittest.TestCase):
     def test_near_bottom_without_endpoint_does_not_save_partial_result(self):
         self.show_bottom = False
         self.kind = 'level'
+        self.scanner._policy = ScanPolicy(1, 125, True)
         with self.assertRaises((MindCalculatorScanError, GameStuckError)):
             self.scan()
         self.assertEqual(self.position, self.bottom)
