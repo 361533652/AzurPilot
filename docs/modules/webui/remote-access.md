@@ -3,23 +3,30 @@
 ## 启用
 
 AP 的「远程访问」页将模式选为 `cloudflare`，设置 WebUI 密码并开启远程访问，重启 AP。
-`CloudflareRegistry` 默认为 `https://ap-remote.108-186-180-52.sslip.io:8443`。
+`CloudflareRegistry` 默认为 `https://remote.azurpilot.com`。
+注册与配对使用 `/api/v1/*`，根路径为介绍页。已知旧试验地址会迁移到新域名，保留设备身份；自定义服务器不变。
 AFA 在「设置 → Runtime」点击「试用 Quick Tunnel」，确认重启后使用同一套 AP provider；
 已有 SSH / WebRTC 模式只有在用户选择试用时才切换。
 
 设备身份保存在 `config/remote-access.json`：安装 ID 与注册密钥持久化，配对访问凭据只保存
 SHA-256 摘要。AFA 第一次启用时将 Android ID 与随机安装因子的摘要作为设备 ID，
 不上传 Android ID 原文；卸载后重新安装会获得新身份，避免丢失旧密钥后占用原设备入口。
+`CloudflareDeviceId` 留空时自动生成；兼容部署解析器保留的 `""` / `''` 空值。
+旧版若已将引号空值保存为身份，只修复未被服务器接受的 ID，保留原设备密钥与已保存授权。
 备份身份文件才能在迁移后保留原固定入口；禁止把此文件作为用户实例、测试夹具或 Git 内容提交。
 
 ## 生命周期
 
 `CloudflareRemoteAccessProvider` 在线程内调用 `pyflared==0.1.0` 的 `run_quick_tunnel()`。
+上游库导入时创建的数据库目录定向到项目 `cache/cloudflare/pyflared/`，无需写入
+Windows `AppData/Local/Azmain`。适配仅匹配 pyflared 的应用标识，导入后恢复通用目录函数。
 每次启动产生新的 `*.trycloudflare.com` URL，用设备密钥注册到 Go 服务；每 60 秒续约。
 固定入口为 `<registry>/d/<device_id>/`，服务返回 **301** 与 `Cache-Control: no-store`。
 路径和查询参数会传到当前 Tunnel；固定入口不代理业务流量。
 
-优雅停止时上报离线并回收 cloudflared；异常退出后服务端租约 180 秒失效，返回 503。
+优雅停止时上报离线并回收 cloudflared；异常退出后服务端租约 180 秒失效。
+固定入口还会用四秒超时请求 Tunnel 的 `/healthz`，确认 AP 的协议健康状态；不跟随探测跳转或携带凭据。
+设备不存在、离线、租约过期或 Tunnel 失效时，以 302 跳到同域 `/error`；在线时仍返回禁止缓存的 301。
 Tunnel 或续约失败会清除当前可访问地址、关闭旧进程，以 2–60 秒退避重建并重新注册。
 `pyflared` 的流读取在 EOF 时返回 SKIP，本模块将其转为 EOF，避免进程退出后忙循环。
 提供者不更改 cloudflared 以外的后台任务或游戏状态。

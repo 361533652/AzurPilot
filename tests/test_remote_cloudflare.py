@@ -3,6 +3,8 @@
 import asyncio
 import json
 import secrets
+import subprocess
+import sys
 import tempfile
 import threading
 from pathlib import Path
@@ -39,6 +41,7 @@ def test_invalid_registry_and_corrupted_identity_fail_closed():
         with pytest.raises(ValueError):
             registry_url(url)
     assert registry_url('http://127.0.0.1:18882/') == 'http://127.0.0.1:18882'
+    assert registry_url('https://ap-remote.108-186-180-52.sslip.io:8443/') == 'https://remote.azurpilot.com'
     with tempfile.TemporaryDirectory() as directory:
         store = RemoteIdentity(directory)
         store.load()
@@ -46,6 +49,26 @@ def test_invalid_registry_and_corrupted_identity_fail_closed():
         with pytest.raises(json.JSONDecodeError):
             store.load()
         assert store.path.read_text(encoding='utf-8') == '{invalid'
+
+
+def test_quoted_empty_device_ids_are_repaired_without_losing_credentials():
+    for empty in ('', '""', "''"):
+        with tempfile.TemporaryDirectory() as directory:
+            store = RemoteIdentity(directory, device_id=empty)
+            first = store.load()
+            client_id, token = store.add_client()
+            data = json.loads(store.path.read_text())
+            data['device_id'] = empty
+            store.save(data)
+            repaired = RemoteIdentity(directory, device_id=empty).load()
+            assert len(repaired['device_id']) == 32
+            assert repaired['device_id'] not in ('', '""', "''")
+            assert repaired['device_key'] == first['device_key']
+            assert store.accepts(token)
+            assert repaired['clients'][0]['id'] == client_id
+            assert RemoteIdentity(directory).load() == repaired
+    with pytest.raises(ValueError, match='CloudflareDeviceId'):
+        RemoteIdentity(device_id='invalid')
 
 
 def test_failed_pair_creation_removes_unused_local_credential():
@@ -76,6 +99,56 @@ def test_stop_interrupts_reconnect_backoff_and_start_is_idempotent():
         provider.stop()
         assert not provider.is_alive()
         assert provider.state == 'stopped'
+
+
+def test_pyflared_import_uses_project_cache_when_user_data_is_denied():
+    # 新进程保证 pyflared 尚未导入，真实覆盖它在导入阶段创建数据目录的行为。
+    script = '''
+import asyncio
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+import platformdirs
+original = platformdirs.user_data_dir
+def deny_global(appname=None, appauthor=None, *args, **kwargs):
+    if appname == "pyflared":
+        raise PermissionError("全局库目录禁止写入")
+    return original(appname, appauthor, *args, **kwargs)
+platformdirs.user_data_dir = deny_global
+from module.runtime import remote_cloudflare as remote
+class ReachedProcess(Exception): pass
+class FakeContext:
+    async def stream_chunker(self, stream, channel): return b""
+    async def __aenter__(self): raise ReachedProcess()
+    async def __aexit__(self, *args): pass
+original_context = remote._quick_tunnel_context
+def initialize(service):
+    original_context(service)
+    return FakeContext()
+config = SimpleNamespace(Password="test-password", WebuiSSLCert=None, WebuiHost="127.0.0.1", WebuiPort=25548)
+with patch.object(remote, "_quick_tunnel_context", side_effect=initialize), patch("module.runtime.setting.State.deploy_config", config):
+    try: asyncio.run(remote.CloudflareRemoteAccessProvider()._tunnel())
+    except ReachedProcess: pass
+    else: raise AssertionError("未进入实际 provider 的进程启动阶段")
+from pyflared.core.repository import sqlite_file_name, user_data_dir
+expected = Path.cwd() / "cache/cloudflare/pyflared/cache.db"
+assert sqlite_file_name() == expected, sqlite_file_name()
+assert expected.parent.is_dir()
+assert platformdirs.user_data_dir is deny_global
+assert user_data_dir("another-app", "another-author") == original("another-app", "another-author")
+'''
+    subprocess.run([sys.executable, '-c', script], check=True, capture_output=True,
+                   text=True, encoding='utf-8', errors='replace', timeout=30)
+
+
+def test_exception_groups_expose_the_actionable_failure():
+    from module.runtime.remote_cloudflare import _failure_reason
+    error = ExceptionGroup('tasks', [ValueError('远程注册服务返回 HTTP 503'),
+                                   ExceptionGroup('nested', [PermissionError(13, '拒绝访问', 'cache/cloudflare')])])
+    reason = _failure_reason(error)
+    assert 'HTTP 503' in reason
+    assert 'cache/cloudflare' in reason
+    assert 'ExceptionGroup' not in reason
 
 
 def test_quick_tunnel_registration_and_cleanup_use_current_url():
@@ -114,12 +187,14 @@ def test_quick_tunnel_registration_and_cleanup_use_current_url():
             await asyncio.wait_for(registered.wait(), 3)
             assert provider.address == 'https://registry.example/d/device/'
             assert requests[0][2]['tunnel_url'] == 'https://new-url.trycloudflare.com'
+            assert requests[0][1] == '/api/v1/devices/register'
             assert provider.get_connection_state() == 'cloudflare_ready'
             quick.assert_called_once_with('http://127.0.0.1:25548')
             task.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await task
             assert requests[-1][0] == 'DELETE'
+            assert requests[-1][1].startswith('/api/v1/devices/')
             assert provider.address == ''
     with tempfile.TemporaryDirectory() as directory:
         asyncio.run(scenario(directory))
