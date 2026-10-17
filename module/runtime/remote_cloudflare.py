@@ -1,0 +1,256 @@
+"""Quick Tunnel 生命周期、固定入口注册和可撤销的 AFA 配对凭据。"""
+
+import asyncio
+import hashlib
+import json
+import os
+import secrets
+import socket
+import threading
+import time
+import uuid
+from pathlib import Path
+from urllib.parse import urlsplit
+
+import aiohttp
+
+from deploy.atomic import atomic_write
+from module.logger import logger
+
+DEFAULT_REGISTRY = 'https://ap-remote.108-186-180-52.sslip.io:8443'
+_store_lock = threading.RLock()
+
+
+class RemoteIdentity:
+    """保存安装级设备身份与配对凭据摘要；测试可传入临时目录。"""
+
+    def __init__(self, directory='config', device_id=''):
+        self.path = Path(directory) / 'remote-access.json'
+        self.device_id = device_id
+
+    def load(self):
+        """读取稳定身份；首次启用时生成，损坏文件不自动覆盖。"""
+        with _store_lock:
+            if self.path.exists():
+                return json.loads(self.path.read_text(encoding='utf-8'))
+            data = {'device_id': self.device_id or uuid.uuid4().hex,
+                    'device_key': secrets.token_urlsafe(32), 'clients': []}
+            self.save(data)
+            return data
+
+    def save(self, data):
+        """原子保存身份并限制 POSIX 文件权限。"""
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write(str(self.path), json.dumps(data, ensure_ascii=False))
+        if os.name != 'nt':
+            self.path.chmod(0o600)
+
+    def add_client(self):
+        """为一次配对生成独立凭据，避免共享 WebUI 密码。"""
+        with _store_lock:
+            data = self.load()
+            if len(data['clients']) >= 20:
+                raise ValueError('配对设备已达上限，请先移除旧配对')
+            token, client_id = secrets.token_urlsafe(32), uuid.uuid4().hex
+            data['clients'].append({'id': client_id, 'hash': hashlib.sha256(token.encode()).hexdigest(),
+                                    'created_at': int(time.time())})
+            self.save(data)
+            return client_id, token
+
+    def remove_client(self, client_id):
+        """撤销指定客户端；下次鉴权立即拒绝该凭据。"""
+        with _store_lock:
+            data = self.load()
+            data['clients'] = [item for item in data['clients'] if item['id'] != client_id]
+            self.save(data)
+
+    def accepts(self, token):
+        """检查凭据摘要；未启用过远程访问时不创建身份文件。"""
+        if not token or not self.path.exists():
+            return False
+        hashed = hashlib.sha256(token.encode()).hexdigest()
+        with _store_lock:
+            return any(secrets.compare_digest(item['hash'], hashed) for item in self.load()['clients'])
+
+
+def registry_url(value):
+    """要求注册 API 使用 HTTPS；回环地址例外用于隔离测试。"""
+    parsed = urlsplit(value)
+    if (not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment
+            or (parsed.scheme != 'https' and not (
+                parsed.scheme == 'http' and parsed.hostname in ('127.0.0.1', 'localhost')))):
+        raise ValueError('远程注册服务器必须使用 HTTPS')
+    return value.rstrip('/')
+
+
+class CloudflareRemoteAccessProvider:
+    """在专用线程运行 pyflared，每次进程启动重建 Tunnel 并续约固定入口。"""
+
+    def __init__(self):
+        self.thread = None
+        self.stop_event = threading.Event()
+        self.loop = None
+        self.task = None
+        self.state, self.address, self.error = 'stopped', '', ''
+        self.tunnel_url = ''
+        self._lock = threading.Lock()
+
+    def identity(self):
+        """返回当前安装的设备身份仓库。"""
+        from module.runtime.setting import State
+        return RemoteIdentity(device_id=getattr(State.deploy_config, 'CloudflareDeviceId', '') or '')
+
+    def registry(self):
+        """返回经过校验的注册服务地址。"""
+        from module.runtime.setting import State
+        return registry_url(getattr(State.deploy_config, 'CloudflareRegistry', DEFAULT_REGISTRY))
+
+    async def request(self, method, path, data=None):
+        """调用注册服务，禁止跟随跳转，凭据只通过 Authorization 传输。"""
+        identity = self.identity().load()
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
+            async with session.request(method, self.registry() + path, json=data,
+                                       headers={'Authorization': 'Bearer ' + identity['device_key']},
+                                       allow_redirects=False) as response:
+                if response.status != 200:
+                    raise ValueError(f'远程注册服务返回 HTTP {response.status}')
+                return await response.json()
+
+    def start(self):
+        """幂等启动后台线程，不阻塞 WebUI 启动。"""
+        with self._lock:
+            if self.is_alive():
+                return
+            self.stop_event.clear()
+            self.state, self.error = 'starting', ''
+            self.thread = threading.Thread(target=self._run, name='quick-tunnel', daemon=True)
+            self.thread.start()
+
+    def stop(self):
+        """取消 Tunnel 并等待子进程回收；服务端租约作为异常退出的兜底。"""
+        with self._lock:
+            self.stop_event.set()
+            if self.loop and self.task and not self.loop.is_closed():
+                self.loop.call_soon_threadsafe(self.task.cancel)
+            if self.thread and self.thread is not threading.current_thread():
+                self.thread.join(timeout=20)
+            self.address, self.tunnel_url, self.state = '', '', 'stopped'
+
+    def is_alive(self):
+        """返回监督线程是否仍在运行。"""
+        return bool(self.thread and self.thread.is_alive())
+
+    def get_state(self):
+        """沿用远程访问状态码：就绪为 1，启动为 2，停止或失败为 0。"""
+        return 1 if self.address else 2 if self.is_alive() else 0
+
+    def get_entry_point(self):
+        """返回固定入口，注册失败时不展示旧地址。"""
+        return self.address or None
+
+    def get_connection_state(self):
+        """返回界面使用的连接状态。"""
+        return self.state
+
+    def get_error(self):
+        """返回不包含设备密钥的错误描述。"""
+        return self.error
+
+    def _run(self):
+        async def supervise():
+            self.loop, self.task = asyncio.get_running_loop(), asyncio.current_task()
+            delay = 2
+            while not self.stop_event.is_set():
+                try:
+                    await self._tunnel()
+                except asyncio.CancelledError:
+                    break
+                except Exception as exc:
+                    self.state, self.address, self.tunnel_url = 'failed', '', ''
+                    reason = str(exc) if isinstance(exc, ValueError) else type(exc).__name__
+                    self.error = f'Quick Tunnel 暂不可用（{reason}），正在重试'
+                    logger.warning(self.error)
+                if not self.stop_event.is_set():
+                    await asyncio.sleep(delay)
+                    delay = min(delay * 2, 60)
+        try:
+            asyncio.run(supervise())
+        except asyncio.CancelledError:
+            pass
+        finally:
+            self.loop, self.task = None, None
+
+    async def _tunnel(self):
+        from pyflared import run_quick_tunnel
+        from module.runtime.remote_access import _local_host
+        from module.runtime.setting import State
+        from module.runtime.password_utils import is_webui_password_set
+
+        # Tunnel 的公网 Host 会触发现有网关鉴权；拒绝暴露无口令的实例。
+        if not is_webui_password_set(State.deploy_config.Password):
+            raise ValueError('请先设置 WebUI 访问密码')
+        host = _local_host()
+        if ':' in host and not host.startswith('['):
+            host = f'[{host}]'
+        scheme = 'https' if State.deploy_config.WebuiSSLCert else 'http'
+        self.state, self.address, self.error = 'starting', '', ''
+        from pyflared.shared.types import ChunkSignal
+        context = run_quick_tunnel(f'{scheme}://{host}:{State.deploy_config.WebuiPort}')
+        chunker = context.stream_chunker
+        # pyflared 0.1.0 在 EOF 返回 SKIP；显式结束可避免进程退出后空转。
+        async def safe_chunker(stream, channel):
+            if stream.at_eof():
+                return ChunkSignal.EOF
+            result = await chunker(stream, channel)
+            return ChunkSignal.EOF if result == ChunkSignal.SKIP and stream.at_eof() else result
+        context.stream_chunker = safe_chunker
+        async with context as process:
+            ready = asyncio.get_running_loop().create_future()
+            async def drain():
+                async for event in process:
+                    url = event.data.decode().strip()
+                    parsed = urlsplit(url)
+                    if parsed.scheme == 'https' and (parsed.hostname or '').endswith('.trycloudflare.com'):
+                        self.tunnel_url = url
+                        if not ready.done():
+                            ready.set_result(url)
+                raise RuntimeError('Quick Tunnel 连接已中断')
+            async def heartbeat():
+                async with asyncio.timeout(90):
+                    await ready
+                identity = self.identity().load()
+                while True:
+                    registered = await self.request('POST', '/v1/devices/register', {
+                        'device_id': identity['device_id'], 'name': socket.gethostname()[:80],
+                        'tunnel_url': self.tunnel_url,
+                    })
+                    self.address, self.state, self.error = registered['url'], 'cloudflare_ready', ''
+                    await asyncio.sleep(60)
+            try:
+                async with asyncio.TaskGroup() as tasks:
+                    tasks.create_task(drain())
+                    tasks.create_task(heartbeat())
+            finally:
+                self.address = ''
+                try:
+                    await self.request('DELETE', '/v1/devices/' + self.identity().load()['device_id'])
+                except (aiohttp.ClientError, TimeoutError, ValueError):
+                    pass
+
+    def create_pairing(self):
+        """由本机 AP 发起配对；服务器生成六位码与扫描凭据。"""
+        if not self.address:
+            raise ValueError('请先启用 Cloudflare 远程访问并等待连接就绪')
+        identity = self.identity()
+        client_id, token = identity.add_client()
+        try:
+            result = asyncio.run(self.request('POST', '/v1/pairings', {
+                'device_id': identity.load()['device_id'], 'access_token': token,
+            }))
+        except Exception:
+            identity.remove_client(client_id)
+            raise
+        return {**result, 'client_id': client_id}
+
+
+cloudflare = CloudflareRemoteAccessProvider()
