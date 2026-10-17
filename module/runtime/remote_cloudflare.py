@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 import secrets
 import socket
 import threading
@@ -17,8 +18,20 @@ import aiohttp
 from deploy.atomic import atomic_write
 from module.logger import logger
 
-DEFAULT_REGISTRY = 'https://ap-remote.108-186-180-52.sslip.io:8443'
+DEFAULT_REGISTRY = 'https://remote.azurpilot.com'
+LEGACY_REGISTRY = 'https://ap-remote.108-186-180-52.sslip.io:8443'
 _store_lock = threading.RLock()
+_pyflared_import_lock = threading.RLock()
+
+
+def _device_id(value):
+    """兼容简易部署解析器保留的引号；空值使用安装级随机 ID。"""
+    value = str(value or '').strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+        value = value[1:-1]
+    if value and not re.fullmatch(r'[a-zA-Z0-9_-]{16,80}', value):
+        raise ValueError('CloudflareDeviceId 必须为 16–80 位字母、数字、下划线或连字符，或留空自动生成')
+    return value
 
 
 class RemoteIdentity:
@@ -26,13 +39,19 @@ class RemoteIdentity:
 
     def __init__(self, directory='config', device_id=''):
         self.path = Path(directory) / 'remote-access.json'
-        self.device_id = device_id
+        self.device_id = _device_id(device_id)
 
     def load(self):
         """读取稳定身份；首次启用时生成，损坏文件不自动覆盖。"""
         with _store_lock:
             if self.path.exists():
-                return json.loads(self.path.read_text(encoding='utf-8'))
+                data = json.loads(self.path.read_text(encoding='utf-8'))
+                value = _device_id(data['device_id']) or self.device_id or uuid.uuid4().hex
+                if value != data['device_id']:
+                    # 旧版把引号空值保存为 ID，服务器从未接受；修正时保留密钥及授权。
+                    data['device_id'] = value
+                    self.save(data)
+                return data
             data = {'device_id': self.device_id or uuid.uuid4().hex,
                     'device_key': secrets.token_urlsafe(32), 'clients': []}
             self.save(data)
@@ -75,12 +94,47 @@ class RemoteIdentity:
 
 def registry_url(value):
     """要求注册 API 使用 HTTPS；回环地址例外用于隔离测试。"""
+    if value.rstrip('/') == LEGACY_REGISTRY:
+        value = DEFAULT_REGISTRY
     parsed = urlsplit(value)
     if (not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment
             or (parsed.scheme != 'https' and not (
                 parsed.scheme == 'http' and parsed.hostname in ('127.0.0.1', 'localhost')))):
         raise ValueError('远程注册服务器必须使用 HTTPS')
     return value.rstrip('/')
+
+
+def _quick_tunnel_context(service):
+    """将 pyflared 0.1.0 的导入期数据放入项目缓存，不改写其他库的目录。"""
+    import platformdirs
+
+    # 上游在导入 repository 时直接建库，尚未提供数据目录参数。
+    # 仅重定向它自己的应用标识；导入结束立即恢复 platformdirs 的公开入口。
+    with _pyflared_import_lock:
+        original = platformdirs.user_data_dir
+
+        def project_data_dir(appname=None, appauthor=None, *args, **kwargs):
+            if appname == 'pyflared' and appauthor == 'Azmain':
+                return str(Path(__file__).resolve().parents[2] / 'cache' / 'cloudflare' / 'pyflared')
+            return original(appname, appauthor, *args, **kwargs)
+
+        platformdirs.user_data_dir = project_data_dir
+        try:
+            from pyflared import run_quick_tunnel
+        finally:
+            platformdirs.user_data_dir = original
+    return run_quick_tunnel(service)
+
+
+def _failure_reason(error):
+    """展开并发异常组，向界面提供可定位且不包含凭据的失败原因。"""
+    if isinstance(error, BaseExceptionGroup):
+        return '；'.join(dict.fromkeys(_failure_reason(item) for item in error.exceptions))
+    if isinstance(error, PermissionError):
+        return f'权限不足，无法访问 {error.filename}' if error.filename else '本地文件或进程权限不足'
+    if isinstance(error, ValueError):
+        return str(error)
+    return type(error).__name__
 
 
 class CloudflareRemoteAccessProvider:
@@ -167,7 +221,7 @@ class CloudflareRemoteAccessProvider:
                     break
                 except Exception as exc:
                     self.state, self.address, self.tunnel_url = 'failed', '', ''
-                    reason = str(exc) if isinstance(exc, ValueError) else type(exc).__name__
+                    reason = _failure_reason(exc)
                     self.error = f'Quick Tunnel 暂不可用（{reason}），正在重试'
                     logger.warning(self.error)
                 if not self.stop_event.is_set():
@@ -181,7 +235,6 @@ class CloudflareRemoteAccessProvider:
             self.loop, self.task = None, None
 
     async def _tunnel(self):
-        from pyflared import run_quick_tunnel
         from module.runtime.remote_access import _local_host
         from module.runtime.setting import State
         from module.runtime.password_utils import is_webui_password_set
@@ -194,8 +247,8 @@ class CloudflareRemoteAccessProvider:
             host = f'[{host}]'
         scheme = 'https' if State.deploy_config.WebuiSSLCert else 'http'
         self.state, self.address, self.error = 'starting', '', ''
+        context = _quick_tunnel_context(f'{scheme}://{host}:{State.deploy_config.WebuiPort}')
         from pyflared.shared.types import ChunkSignal
-        context = run_quick_tunnel(f'{scheme}://{host}:{State.deploy_config.WebuiPort}')
         chunker = context.stream_chunker
         # pyflared 0.1.0 在 EOF 返回 SKIP；显式结束可避免进程退出后空转。
         async def safe_chunker(stream, channel):
@@ -220,7 +273,7 @@ class CloudflareRemoteAccessProvider:
                     await ready
                 identity = self.identity().load()
                 while True:
-                    registered = await self.request('POST', '/v1/devices/register', {
+                    registered = await self.request('POST', '/api/v1/devices/register', {
                         'device_id': identity['device_id'], 'name': socket.gethostname()[:80],
                         'tunnel_url': self.tunnel_url,
                     })
@@ -233,7 +286,7 @@ class CloudflareRemoteAccessProvider:
             finally:
                 self.address = ''
                 try:
-                    await self.request('DELETE', '/v1/devices/' + self.identity().load()['device_id'])
+                    await self.request('DELETE', '/api/v1/devices/' + self.identity().load()['device_id'])
                 except (aiohttp.ClientError, TimeoutError, ValueError):
                     pass
 
@@ -244,7 +297,7 @@ class CloudflareRemoteAccessProvider:
         identity = self.identity()
         client_id, token = identity.add_client()
         try:
-            result = asyncio.run(self.request('POST', '/v1/pairings', {
+            result = asyncio.run(self.request('POST', '/api/v1/pairings', {
                 'device_id': identity.load()['device_id'], 'access_token': token,
             }))
         except Exception:
