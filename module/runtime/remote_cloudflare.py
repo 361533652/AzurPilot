@@ -147,6 +147,7 @@ class CloudflareRemoteAccessProvider:
         self.task = None
         self.state, self.address, self.error = 'stopped', '', ''
         self.tunnel_url = ''
+        self.retry_after = 0
         self._lock = threading.Lock()
 
     def identity(self):
@@ -213,7 +214,7 @@ class CloudflareRemoteAccessProvider:
     def _run(self):
         async def supervise():
             self.loop, self.task = asyncio.get_running_loop(), asyncio.current_task()
-            delay = 2
+            delay = 30
             while not self.stop_event.is_set():
                 try:
                     await self._tunnel()
@@ -225,8 +226,9 @@ class CloudflareRemoteAccessProvider:
                     self.error = f'Quick Tunnel 暂不可用（{reason}），正在重试'
                     logger.warning(self.error)
                 if not self.stop_event.is_set():
-                    await asyncio.sleep(delay)
-                    delay = min(delay * 2, 60)
+                    await asyncio.sleep(max(delay, self.retry_after))
+                    self.retry_after = 0
+                    delay = min(delay * 2, 300)
         try:
             asyncio.run(supervise())
         except asyncio.CancelledError:
@@ -249,13 +251,19 @@ class CloudflareRemoteAccessProvider:
         self.state, self.address, self.error = 'starting', '', ''
         context = _quick_tunnel_context(f'{scheme}://{host}:{State.deploy_config.WebuiPort}')
         from pyflared.shared.types import ChunkSignal
-        chunker = context.stream_chunker
-        # pyflared 0.1.0 在 EOF 返回 SKIP；显式结束可避免进程退出后空转。
+        diagnostic = ''
         async def safe_chunker(stream, channel):
-            if stream.at_eof():
+            nonlocal diagnostic
+            line = await stream.readline()
+            if not line:
                 return ChunkSignal.EOF
-            result = await chunker(stream, channel)
-            return ChunkSignal.EOF if result == ChunkSignal.SKIP and stream.at_eof() else result
+            if b'429 Too Many Requests' in line or b'error code: 1015' in line:
+                diagnostic = 'Cloudflare Quick Tunnel 请求过于频繁（HTTP 429），等待十分钟后重试'
+                self.retry_after = 600
+            elif b'failed to dial to edge' in line or b'TLS handshake timeout' in line:
+                diagnostic = 'Cloudflare 边缘连接超时，请检查网络能否连接 7844 端口'
+            match = re.search(rb'https://[a-zA-Z0-9-]+\.trycloudflare\.com', line)
+            return match.group(0) if match else ChunkSignal.SKIP
         context.stream_chunker = safe_chunker
         async with context as process:
             ready = asyncio.get_running_loop().create_future()
@@ -267,18 +275,34 @@ class CloudflareRemoteAccessProvider:
                         self.tunnel_url = url
                         if not ready.done():
                             ready.set_result(url)
-                raise RuntimeError('Quick Tunnel 连接已中断')
+                raise ValueError(diagnostic or 'cloudflared 进程已退出，等待重建 Quick Tunnel')
             async def heartbeat():
-                async with asyncio.timeout(90):
-                    await ready
+                try:
+                    async with asyncio.timeout(90):
+                        await ready
+                except TimeoutError:
+                    raise ValueError(diagnostic or 'Cloudflare 在 90 秒内未分配 Quick Tunnel 地址') from None
                 identity = self.identity().load()
+                delay = 2
                 while True:
-                    registered = await self.request('POST', '/api/v1/devices/register', {
-                        'device_id': identity['device_id'], 'name': socket.gethostname()[:80],
-                        'tunnel_url': self.tunnel_url,
-                    })
-                    self.address, self.state, self.error = registered['url'], 'cloudflare_ready', ''
-                    await asyncio.sleep(60)
+                    try:
+                        # CLI 输出 URL 只表示分配成功，公网健康检查成功才能宣告可访问。
+                        await self.check_tunnel(self.tunnel_url)
+                        registered = await self.request('POST', '/api/v1/devices/register', {
+                            'device_id': identity['device_id'], 'name': socket.gethostname()[:80],
+                            'tunnel_url': self.tunnel_url,
+                        })
+                    except (aiohttp.ClientError, TimeoutError, ValueError) as exc:
+                        # 注册或探测瞬断只重试同一 URL，不销毁健康进程重新申请 Tunnel。
+                        self.address, self.state = '', 'failed'
+                        reason = '网络请求超时' if isinstance(exc, TimeoutError) else _failure_reason(exc)
+                        self.error = f'Quick Tunnel 正在恢复（{reason}），保留当前隧道重试'
+                        await asyncio.sleep(delay)
+                        delay = min(delay * 2, 60)
+                    else:
+                        self.address, self.state, self.error = registered['url'], 'cloudflare_ready', ''
+                        delay = 2
+                        await asyncio.sleep(60)
             try:
                 async with asyncio.TaskGroup() as tasks:
                     tasks.create_task(drain())
@@ -289,6 +313,21 @@ class CloudflareRemoteAccessProvider:
                     await self.request('DELETE', '/api/v1/devices/' + self.identity().load()['device_id'])
                 except (aiohttp.ClientError, TimeoutError, ValueError):
                     pass
+
+    async def check_tunnel(self, url):
+        """验证公网 AP 健康接口；不跟随跳转，也不携带 WebUI 或设备凭据。"""
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=8)) as session:
+                async with session.get(url.rstrip('/') + '/healthz', allow_redirects=False) as response:
+                    if response.status != 200:
+                        raise ValueError(f'Quick Tunnel 公网健康检查返回 HTTP {response.status}')
+                    data = await response.json()
+                    if data.get('status') != 'ok' or data.get('protocolVersion') != 1:
+                        raise ValueError('Quick Tunnel 公网健康检查未返回 AP 协议')
+        except TimeoutError:
+            raise ValueError('Quick Tunnel 公网健康检查超时') from None
+        except aiohttp.ClientError:
+            raise ValueError('Quick Tunnel 公网健康检查连接失败，请检查网络和 DNS') from None
 
     def create_pairing(self):
         """由本机 AP 发起配对；服务器生成六位码与扫描凭据。"""
