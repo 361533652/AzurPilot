@@ -7,6 +7,8 @@ AP 的「远程访问」页将模式选为 `cloudflare`，设置 WebUI 密码并
 注册与配对使用 `/api/v1/*`，根路径为介绍页。已知旧试验地址会迁移到新域名，保留设备身份；自定义服务器不变。
 AFA 在「设置 → Runtime」点击「试用 Quick Tunnel」，确认重启后使用同一套 AP provider；
 已有 SSH / WebRTC 模式只有在用户选择试用时才切换。
+仅作为客户端连接其他 AP 时，从 AFA 欢迎页、主页或本机部署页点击「连接远程 AP」；
+不需要安装或启动本机 Runtime，也不需要 Shizuku。远程模式会保存，断连页保留配对入口。
 
 设备身份保存在 `config/remote-access.json`：安装 ID 与注册密钥持久化，配对访问凭据只保存
 SHA-256 摘要。AFA 第一次启用时将 Android ID 与随机安装因子的摘要作为设备 ID，
@@ -27,8 +29,12 @@ Windows `AppData/Local/Azmain`。适配仅匹配 pyflared 的应用标识，导�
 优雅停止时上报离线并回收 cloudflared；异常退出后服务端租约 180 秒失效。
 固定入口还会用四秒超时请求 Tunnel 的 `/healthz`，确认 AP 的协议健康状态；不跟随探测跳转或携带凭据。
 设备不存在、离线、租约过期或 Tunnel 失效时，以 302 跳到同域 `/error`；在线时仍返回禁止缓存的 301。
-Tunnel 或续约失败会清除当前可访问地址、关闭旧进程，以 2–60 秒退避重建并重新注册。
-`pyflared` 的流读取在 EOF 时返回 SKIP，本模块将其转为 EOF，避免进程退出后忙循环。
+cloudflared 沿用自动传输选择；网络须允许连接 Cloudflare 边缘的 7844 端口。
+CLI 分配 URL 后还须通过公网 `/healthz` 协议检查，才注册并显示就绪。
+探测或注册续约瞬断会清除当前可访问地址，以 2–60 秒退避重试同一 URL，保留进程与 Tunnel。
+仅 cloudflared 退出或未分配 URL 时重建进程，以 30–300 秒退避避免频繁申请；
+识别到 Quick Tunnel HTTP 429/1015 后至少等待十分钟，再尝试申请。
+`pyflared` 的流读取在 EOF 时返回 SKIP，本模块在 EOF 显式结束，避免进程退出后忙循环。
 提供者不更改 cloudflared 以外的后台任务或游戏状态。
 
 公网 Host 保留到现有网关，由既有本机判定与 WebUI 密码策略鉴权。无有效 WebUI 密码时

@@ -123,7 +123,7 @@ class FakeContext:
     async def __aexit__(self, *args): pass
 original_context = remote._quick_tunnel_context
 def initialize(service):
-    original_context(service)
+    original_context(service).cmd_args.close()
     return FakeContext()
 config = SimpleNamespace(Password="test-password", WebuiSSLCert=None, WebuiHost="127.0.0.1", WebuiPort=25548)
 with patch.object(remote, "_quick_tunnel_context", side_effect=initialize), patch("module.runtime.setting.State.deploy_config", config):
@@ -182,6 +182,7 @@ def test_quick_tunnel_registration_and_cleanup_use_current_url():
         with patch.object(pyflared, 'run_quick_tunnel', return_value=FakeProcess()) as quick, \
                 patch('module.runtime.setting.State.deploy_config', config), \
                 patch.object(provider, 'identity', return_value=RemoteIdentity(directory)), \
+                patch.object(provider, 'check_tunnel', return_value=None), \
                 patch.object(provider, 'request', side_effect=request):
             task = asyncio.create_task(provider._tunnel())
             await asyncio.wait_for(registered.wait(), 3)
@@ -198,3 +199,88 @@ def test_quick_tunnel_registration_and_cleanup_use_current_url():
             assert provider.address == ''
     with tempfile.TemporaryDirectory() as directory:
         asyncio.run(scenario(directory))
+
+
+def test_registry_failure_retries_without_reallocating_tunnel():
+    class Process:
+        def __init__(self):
+            self.entered = self.exited = 0
+        async def __aenter__(self):
+            self.entered += 1
+            return self
+        async def __aexit__(self, *args):
+            self.exited += 1
+        def __aiter__(self):
+            async def events():
+                yield SimpleNamespace(data=b'https://retained.trycloudflare.com')
+                await asyncio.Future()
+            return events()
+
+    async def scenario(directory):
+        provider, process = CloudflareRemoteAccessProvider(), Process()
+        recovered = asyncio.Event()
+        calls = []
+        async def request(method, path, data=None):
+            if method == 'POST':
+                calls.append(data['tunnel_url'])
+                if len(calls) == 1:
+                    raise ValueError('远程注册服务返回 HTTP 503')
+                recovered.set()
+                return {'url': 'https://registry.example/d/device/'}
+            return {'ok': True}
+        config = SimpleNamespace(Password='strong-password', WebuiSSLCert=None,
+                                 WebuiHost='127.0.0.1', WebuiPort=25548)
+        with patch('module.runtime.setting.State.deploy_config', config), \
+                patch('module.runtime.remote_cloudflare._quick_tunnel_context', return_value=process) as factory, \
+                patch.object(provider, 'identity', return_value=RemoteIdentity(directory)), \
+                patch.object(provider, 'check_tunnel', return_value=None), \
+                patch.object(provider, 'request', side_effect=request):
+            task = asyncio.create_task(provider._tunnel())
+            await asyncio.wait_for(recovered.wait(), 5)
+            assert provider.state == 'cloudflare_ready'
+            assert calls == ['https://retained.trycloudflare.com'] * 2
+            assert process.entered == 1 and process.exited == 0
+            factory.assert_called_once()
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            assert process.exited == 1
+    with tempfile.TemporaryDirectory() as directory:
+        asyncio.run(scenario(directory))
+
+
+def test_public_probe_requires_ap_protocol_and_never_follows_redirects():
+    from aiohttp import web
+    async def scenario():
+        mode = 'unhealthy'
+        redirected = []
+        async def health(request):
+            assert 'Authorization' not in request.headers
+            if mode == 'redirect':
+                raise web.HTTPFound('/unexpected')
+            return web.json_response({'status': 'ok', 'protocolVersion': 1 if mode == 'healthy' else 0})
+        async def unexpected(request):
+            redirected.append(True)
+            return web.Response()
+        app = web.Application()
+        app.router.add_get('/healthz', health)
+        app.router.add_get('/unexpected', unexpected)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        server = await asyncio.get_running_loop().create_server(runner.server, '127.0.0.1', 0)
+        url = f'http://127.0.0.1:{server.sockets[0].getsockname()[1]}'
+        try:
+            provider = CloudflareRemoteAccessProvider()
+            with pytest.raises(ValueError, match='AP 协议'):
+                await provider.check_tunnel(url)
+            mode = 'redirect'
+            with pytest.raises(ValueError, match='HTTP 302'):
+                await provider.check_tunnel(url)
+            assert not redirected
+            mode = 'healthy'
+            await provider.check_tunnel(url)
+        finally:
+            server.close()
+            await server.wait_closed()
+            await runner.cleanup()
+    asyncio.run(scenario())
