@@ -65,6 +65,8 @@ class ConfigModel:
     # 远程访问
     EnableRemoteAccess: bool = False
     RemoteAccessMode: str = "auto"
+    CloudflareRegistry: str = "https://ap-remote.108-186-180-52.sslip.io:8443"
+    CloudflareDeviceId: str = ""
     SSHUser: Optional[str] = None
     SSHServer: Optional[str] = None
     SSHExecutable: Optional[str] = None

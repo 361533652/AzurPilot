@@ -1,0 +1,5 @@
+.remote-pairing { padding: 24px; }
+.pairing-session { display: flex; align-items: center; flex-direction: column; gap: 12px; text-align: center; padding-top: 20px; }
+.particle-pair-canvas { width: min(360px, 100%); height: auto; aspect-ratio: 1; border-radius: 24px; }
+.pairing-code { font-size: clamp(28px, 5vw, 40px); font-weight: 600; letter-spacing: .14em; font-variant-numeric: tabular-nums; }
+.pairing-clients { display: grid; gap: 12px; margin-top: 24px; }

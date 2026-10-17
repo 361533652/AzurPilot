@@ -1,5 +1,8 @@
 # 前端
 
+远程页的 `src/remote/PairingPanel.tsx` 展示服务器生成的配对码与 Particle Code v1 光学动画。
+`ParticleCanvas` 发送 128 位单次扫描密钥；AFA 在原生网关完成配对与认证，见 [远程访问](remote-access.md)。
+
 > React 控制台（frontend/）：React + TypeScript + Vite 实现的 WebUI，业务通信统一走 `/api/v1/ws`。详细界面设计与协议见 frontend/README.md 与 frontend/API.md。
 
 ## 1. 模块概述
