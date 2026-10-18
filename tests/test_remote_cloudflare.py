@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import secrets
 import subprocess
 import sys
@@ -201,7 +202,8 @@ def test_quick_tunnel_registration_and_cleanup_use_current_url():
         asyncio.run(scenario(directory))
 
 
-def test_registry_failure_retries_without_reallocating_tunnel():
+@pytest.mark.parametrize('failed_step', ['probe', 'register'])
+def test_network_failure_retries_without_reallocating_tunnel(failed_step):
     class Process:
         def __init__(self):
             self.entered = self.exited = 0
@@ -220,10 +222,15 @@ def test_registry_failure_retries_without_reallocating_tunnel():
         provider, process = CloudflareRemoteAccessProvider(), Process()
         recovered = asyncio.Event()
         calls = []
+        probes = []
+        async def check_tunnel(url):
+            probes.append(url)
+            if failed_step == 'probe' and len(probes) == 1:
+                raise ValueError('Quick Tunnel 公网健康检查域名解析失败')
         async def request(method, path, data=None):
             if method == 'POST':
                 calls.append(data['tunnel_url'])
-                if len(calls) == 1:
+                if failed_step == 'register' and len(calls) == 1:
                     raise ValueError('远程注册服务返回 HTTP 503')
                 recovered.set()
                 return {'url': 'https://registry.example/d/device/'}
@@ -233,12 +240,13 @@ def test_registry_failure_retries_without_reallocating_tunnel():
         with patch('module.runtime.setting.State.deploy_config', config), \
                 patch('module.runtime.remote_cloudflare._quick_tunnel_context', return_value=process) as factory, \
                 patch.object(provider, 'identity', return_value=RemoteIdentity(directory)), \
-                patch.object(provider, 'check_tunnel', return_value=None), \
+                patch.object(provider, 'check_tunnel', side_effect=check_tunnel), \
                 patch.object(provider, 'request', side_effect=request):
             task = asyncio.create_task(provider._tunnel())
             await asyncio.wait_for(recovered.wait(), 5)
             assert provider.state == 'cloudflare_ready'
-            assert calls == ['https://retained.trycloudflare.com'] * 2
+            assert calls == ['https://retained.trycloudflare.com'] * (2 if failed_step == 'register' else 1)
+            assert probes == ['https://retained.trycloudflare.com'] * 2
             assert process.entered == 1 and process.exited == 0
             factory.assert_called_once()
             task.cancel()
@@ -247,6 +255,79 @@ def test_registry_failure_retries_without_reallocating_tunnel():
             assert process.exited == 1
     with tempfile.TemporaryDirectory() as directory:
         asyncio.run(scenario(directory))
+
+
+def test_requests_use_environment_proxy_without_origin_netrc_credentials(tmp_path):
+    from aiohttp import web
+    from module.runtime.remote_cloudflare import _request_proxy
+
+    async def scenario():
+        provider = CloudflareRemoteAccessProvider()
+        identity = RemoteIdentity(tmp_path)
+        requests = []
+        async def proxy(request):
+            requests.append(request.raw_path)
+            if request.path == '/healthz':
+                assert 'Authorization' not in request.headers
+                return web.json_response({'status': 'ok', 'protocolVersion': 1})
+            assert request.headers['Authorization'] == 'Bearer ' + identity.load()['device_key']
+            assert await request.json() == {'tunnel_url': 'https://test.trycloudflare.com'}
+            return web.json_response({'url': 'https://registry.example/d/device/'})
+
+        app = web.Application()
+        app.router.add_route('*', '/{path:.*}', proxy)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        server = await asyncio.get_running_loop().create_server(runner.server, '127.0.0.1', 0)
+        proxy_url = f'http://127.0.0.1:{server.sockets[0].getsockname()[1]}'
+        netrc = tmp_path / 'netrc'
+        netrc.write_text('machine ap-health.invalid login probe-user password probe-password\n')
+        try:
+            with patch.dict(os.environ, {'http_proxy': proxy_url, 'https_proxy': proxy_url,
+                                         'no_proxy': '127.0.0.1,localhost', 'NETRC': str(netrc)}, clear=True), \
+                    patch.object(provider, 'identity', return_value=identity), \
+                    patch.object(provider, 'registry', return_value='http://registry.invalid'):
+                assert _request_proxy('https://ap-health.invalid') == proxy_url
+                assert _request_proxy('http://127.0.0.1') is None
+                assert _request_proxy('http://localhost') is None
+                await provider.check_tunnel('http://ap-health.invalid')
+                result = await provider.request('POST', '/api/v1/devices/register', {
+                    'tunnel_url': 'https://test.trycloudflare.com',
+                })
+                assert result['url'] == 'https://registry.example/d/device/'
+            assert requests == ['http://ap-health.invalid/healthz',
+                                'http://registry.invalid/api/v1/devices/register']
+        finally:
+            server.close()
+            await server.wait_closed()
+            await runner.cleanup()
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('kind, expected', [
+    ('dns', '域名解析失败'), ('proxy', '代理连接失败'), ('proxy_http', 'HTTP 407'),
+    ('certificate', '证书校验失败'), ('tls', 'TLS 握手失败'),
+    ('connection', '错误码 10061'), ('timeout', '超时'), ('disconnected', 'ServerDisconnectedError'),
+])
+def test_public_probe_reports_specific_errors_without_sensitive_details(kind, expected):
+    import ssl
+    import aiohttp
+
+    sensitive = 'proxy-user:proxy-password@private-host.invalid'
+    errors = {
+        'dns': aiohttp.ClientConnectorDNSError(None, OSError(11001, sensitive)),
+        'proxy': aiohttp.ClientProxyConnectionError(None, OSError(10061, sensitive)),
+        'proxy_http': aiohttp.ClientHttpProxyError(None, (), status=407, message=sensitive),
+        'certificate': aiohttp.ClientConnectorCertificateError(None, ssl.SSLCertVerificationError(sensitive)),
+        'tls': aiohttp.ClientConnectorSSLError(None, ssl.SSLError(sensitive)),
+        'connection': aiohttp.ClientConnectorError(None, OSError(10061, sensitive)),
+        'timeout': TimeoutError(sensitive),
+        'disconnected': aiohttp.ServerDisconnectedError(sensitive),
+    }
+    with patch('aiohttp.ClientSession.get', side_effect=errors[kind]):
+        with pytest.raises(ValueError, match=expected) as error:
+            asyncio.run(CloudflareRemoteAccessProvider().check_tunnel('https://test.trycloudflare.com'))
+    assert sensitive not in str(error.value)
 
 
 def test_public_probe_requires_ap_protocol_and_never_follows_redirects():
@@ -258,6 +339,12 @@ def test_public_probe_requires_ap_protocol_and_never_follows_redirects():
             assert 'Authorization' not in request.headers
             if mode == 'redirect':
                 raise web.HTTPFound('/unexpected')
+            if mode == 'html':
+                return web.Response(text='<html>代理错误页</html>', content_type='text/html')
+            if mode == 'invalid_json':
+                return web.Response(text='{invalid', content_type='application/json')
+            if mode == 'array':
+                return web.json_response([])
             return web.json_response({'status': 'ok', 'protocolVersion': 1 if mode == 'healthy' else 0})
         async def unexpected(request):
             redirected.append(True)
@@ -271,8 +358,9 @@ def test_public_probe_requires_ap_protocol_and_never_follows_redirects():
         url = f'http://127.0.0.1:{server.sockets[0].getsockname()[1]}'
         try:
             provider = CloudflareRemoteAccessProvider()
-            with pytest.raises(ValueError, match='AP 协议'):
-                await provider.check_tunnel(url)
+            for mode in ('unhealthy', 'html', 'invalid_json', 'array'):
+                with pytest.raises(ValueError, match='AP 协议'):
+                    await provider.check_tunnel(url)
             mode = 'redirect'
             with pytest.raises(ValueError, match='HTTP 302'):
                 await provider.check_tunnel(url)
