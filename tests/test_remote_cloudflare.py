@@ -372,3 +372,16 @@ def test_public_probe_requires_ap_protocol_and_never_follows_redirects():
             await server.wait_closed()
             await runner.cleanup()
     asyncio.run(scenario())
+
+
+def test_remote_registry_error_masks_id_and_pairing_status_handles_expired():
+    from module.runtime.remote_cloudflare import RemoteRegistryError
+    from module.api.remote_service import pairing_status
+
+    err = RemoteRegistryError(404, 'PAIRING_EXPIRED', '配对已过期', 'GET', '/api/v1/pairings/1234567890abcdef1234')
+    assert '/<id>' in str(err)
+    assert '1234567890abcdef1234' not in str(err)
+    assert err.code == 'PAIRING_EXPIRED'
+
+    with patch('module.api.remote_service.cloudflare.request', side_effect=err):
+        assert pairing_status('1234567890abcdef1234') == {'state': 'expired'}
