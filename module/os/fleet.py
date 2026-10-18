@@ -576,7 +576,9 @@ class OSFleet(OSCamera, Combat, Fleet, OSAsh):
             # 明石商店
             if self.appear(PORT_SUPPLY_CHECK, offset=(20, 20)):
                 self.interval_clear(PORT_SUPPLY_CHECK)
-                self.handle_akashi_supply_buy(CLICK_SAFE_AREA)
+                if not self.handle_akashi_supply_buy(CLICK_SAFE_AREA):
+                    # 未完成的交互不能被写成事件成功；交回已保存的续查和上层恢复。
+                    return result
                 completed_event = True
                 if fast_farming:
                     # 商店退出已确认返回地图，原先按路程计算的到达时间不再适用。

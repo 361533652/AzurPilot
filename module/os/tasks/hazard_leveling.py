@@ -15,7 +15,7 @@ from datetime import timedelta
 from module.base.timer import Timer
 from module.config.time_source import now as current_time
 from module.equipment.assets import EQUIPMENT_OPEN
-from module.exception import MapDetectionError, ScriptError
+from module.exception import GameStuckError, MapDetectionError, ScriptError
 from module.logger import logger
 from module.os.assets import FLEET_FLAGSHIP
 from module.os.map import OSMap
@@ -111,6 +111,9 @@ class OpsiHazard1Leveling(CoinTaskMixin, OSMap):
             if self._forced_move_enabled():
                 if not self._solved_map_event:
                     self._execute_fixed_patrol_scan(ExecuteFixedPatrolScan=True)
+
+            if self._get_pending_akashi() is not None:
+                raise GameStuckError('战后明石仍未完成，保留续查记录，禁止刷新海域')
 
             self.handle_after_auto_search()
 

@@ -41,6 +41,7 @@
 module/os/
 ├── operation_siren.py   # OperationSiren：全部任务类的最终组合体
 ├── map.py               # OSMap：主控类（导航/寻敌/维修/重扫）
+├── akashi.py            # 明石安全定位、有限恢复与侵蚀一重启续查
 ├── fleet.py             # OSFleet：行走、血量、Boss 战
 ├── globe_operation.py   # GlobeOperation：球面图操作（选区/钉住/进出）
 ├── globe_camera.py      # GlobeCamera：球面相机与聚焦
@@ -106,7 +107,7 @@ flowchart BT
     OSMap --> OperationSiren[OperationSiren<br>全部任务组合]
 ```
 
-`OSMap(OSFleet, Map, GlobeCamera, StorageHandler, StrategicSearchHandler)` 是「一个实例具备全部大世界能力」的枢纽；`OperationSiren` 再叠加 14 个 `tasks/` 任务类，理论上一个实例可执行任何大世界任务，实际由调度器按任务身份构造。
+`OSMap(AkashiRecovery, OSFleet, Map, GlobeCamera, StorageHandler, StrategicSearchHandler)` 是「一个实例具备全部大世界能力」的枢纽；`OperationSiren` 再组合任务类，实际由调度器按任务身份构造。
 
 ### tasks/ 任务清单
 
@@ -138,6 +139,12 @@ flowchart BT
 隐藏字段 `SeaMilesLastRecord` 持久化上次成功检测时间，重启与智能调度代理共用同一任务记录。失败不更新时间，下轮仍可重试；未到期仅跳过情报页检测，行动力、货币记录及练级继续执行，海里数统计仅提交本轮实际识别值。旧布尔设置在运行器和 WebUI 读取时迁移：`true → 0`，`false → -1`，已有数字间隔保持不变。离线回归见 `tests/test_opsi_sea_miles.py`。
 
 配置界面对比：[原复选框](images/sea-miles-interval-before.png)、[天数输入框](images/sea-miles-interval-after.png)。
+
+### 侵蚀一明石安全交互与续查
+
+`akashi.py::AkashiRecovery` 负责将明石格子换算为安全点击位置：先收起舰队菜单，裁去固定操作栏和雷达覆盖区域；没有可点区域时最多挪两次镜头并刷新格子。商店入口最多点击三次、间隔两秒，连续十二秒无进展返回失败；购买本身仍沿用原流程。失败先换其他舰队，再为已知明石临时执行一次逐队移动重扫，命中立即停止，不修改用户的常规强制移动开关。
+
+隐藏配置 `OpsiHazard1Leveling.OpsiHazard1Leveling.PendingAkashiRecovery` 保存已确认但未完成的明石。`os_init()` 确认当前海域后、维护或首次自律前优先续查；独立任务、智能调度、防溢出及其他大世界入口共用记录。续查临时绑定侵蚀一身份，成功购买并确认返回地图后清除；失败保留并走原有异常恢复，阻止下一轮刷新海域。服务器、重置周期或当前海域不符时使旧记录失效并记录原因。普通雷达问号不能创建该记录，也不能用其他事件完成代替明石成功。离线回归见 `tests/test_opsi_akashi_interaction.py`。
 
 ### 智能调度的身份机制（tasks/task_context.py）
 

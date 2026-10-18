@@ -211,7 +211,8 @@ class CleanupTests(unittest.TestCase):
         runner = self.runner()
         runner.config.task = SimpleNamespace(command='OpsiExploreCleanup')
         runner.config.override = Mock()
-        runner.config.cross_get = Mock(return_value=22)
+        runner.config.cross_get = Mock(side_effect=lambda keys, default=None:
+                                       22 if keys.endswith('.TargetZone') else default)
         runner.is_in_map = lambda: True
         runner.is_in_special_zone = lambda: False
         runner.zone = SimpleNamespace(zone_id=44)
