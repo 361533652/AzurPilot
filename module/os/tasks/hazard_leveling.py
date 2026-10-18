@@ -15,7 +15,7 @@ from datetime import timedelta
 from module.base.timer import Timer
 from module.config.time_source import now as current_time
 from module.equipment.assets import EQUIPMENT_OPEN
-from module.exception import MapDetectionError, ScriptError
+from module.exception import GameStuckError, MapDetectionError, ScriptError
 from module.logger import logger
 from module.os.assets import FLEET_FLAGSHIP
 from module.os.map import OSMap
@@ -77,6 +77,8 @@ class OpsiHazard1Leveling(CoinTaskMixin, OSMap):
 
     def _cl1_run_battle(self):
         """执行侵蚀 1 战后的战略搜索与事件检索逻辑。"""
+        if self._get_pending_event() is not None:
+            raise GameStuckError('新搜索前仍有未完成地图事件，保留记录并优先重启续查')
         try:
             search_completed = self.run_strategic_search()
         except CoinReplenishRequired:
@@ -111,6 +113,9 @@ class OpsiHazard1Leveling(CoinTaskMixin, OSMap):
             if self._forced_move_enabled():
                 if not self._solved_map_event:
                     self._execute_fixed_patrol_scan(ExecuteFixedPatrolScan=True)
+
+            if self._get_pending_event() is not None:
+                raise GameStuckError('战后地图事件仍未完成，保留续查记录，禁止刷新海域')
 
             self.handle_after_auto_search()
 
