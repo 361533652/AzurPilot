@@ -12,6 +12,7 @@ import time
 import uuid
 from pathlib import Path
 from urllib.parse import urlsplit
+from urllib.request import getproxies, proxy_bypass
 
 import aiohttp
 
@@ -104,6 +105,14 @@ def registry_url(value):
     return value.rstrip('/')
 
 
+def _request_proxy(url):
+    """沿用环境或系统代理及绕过规则，不为目标主机读取 .netrc 凭据。"""
+    parsed = urlsplit(url)
+    if proxy_bypass(parsed.hostname):
+        return None
+    return getproxies().get(parsed.scheme)
+
+
 def _quick_tunnel_context(service):
     """将 pyflared 0.1.0 的导入期数据放入项目缓存，不改写其他库的目录。"""
     import platformdirs
@@ -163,8 +172,9 @@ class CloudflareRemoteAccessProvider:
     async def request(self, method, path, data=None):
         """调用注册服务，禁止跟随跳转，凭据只通过 Authorization 传输。"""
         identity = self.identity().load()
+        url = self.registry() + path
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
-            async with session.request(method, self.registry() + path, json=data,
+            async with session.request(method, url, json=data, proxy=_request_proxy(url),
                                        headers={'Authorization': 'Bearer ' + identity['device_key']},
                                        allow_redirects=False) as response:
                 if response.status != 200:
@@ -316,18 +326,35 @@ class CloudflareRemoteAccessProvider:
 
     async def check_tunnel(self, url):
         """验证公网 AP 健康接口；不跟随跳转，也不携带 WebUI 或设备凭据。"""
+        url = url.rstrip('/') + '/healthz'
         try:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=8)) as session:
-                async with session.get(url.rstrip('/') + '/healthz', allow_redirects=False) as response:
+                async with session.get(url, allow_redirects=False, proxy=_request_proxy(url)) as response:
                     if response.status != 200:
                         raise ValueError(f'Quick Tunnel 公网健康检查返回 HTTP {response.status}')
-                    data = await response.json()
-                    if data.get('status') != 'ok' or data.get('protocolVersion') != 1:
+                    try:
+                        data = await response.json()
+                    except (ValueError, aiohttp.ContentTypeError):
+                        raise ValueError('Quick Tunnel 公网健康检查未返回 AP 协议') from None
+                    if not isinstance(data, dict) or data.get('status') != 'ok' or data.get('protocolVersion') != 1:
                         raise ValueError('Quick Tunnel 公网健康检查未返回 AP 协议')
         except TimeoutError:
-            raise ValueError('Quick Tunnel 公网健康检查超时') from None
-        except aiohttp.ClientError:
-            raise ValueError('Quick Tunnel 公网健康检查连接失败，请检查网络和 DNS') from None
+            raise ValueError('Quick Tunnel 公网健康检查超时，请检查网络或代理') from None
+        except aiohttp.ClientConnectorCertificateError:
+            raise ValueError('Quick Tunnel 公网健康检查 TLS 证书校验失败，请检查系统时间、受信任证书和代理') from None
+        except aiohttp.ClientSSLError:
+            raise ValueError('Quick Tunnel 公网健康检查 TLS 握手失败，请检查代理和 HTTPS 连接') from None
+        except aiohttp.ClientProxyConnectionError:
+            raise ValueError('Quick Tunnel 公网健康检查代理连接失败，请检查系统或环境变量中的代理设置') from None
+        except aiohttp.ClientHttpProxyError as exc:
+            raise ValueError(f'Quick Tunnel 公网健康检查代理拒绝连接（HTTP {exc.status}），请检查代理设置') from None
+        except aiohttp.ClientConnectorDNSError:
+            raise ValueError('Quick Tunnel 公网健康检查域名解析失败，请检查 DNS 或代理设置') from None
+        except aiohttp.ClientConnectorError as exc:
+            code = getattr(exc.os_error, 'winerror', None) or exc.os_error.errno
+            raise ValueError(f'Quick Tunnel 公网健康检查连接失败（错误码 {code}），请检查网络或代理') from None
+        except aiohttp.ClientError as exc:
+            raise ValueError(f'Quick Tunnel 公网健康检查请求失败（{type(exc).__name__}），请检查网络或代理') from None
 
     def create_pairing(self):
         """由本机 AP 发起配对；服务器生成六位码与扫描凭据。"""

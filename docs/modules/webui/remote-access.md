@@ -31,6 +31,10 @@ Windows `AppData/Local/Azmain`。适配仅匹配 pyflared 的应用标识，导�
 设备不存在、离线、租约过期或 Tunnel 失效时，以 302 跳到同域 `/error`；在线时仍返回禁止缓存的 301。
 cloudflared 沿用自动传输选择；网络须允许连接 Cloudflare 边缘的 7844 端口。
 CLI 分配 URL 后还须通过公网 `/healthz` 协议检查，才注册并显示就绪。
+公网探测与注册、续约、配对请求遵循 `HTTP_PROXY` / `HTTPS_PROXY`、`NO_PROXY` 及 Windows 系统代理。
+只显式选取代理地址，不自动读取目标主机的 `.netrc` 认证信息，公网探测仍不携带 AP 凭据。
+健康检查区分 DNS、代理、TLS、连接和超时错误；响应不是 AP 协议（含 HTML、无效 JSON 或数组）时
+报告协议检查失败，不将其误报为 DNS 故障或销毁仍在运行的隧道。
 探测或注册续约瞬断会清除当前可访问地址，以 2–60 秒退避重试同一 URL，保留进程与 Tunnel。
 仅 cloudflared 退出或未分配 URL 时重建进程，以 30–300 秒退避避免频繁申请；
 识别到 Quick Tunnel HTTP 429/1015 后至少等待十分钟，再尝试申请。
