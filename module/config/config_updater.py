@@ -641,6 +641,12 @@ class ConfigGenerator:
 class ConfigUpdater:
     # 格式：source, target, (可选) convert_func
     redirection = [
+        ('OpsiHazard1Leveling.OpsiHazard1Leveling.PendingAkashiRecovery',
+         'OpsiHazard1Leveling.OpsiHazard1Leveling.PendingEventRecovery', opsi_pending_event_redirect),
+        ('OpsiGeneral.OpsiGeneral.ActionPointCheckInterval',
+         'OpsiHazard1Leveling.OpsiHazard1Leveling.ActionPointCheckInterval'),
+        ('OpsiGeneral.OpsiGeneral.SkipStrategicSearchCheck',
+         'OpsiHazard1Leveling.OpsiHazard1Leveling.SkipStrategicSearchCheck'),
         ('OpsiScheduling.OpsiSmartExplore.BuyActionPoint', 'OpsiScheduling.OpsiScheduling.BuyActionPoint'),
         ('OpsiExplore.OpsiExplore.MeowfficerCleanup', 'OpsiExploreCleanup.Scheduler.Enable'),
         ('OpsiExplore.OpsiFleet', 'OpsiExploreCleanup.OpsiFleet'),
@@ -650,6 +656,8 @@ class ConfigUpdater:
         ('General.Enhance.SkipSingleCommonCV', 'General.Enhance.KeepCommonCV'),
         ('OpsiAshBeacon.OpsiAshBeacon.OneHitMode', 'OpsiAshBeacon.OpsiAshBeacon.AssistRequestLimit',
          meta_assist_limit_redirect),
+        ('OpsiHazard1Leveling.OpsiHazard1Leveling.RecordSeaMiles',
+         'OpsiHazard1Leveling.OpsiHazard1Leveling.RecordSeaMiles', sea_miles_interval_redirect),
         # ('OpsiDaily.OpsiDaily.BuySupply', 'OpsiShop.Scheduler.Enable'),
         # ('OpsiDaily.Scheduler.Enable', 'OpsiDaily.OpsiDaily.DoMission'),
         # ('OpsiShop.Scheduler.Enable', 'OpsiShop.OpsiShop.BuySupply'),

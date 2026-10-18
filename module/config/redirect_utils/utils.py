@@ -81,6 +81,18 @@ def meta_assist_limit_redirect(value):
     return 0 if value else -1
 
 
+def sea_miles_interval_redirect(value):
+    """海里记录旧开关迁移为天数间隔，保留已有的数字设置。"""
+    if value is None:
+        return -1
+    if isinstance(value, list):
+        # 兼容旧版复选框保存的 [] / [True]，沿用原复选框解析规则。
+        return 0 if any(bool(item) for item in value) else -1
+    if isinstance(value, bool):
+        return 0 if value else -1
+    return value
+
+
 def enhance_favourite_redirect(value):
     """重定向强化目标舰船选择（EnhanceFavourite -> ShipToEnhance）。
 
@@ -243,4 +255,11 @@ def opsi_explore_cleanup_state_redirect(value):
     """只迁移已有补扫断点；原开荒月度标记不能当成补扫进度。"""
     if isinstance(value, dict) and value.get('phase') in ('cleanup', 'done') and 'order' in value:
         return dict(value)
+    return None
+
+
+def opsi_pending_event_redirect(value):
+    """保留旧明石续查记录，将其纳入按事件类型区分的恢复。"""
+    if isinstance(value, dict):
+        return dict(value, kind='is_akashi', phase='interact')
     return None

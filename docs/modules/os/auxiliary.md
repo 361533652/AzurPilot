@@ -36,6 +36,7 @@
 ```
 module/os_handler/    # 约 3000 行，12 个功能文件 + assets
 ├── action_point.py   # 行动力面板全套（读/买/限/溢出）
+├── resource_state.py # 任务上下文、库存版本与运行期缓存失效
 ├── map_event.py      # MapEventHandler：地图事件、舰队锁开关、自动搜索收尾
 ├── storage.py        # StorageHandler：大世界仓库（隐秘坐标/修理/日志仪）
 ├── os_status.py      # OSStatus：黄币/紫币 OCR 与任务上下文判断
@@ -123,6 +124,8 @@ module/os_simulator/
 | `AkashiShop` | 明石商店货架定义按 `@Config.when(SERVER='tw'/'en'/None)` 三分支——三服货架布局不同 |
 | `Selector` | 策略适配层：把「侵蚀等级偏好、紫币保留、数量上限」等配置翻译成对货架条目的过滤与排序；港口/明石共用 |
 
+`OSShop.handle_akashi_supply_buy()` 返回购买及返回地图是否完成，不能将入口失败计为明石成功。入口处理舰队菜单和误入的总览、仓库、情报、指令页面，点击三次后停止重试，连续十二秒无进展后交回上层；已在商店时直接执行购买，不受入口超时限制。侵蚀一随机事件的安全定位、换队、临时强制移动及重启续查由 `module/os/event_recovery.py` 编排，详见[大世界核心](index.md#侵蚀一随机事件安全交互与续查)。
+
 ### os_simulator
 
 `OSSimulator` 用 Numba `@njit` 加速蒙特卡洛，`start()` 起后台线程跑模拟、`stop_event` 在批次边界中断，参数读 `OpsiSimulator.OpsiSimulatorParameters.*`（Cl1Coin/Meow3Coin/Meow5Coin/明石概率等）。`module/runtime/os_simulator.py` 按实例管理只读配置快照、独立日志与图表，`module/api/opsi_simulator_service.py` 校验实例并提供 WebSocket 接口。页面刷新不终止模拟，服务关闭时请求中断并回收线程。
@@ -183,6 +186,14 @@ OpsiAshBeacon.run() → META 页攻击 → MetaReward 领奖 → task_delay(serv
 
 ## 8. 数据流
 
+石油购买缓存按实例与服务器周记录实际已购数，配置上限增减不重置实际次数；已达上限或月末封锁直接跳过石油选项，无效计数不当作买满。`OpsiHazard1Leveling.ActionPointCheckInterval` 与 `SkipStrategicSearchCheck` 位于献祭流血量开关下方，旧通用配置值自动迁移。常规行动力仅在定时到期时从已有地图帧后台读取；0 关闭定时读取。未到期不截图、不 OCR，按已确认的出击扣减库存下界；奖励增加箱子不强制开面板。首次确认、补给和恢复仍实时读取，开箱与购买后确认实际值。
+
+侵蚀一与短猫的事件检索通过 `wait_until_walk_stable(allow_event_finish=True)` 在商店正常退出、最终领奖、档案领取或战斗处理完成后，用新截图确认地图及计划作战入口并快速收尾。后续选项会撤销旧完成标记，意外页面恢复仍要求重新定位；下一轮保留任务收尾、EMP、修理和任务切换检查；同一海域完成事件后复用刚确认的地图位置，省略开工前重复的海域名称 OCR，随即进入计划作战。
+
+常规黄币与紫币使用 `resource_read.py` 的有界后台队列识别固定截图，两张有效地图帧同值才接受；每次最多一个待识别帧。识别器状态与按钮坐标在提交时复制，实例、服务器和货币修订不匹配的结果丢弃。到期时同帧附带当前行动力，扣除采样后的已知消耗，补给后拒绝旧结果。当前行动力只更新运行判断、库存观察和仪表盘；只有本次完整面板确认的含箱总量进入行动力与资产统计，不能用旧配置或缓存箱子补齐。海里数独立记录，不附带估算行动力。商店预算及开箱决策保留同步识别。
+
+资源观察、收支复核及仪表盘保存由 `resource_write.py` 串行提交；固定采样时间和任务上下文，后台只事务合并仪表盘字段，不修改运行中的配置对象。收支复核按采样时间计算已发生交易，旧观察不能覆盖新读数。后台确认侵蚀一黄币低于当前保留值时，由主线程通过 `interrupt_auto_search(goto_main=False, end_task=False)` 返回地图，智能调度下一轮立即执行补币决策；补币任务不被自己的低黄币状态打断。日志入口为 `[大世界-资源后台]`，离线回归见 `tests/test_opsi_background_resources.py`。
+
 ```
 行动力面板截图 → OCR(当前/总/购买次数) → ActionPointLimit 或放行
 货架截图 → ItemGrid(名称/价格/数量) → Selector 过滤 → 购买点击 → 货币 OCR 校验
@@ -196,6 +207,7 @@ META 页截图 → MetaState 状态机 → 攻击/领奖循环
 | 配置 | 说明 |
 | --- | --- |
 | `OpsiGeneral.BuyActionPointLimit` 等行动力参数 | 决定 `action_point_buy` 的行为 |
+| `OpsiHazard1Leveling.ActionPointCheckInterval` | 非负整数分钟，默认 0 关闭定时读取；侵蚀一、智能调度和短猫共用 |
 | `OpsiAshBeacon.*`（Enable/AttackMode/EnsureFullyCollected） | 信标任务开关与触发条件 |
 | `OpsiMeowfficerFarming.OpsiShopFilter` 等货架策略 | 经 `Selector` 生效 |
 | `OpsiSimulator.OpsiSimulatorParameters.*` | 模拟器参数（仅模拟器读取） |
@@ -280,3 +292,7 @@ if self.appear(PORT_ENTER, offset=(20, 20), interval=30):
 - [商店系统](../game/shop.md) —— 通用商店框架与 `ShopClerk` 的复用关系
 - [战斗系统](../combat.md) —— `Combat_` 基类与本页 `os_combat` 的适配关系
 - [统计与数据提交](../infra/statistics.md) —— 黄币/紫币写入 LogRes 的去向
+
+配置页效果（模拟服务）：
+
+![侵蚀一资源检查配置](images/cl1-resource-settings.png)
