@@ -25,6 +25,15 @@ _store_lock = threading.RLock()
 _pyflared_import_lock = threading.RLock()
 
 
+class RemoteRegistryError(ValueError):
+    """保留注册服务的错误码、状态与路由，不包含认证头或配对凭据。"""
+
+    def __init__(self, status, code, message, method, path):
+        self.status, self.code = status, code
+        route = re.sub(r'/[a-zA-Z0-9_-]{16,80}$', '/<id>', path)
+        super().__init__(f'远程注册服务：{message}（HTTP {status}，{method} {route}）')
+
+
 def _device_id(value):
     """兼容简易部署解析器保留的引号；空值使用安装级随机 ID。"""
     value = str(value or '').strip()
@@ -171,6 +180,8 @@ class CloudflareRemoteAccessProvider:
 
     async def request(self, method, path, data=None):
         """调用注册服务，禁止跟随跳转，凭据只通过 Authorization 传输。"""
+        if not path.startswith('/api/v1/'):
+            raise ValueError(f'远程注册 API 路径必须以 /api/v1/ 开头：{method} {path}')
         identity = self.identity().load()
         url = self.registry() + path
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
@@ -178,7 +189,20 @@ class CloudflareRemoteAccessProvider:
                                        headers={'Authorization': 'Bearer ' + identity['device_key']},
                                        allow_redirects=False) as response:
                 if response.status != 200:
-                    raise ValueError(f'远程注册服务返回 HTTP {response.status}')
+                    try:
+                        error = json.loads(await response.content.read(4096))
+                    except (ValueError, UnicodeError):
+                        error = {}
+                    if not isinstance(error, dict):
+                        error = {}
+                    message = error.get('error')
+                    message = message[:160] if isinstance(message, str) else '请求失败'
+                    code = error.get('code', '')
+                    if response.status == 404 and message == '配对已过期':
+                        code = 'PAIRING_EXPIRED'
+                    elif response.status == 404 and not code:
+                        code, message = 'API_NOT_FOUND', '注册接口不存在，请检查 AP 与服务端版本'
+                    raise RemoteRegistryError(response.status, code, message, method, path)
                 return await response.json()
 
     def start(self):
