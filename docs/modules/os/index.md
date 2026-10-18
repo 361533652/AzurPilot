@@ -41,7 +41,7 @@
 module/os/
 ├── operation_siren.py   # OperationSiren：全部任务类的最终组合体
 ├── map.py               # OSMap：主控类（导航/寻敌/维修/重扫）
-├── akashi.py            # 明石安全定位、有限恢复与侵蚀一重启续查
+├── event_recovery.py    # 侵蚀一随机事件安全定位、有限恢复与重启续查
 ├── fleet.py             # OSFleet：行走、血量、Boss 战
 ├── globe_operation.py   # GlobeOperation：球面图操作（选区/钉住/进出）
 ├── globe_camera.py      # GlobeCamera：球面相机与聚焦
@@ -107,7 +107,7 @@ flowchart BT
     OSMap --> OperationSiren[OperationSiren<br>全部任务组合]
 ```
 
-`OSMap(AkashiRecovery, OSFleet, Map, GlobeCamera, StorageHandler, StrategicSearchHandler)` 是「一个实例具备全部大世界能力」的枢纽；`OperationSiren` 再组合任务类，实际由调度器按任务身份构造。
+`OSMap(MapEventRecovery, OSFleet, Map, GlobeCamera, StorageHandler, StrategicSearchHandler)` 是「一个实例具备全部大世界能力」的枢纽；`OperationSiren` 再组合任务类，实际由调度器按任务身份构造。
 
 ### tasks/ 任务清单
 
@@ -140,11 +140,13 @@ flowchart BT
 
 配置界面对比：[原复选框](images/sea-miles-interval-before.png)、[天数输入框](images/sea-miles-interval-after.png)。
 
-### 侵蚀一明石安全交互与续查
+### 侵蚀一随机事件安全交互与续查
 
-`akashi.py::AkashiRecovery` 负责将明石格子换算为安全点击位置：先收起舰队菜单，裁去固定操作栏和雷达覆盖区域；没有可点区域时最多挪两次镜头并刷新格子。商店入口最多点击三次、间隔两秒，连续十二秒无进展返回失败；购买本身仍沿用原流程。失败先换其他舰队，再为已知明石临时执行一次逐队移动重扫，命中立即停止，不修改用户的常规强制移动开关。
+`event_recovery.py::MapEventRecovery` 为明石、记录塔、塞壬装置、探索奖励、容器及雷达问号提供统一恢复。先收起舰队菜单并选取安全点击区域；没有可点区域时最多挪两次镜头并刷新格子。事件入口最多点击三次、间隔两秒，连续十二秒没有行军或交互进展就升级恢复；购买和已触发的正常剧情仍沿用原流程。失败先换其他舰队，再临时执行一次逐队移动重扫，原事件完成立即停止，不修改用户的常规强制移动开关，也不受无事件扫描的行动力门槛限制。
 
-隐藏配置 `OpsiHazard1Leveling.OpsiHazard1Leveling.PendingAkashiRecovery` 保存已确认但未完成的明石。`os_init()` 确认当前海域后、维护或首次自律前优先续查；独立任务、智能调度、防溢出及其他大世界入口共用记录。续查临时绑定侵蚀一身份，成功购买并确认返回地图后清除；失败保留并走原有异常恢复，阻止下一轮刷新海域。服务器、重置周期或当前海域不符时使旧记录失效并记录原因。普通雷达问号不能创建该记录，也不能用其他事件完成代替明石成功。离线回归见 `tests/test_opsi_akashi_interaction.py`。
+隐藏配置 `OpsiHazard1Leveling.OpsiHazard1Leveling.PendingEventRecovery` 在首次操作前保存服务器、重置周期、海域、舰队、事件类型和可确认的全局格子；旧 `PendingAkashiRecovery` 自动迁移。问号在同一格子上重新识别后可细化类型，其他事件或同类的其他格子不能替代它。商店购买并返回地图、最终奖励、档案领取或确认舰队到达原事件格的战斗收尾，才能确认相应普通事件完成；单纯点过剧情或弹窗不能确认完成。装置沿用敌人三次自律、资源一次自律及信息收集无需自律的语义，后续阶段和剩余次数逐步保存；关闭装置功能仍按配置跳过。
+
+`os_init()` 确认当前海域后、维护或首次自律前临时绑定侵蚀一身份续查，覆盖独立任务、智能调度、防溢出及其他大世界入口。旧格子只作定位线索，暂时识别不到不算完成。失败保留记录并走现有异常恢复，阻止下一轮刷新海域；服务器、重置周期或当前海域不符时作废旧记录并记录原因。重扫不重置同一事件的恢复预算；嵌套恢复与固定移动均有防递归保护。离线回归见 `tests/test_opsi_event_recovery.py`、`tests/test_opsi_akashi_interaction.py`。
 
 ### 智能调度的身份机制（tasks/task_context.py）
 

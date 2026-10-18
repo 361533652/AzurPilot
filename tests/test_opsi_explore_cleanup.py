@@ -252,6 +252,7 @@ class CleanupTests(unittest.TestCase):
 
     def test_cleanup_scans_all_existing_event_types(self):
         runner = SimpleNamespace(_opsi_meowfficer_cleanup=True, _solved_map_event=set(), is_in_task_explore=True)
+        runner.config = SimpleNamespace(task=SimpleNamespace(command='OpsiExploreCleanup'))
         runner.view = SimpleNamespace(select=Mock(return_value=[]))
         self.assertFalse(OSMap.map_rescan_current(runner))
         self.assertEqual(runner.view.select.call_args_list, [call(**{key: True}) for key in (

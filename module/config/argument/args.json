@@ -16035,7 +16035,7 @@
         "value": null,
         "display": "hide"
       },
-      "PendingAkashiRecovery": {
+      "PendingEventRecovery": {
         "type": "stored",
         "value": null,
         "display": "hide"
