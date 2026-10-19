@@ -1381,18 +1381,76 @@ class OSMap(MapEventResumeMixin, OSFleet, Map, GlobeCamera, StorageHandler, Stra
                 # 选项点击已由 wait_until_walk_stable -> info_handler.story_skip 处理
 
                 # 装置对话已确认，先把待办记下来：后续自律中途卡死重启时，
-                # 由续查流程补上这一次自律。
+                # 由续查流程补上剩下没跑完的自律。
                 node = location2node(grid.location)
                 self._save_pending_map_event("scanning_device", grid)
 
                 # 检测选择的模式
                 siren_mode = getattr(self, "siren_device_mode", None)
                 logger.attr("塞壬装置模式", siren_mode)
+                # 记下模式和需要补跑的自律次数：敌人模式 3 次（自律可能被
+                # 游戏暂停，需要重新点击直到三次），资源模式 1 次。
+                self._update_pending_map_event(
+                    mode=siren_mode,
+                    submitted=True,
+                    remaining=self._siren_followup_run_count(siren_mode),
+                )
 
-                # 装置提交物品后只剩一次自律：敌人模式是自律打敌人，资源模式
-                # 是自律收柱子。点完资源就被消耗，不要求对应事件再次完成。
-                self._update_pending_map_event(mode=siren_mode, submitted=True)
-                self._run_siren_followup_search(siren_mode, drop=drop)
+                # 如果选择了敌人模式
+                if siren_mode == "enemy":
+                    logger.info("[大世界] [装置处理] 检测到敌人模式，执行特殊处理")
+
+                    # 获取配置的舰队
+                    task = self.config.task.command
+                    if task not in ("OpsiHazard1Leveling", "OpsiMeowfficerFarming"):
+                        task = "OpsiHazard1Leveling"
+                    siren_fleet = self.config.cross_get(
+                        keys=f"{task}.OpsiSirenBug.Siren_Fleet", default=0
+                    )
+
+                    # 记录当前舰队
+                    current_fleet = self.fleet_selector.get()
+                    logger.info(f"[大世界] [装置处理] 当前舰队: {current_fleet}")
+
+                    # 如果配置了指定舰队，切换到指定舰队
+                    if siren_fleet > 0:
+                        logger.info(f"[大世界] [装置处理] 切换到指定舰队: {siren_fleet}")
+                        self.fleet_set(siren_fleet)
+                    else:
+                        logger.info("[大世界] [装置处理] 使用当前舰队")
+
+                    # 执行三次自律寻敌：自律可能被游戏暂停，需要逐次重新点击直到三次
+                    for i in range(3):
+                        logger.info(f"[大世界] [装置处理] 执行第 {i + 1}/3 次自律寻敌")
+                        self.os_auto_search_run(drop=drop)
+                        # 每跑完一次就落盘剩余次数，卡死重启后只补没跑完的
+                        self._update_pending_map_event(remaining=2 - i)
+
+                    # 如果切换了舰队，切换回原舰队
+                    if siren_fleet > 0:
+                        logger.info(f"[大世界] [装置处理] 切换回原舰队: {current_fleet}")
+                        self.fleet_set(current_fleet)
+
+                # 如果选择了资源模式
+                elif siren_mode == "resource":
+                    logger.info("[大世界] [装置处理] 检测到资源模式，执行标准处理")
+                    # 执行一次自律寻敌
+                    logger.info("[大世界] [装置处理] 执行自律寻敌")
+                    self.os_auto_search_run(drop=drop)
+                    self._update_pending_map_event(remaining=0)
+
+                # 塞壬信息收集装置 / 探测装置产物柱子：点中间已主动点击完成，无需自律
+                elif siren_mode == "collected":
+                    logger.info("[大世界] [装置处理] 塞壬信息收集装置/柱子已主动点击完成")
+
+                # 未知模式或资源不足
+                else:
+                    logger.info("[大世界] [装置处理] 未知模式或资源不足，执行标准处理")
+                    # 执行一次自律寻敌
+                    logger.info("[大世界] [装置处理] 执行自律寻敌")
+                    self.os_auto_search_run(drop=drop)
+                    self._update_pending_map_event(remaining=0)
+
                 self._finish_pending_map_event("scanning_device", node=node)
 
                 # 标记处理
@@ -1785,12 +1843,69 @@ class OSMap(MapEventResumeMixin, OSFleet, Map, GlobeCamera, StorageHandler, Stra
                 # 检测选择的模式
                 siren_mode = getattr(self, "siren_device_mode", None)
                 logger.attr("塞壬装置模式", siren_mode)
+                # 记下模式和需要补跑的自律次数：敌人模式 3 次（自律可能被
+                # 游戏暂停，需要重新点击直到三次），资源模式 1 次。
+                self._update_pending_map_event(
+                    mode=siren_mode,
+                    submitted=True,
+                    remaining=self._siren_followup_run_count(siren_mode),
+                )
 
-                # 装置提交物品后只剩一次自律：敌人模式是自律打敌人，资源模式
-                # 是自律收柱子。点完资源就被消耗，不要求对应事件再次完成；旧版
-                # 敌人模式续跑三次是错误语义，会让装置被重复启动。
-                self._update_pending_map_event(mode=siren_mode, submitted=True)
-                self._run_siren_followup_search(siren_mode, drop=drop)
+                # 如果选择了敌人模式
+                if siren_mode == "enemy":
+                    logger.info("[大世界] [装置处理] 敌人模式，执行特殊处理")
+
+                    # 获取配置的舰队
+                    task = self.config.task.command
+                    if task not in ("OpsiHazard1Leveling", "OpsiMeowfficerFarming"):
+                        task = "OpsiHazard1Leveling"
+                    siren_fleet = self.config.cross_get(
+                        keys=f"{task}.OpsiSirenBug.Siren_Fleet", default=0
+                    )
+
+                    # 记录当前舰队
+                    current_fleet = self.fleet_selector.get()
+                    logger.info(f"[大世界] [装置处理] 当前舰队: {current_fleet}")
+
+                    # 如果配置了指定舰队，切换到指定舰队
+                    if siren_fleet > 0:
+                        logger.info(f"[大世界] [装置处理] 切换到指定舰队: {siren_fleet}")
+                        self.fleet_set(siren_fleet)
+                    else:
+                        logger.info("[大世界] [装置处理] 使用当前舰队")
+
+                    # 执行三次自律寻敌：自律可能被游戏暂停，需要逐次重新点击直到三次
+                    for i in range(3):
+                        logger.info(f"[大世界] [装置处理] 执行第 {i + 1}/3 次自律寻敌")
+                        self.os_auto_search_run(drop=drop)
+                        # 每跑完一次就落盘剩余次数，卡死重启后只补没跑完的
+                        self._update_pending_map_event(remaining=2 - i)
+
+                    # 如果切换了舰队，切换回原舰队
+                    if siren_fleet > 0:
+                        logger.info(f"[大世界] [装置处理] 切换回原舰队: {current_fleet}")
+                        self.fleet_set(current_fleet)
+
+                # 如果选择了资源模式
+                elif siren_mode == "resource":
+                    logger.info("[大世界] [装置处理] 检测到资源模式，执行标准处理")
+                    # 执行一次自律寻敌
+                    logger.info("[大世界] [装置处理] 执行自律寻敌")
+                    self.os_auto_search_run(drop=drop)
+                    self._update_pending_map_event(remaining=0)
+
+                # 塞壬信息收集装置 / 探测装置产物柱子：点中间已主动点击完成，无需自律
+                elif siren_mode == "collected":
+                    logger.info("[大世界] [装置处理] 塞壬信息收集装置/柱子已主动点击完成")
+
+                # 未知模式或资源不足
+                else:
+                    logger.info("[大世界] [装置处理] 未知模式或资源不足，执行标准处理")
+                    # 执行一次自律寻敌
+                    logger.info("[大世界] [装置处理] 执行自律寻敌")
+                    self.os_auto_search_run(drop=drop)
+                    self._update_pending_map_event(remaining=0)
+
                 self._finish_pending_map_event("scanning_device", node=node)
 
                 # 先标记为已处理，防止二次重扫时再次处理塞壬装置

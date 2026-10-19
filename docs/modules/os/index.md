@@ -210,8 +210,8 @@ flowchart BT
 
 - **有界点击**：`_open_akashi_store()` 最多点 3 次，每次点击后用 `wait_until_walk_stable(..., allow_event_finish=True)` 与固定确认时间判断是否真的打开商店；`_close_fleet_bar_if_open()` 发现点击落在舰队栏上就收起下拉栏，清问号与装置行军后同样检查。点不到就快速返回交给下一层，不再无界空转。
 - **升级恢复**：明石失败走 `_recover_unreachable_akashi()`：先换其余舰队（`_goto_akashi_with_other_fleets` / `_goto_scanning_device_with_other_fleets`），仍不行则 `_mark_event_unreachable(node)` + 置 `_question_unreachable` + `_execute_fixed_patrol_scan(ExecuteFixedPatrolScan=True, recovery=True)`。`recovery=True` 只对本次已看见的事件临时绕过「强制移动」开关，置位 `_question_unreachable` 则让 L2 挪舰队不受当前行动力门槛限制；两者都不改用户配置。装置确认失败同样返回 `False` 交给强制移动，不再伪装成功导致重扫空转。
-- **重启续查**：看到明石/装置、尚未处理完时，在开始购买或装置后续自律之前 `_save_pending_map_event()` 写入隐藏配置；购买/装置确认并完成后续自律后 `_finish_pending_map_event()` 清除，本次换队与强制移动整遍仍没解决时同样清除（等价于放弃这只事件、继续下一轮）。侵蚀一单轮开始（`fleet_set` 之后、海里数检测之前）调用 `_resume_pending_map_event()`：扫描装置已提交物品的记录先补一次自律；其余先清已解事件集合、`map_rescan(rescan_mode="full")` 全图重扫，仍未清记录则置 `_question_unreachable` 并执行 `recovery=True` 的强制移动；整遍仍没看到事件就清掉记录继续本轮。服务器、重置周期、海域、事件类型/模式与记录不符时记录自动作废；中途异常向上抛并保留记录。续查只在单轮入口触发一次，重扫与强制移动内部不再递归调用续查，`_in_akashi_recovery` 防的是强制移动自身嵌套。
-- **装置后续自律只跑一次**：装置确认提交物品后，敌人模式点「自律打敌人」、资源模式点「自律收柱子」，各只调用一次 `os_auto_search_run()`；资源在点击后即被消耗，不要求对应事件再次完成，`collected`（信息收集）不跑自律。只有敌人模式且 `OpsiSirenBug.Siren_Fleet` 有效时才临时切换舰队，结束后恢复原舰队。旧版本留下的记录同样只补一次，不再按旧设计续跑三次。
+- **重启续查**：看到明石/装置、尚未处理完时，在开始购买或装置后续自律之前 `_save_pending_map_event()` 写入隐藏配置；购买/装置确认并完成后续自律后 `_finish_pending_map_event()` 清除，本次换队与强制移动整遍仍没解决时同样清除（等价于放弃这只事件、继续下一轮）。侵蚀一单轮开始（`fleet_set` 之后、海里数检测之前）调用 `_resume_pending_map_event()`：扫描装置已提交物品的记录按剩余次数补自律（敌人模式共 3 次，重启后只补没跑完的）；其余先清已解事件集合、`map_rescan(rescan_mode="full")` 全图重扫，仍未清记录则置 `_question_unreachable` 并执行 `recovery=True` 的强制移动；整遍仍没看到事件就清掉记录继续本轮。服务器、重置周期、海域、事件类型/模式与记录不符时记录自动作废；中途异常向上抛并保留记录。续查只在单轮入口触发一次，重扫与强制移动内部不再递归调用续查，`_in_akashi_recovery` 防的是强制移动自身嵌套。
+- **装置后续自律按模式补跑**：装置确认提交物品后，敌人模式执行 3 次 `os_auto_search_run()`（游戏可能把自律暂停，必须逐次重新点击直到三次）、资源模式 1 次（点「自律收柱子」）、`collected`（信息收集）0 次、未知模式 1 次；资源在点击后即被消耗，不要求对应事件再次完成。每次跑完把剩余次数写回续查记录，卡死重启后只补没跑完的次数。只有敌人模式且 `OpsiSirenBug.Siren_Fleet` 有效时才临时切换舰队，结束后恢复原舰队；旧记录没有剩余次数时按模式跑满。
 
 ## 6. 工作流程
 
@@ -326,7 +326,7 @@ OCR：行动力面板 / 黄币 / 紫币 ──▶ 决策（智能调度状态机
 ## 13. 缓存与持久化
 
 - 进度状态全部持久化在配置文件：`OpsiExplore_LastZone`、`OpsiExploreCleanup_State`、智能调度的状态键（`_get_smart_scheduling_state_value`，存于配置而非内存，防进程重启丢账）、各任务 `NextRun/LastRun`。
-- 地图事件续查记录保存在隐藏配置 `OpsiHazard1Leveling.OpsiHazard1Leveling.PendingMapEvent`（`MapEventResumeMixin` 维护）：看到明石/扫描装置、开始购买或装置提交物品后的自律之前写入，记录服务器、重置周期、海域、事件类型、格子、装置模式/是否已提交物品与当时舰队。购买或装置后续自律真正完成后才清除；卡死重启、进程中断保留记录，侵蚀一下一轮优先续查。服务器、重置周期、海域、事件类型/格子不符即作废；「已提交物品」只补一次自律，不要求对应事件再次完成。
+- 地图事件续查记录保存在隐藏配置 `OpsiHazard1Leveling.OpsiHazard1Leveling.PendingMapEvent`（`MapEventResumeMixin` 维护）：看到明石/扫描装置、开始购买或装置提交物品后的自律之前写入，记录服务器、重置周期、海域、事件类型、格子、装置模式/是否已提交物品/剩余自律次数与当时舰队。购买或装置后续自律真正完成后才清除；卡死重启、进程中断保留记录，侵蚀一下一轮优先续查。服务器、重置周期、海域、事件类型/格子不符即作废；「已提交物品」按剩余次数补自律（敌人模式共 3 次、资源模式 1 次），不要求对应事件再次完成。
 - “普通海域事件补扫”是独立任务 `OpsiExploreCleanup`，使用自己的 `Scheduler.Enable`、`Progress` 和 `State`。初始化游戏前检查 `OpsiExplore.ExploreProgress` 是否为 `已完成百分之100.00`，已有开荒月度标记时还检查月份，避免沿用上月完成状态；不满足则提示重新运行每月开荒并延期。每月开荒完成后只唤起已启用的补扫任务，不在开荒任务内部执行补扫。
 - 补扫按原开荒顺序严格进入普通海域（`DANGEROUS`），不选择或刷新安全海域（`SAFE`）。每张图先全图识别，再处理地图事件并逐队检查雷达；找到一种事件后仍检查其他舰队。沿用现有事件及战斗逻辑，不使用侵蚀一的固定坐标挪队。进入同一海域也重新确认类型，不把“当前海域相同”当作已经进入目标地图。
 - 补扫状态保存月份、原始顺序、下一海域索引和尝试次数，成功退出当前图才推进断点。重启续扫，本月完成后延迟到下次重置；跨月先清除补扫自己的旧进度。单图三次未完成后请求检查，修复原因后可在停止实例时将 `OpsiExploreCleanup.OpsiExploreCleanup.State.attempts` 改为 `0`。旧开关和旧补扫断点通过配置迁移进入独立任务；开荒自身的月度标记不会被当成补扫进度。

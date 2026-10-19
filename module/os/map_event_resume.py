@@ -7,9 +7,11 @@
 
 续查语义：
 - 明石：重新全图扫描并点击，仍点不到就换其他舰队，最后升级强制移动。
-- 塞壬研究装置：装置已提交物品时只剩一次自律寻敌（敌人模式点自律打敌人，
-  资源模式点自律收柱子；点击后资源即被消耗，不要求对应事件再次完成），
-  点完直接清记录；未提交物品时按普通事件走全图扫描 + 强制移动。
+- 塞壬研究装置：装置已提交物品后按模式补自律寻敌（敌人模式 3 次：自律
+  可能被游戏暂停，需要重新点击直到三次；资源模式 1 次，点自律收柱子；
+  信息收集 0 次；未知模式 1 次），资源点完即被消耗，不要求对应事件再次
+  完成；卡死重启后只补记录里剩下的次数。未提交物品时按普通事件走全图
+  扫描 + 强制移动。
 - 全图扫描和强制移动都没能看到事件时清掉记录、继续下一轮正常任务，
   不把“这一遍没找到”当成卡死。
 
@@ -80,6 +82,9 @@ class MapEventResumeMixin:
             return False
         if state.get("mode") not in _VALID_SIREN_MODES:
             return False
+        remaining = state.get("remaining", 0)
+        if not isinstance(remaining, int) or remaining < 0:
+            return False
         return True
 
     def _load_pending_map_event(self):
@@ -130,6 +135,7 @@ class MapEventResumeMixin:
             "grid": [int(x) for x in grid.location],
             "mode": None,
             "submitted": False,
+            "remaining": 0,
             "fleet": self.fleet_selector.get(),
             "created": current_time().isoformat(timespec="seconds"),
         }
@@ -170,19 +176,57 @@ class MapEventResumeMixin:
                 return
         self._clear_pending_map_event()
 
-    def _run_siren_followup_search(self, mode, drop=None):
-        """装置提交物品后的唯一一次自律寻敌。
+    def _siren_followup_run_count(self, mode):
+        """按装置模式返回需要补跑的自律次数。
 
-        装置提交物品后资源就已被消耗，只剩一次自律操作：敌人模式点自律打敌人，
-        资源模式点自律收柱子；点击后不必再要求对应事件完成。信息收集装置/柱子
-        在点击事件时已处理完，不需要自律。
+        敌人模式需要 3 次：游戏可能把自律暂停，必须逐次重新点击直到三次；
+        资源模式点一次自律收柱子即可；信息收集装置/柱子已主动点击完成，
+        不需要自律；未知模式按标准处理跑一次。
+
+        Args:
+            mode (str | None): 装置模式，enemy/resource/collected/None。
+
+        Returns:
+            int: 需要执行的自律次数。
+        """
+        if mode == "enemy":
+            return 3
+        if mode == "collected":
+            return 0
+        return 1
+
+    def _record_siren_followup_progress(self):
+        """每次自律完成后把剩余次数写回续查记录。
+
+        敌人模式的自律可能中途卡死重启，续查只补没跑完的次数，不能从头再来。
+        """
+        state = self._read_pending_map_event()
+        if state is None:
+            return
+        remaining = state.get("remaining")
+        if isinstance(remaining, int) and remaining > 0:
+            self._update_pending_map_event(remaining=remaining - 1)
+
+    def _run_siren_followup_search(self, mode, drop=None, remaining=None):
+        """装置提交物品后按模式补跑自律寻敌。
+
+        敌人模式跑 3 次：游戏可能把自律暂停，需要重新点击直到三次；
+        资源模式跑 1 次（点自律收柱子）；信息收集 0 次；未知模式 1 次。
+        卡死重启后续查时传 remaining，只补记录里剩下的次数。
 
         Args:
             mode (str | None): 装置模式，enemy/resource/collected/None。
             drop: 掉落记录对象。
+            remaining (int, optional): 剩余的自律次数；None 表示按模式跑满。
         """
-        if mode == "collected":
-            logger.info("[大世界-事件] 信息收集装置/柱子已点击完成，无需自律")
+        count = self._siren_followup_run_count(mode)
+        if remaining is not None:
+            count = min(count, max(int(remaining), 0))
+        if count <= 0:
+            if mode == "collected":
+                logger.info("[大世界-事件] 信息收集装置/柱子已点击完成，无需自律")
+            else:
+                logger.info("[大世界-事件] 装置后续自律已无剩余次数，无需继续")
             return
 
         current_fleet = self.fleet_selector.get()
@@ -198,8 +242,14 @@ class MapEventResumeMixin:
             if siren_fleet > 0:
                 logger.info(f"[大世界-事件] 切换到塞壬装置自律舰队: {siren_fleet}")
                 self.fleet_set(siren_fleet)
-            logger.info(f"[大世界-事件] 执行一次自律寻敌（装置模式: {mode}）")
-            self.os_auto_search_run(drop=drop)
+            else:
+                logger.info(
+                    f"[大世界-事件] 使用当前舰队执行自律寻敌（装置模式: {mode}）"
+                )
+            for i in range(count):
+                logger.info(f"[大世界] [装置处理] 执行第 {i + 1}/{count} 次自律寻敌")
+                self.os_auto_search_run(drop=drop)
+                self._record_siren_followup_progress()
         finally:
             if siren_fleet > 0:
                 logger.info(f"[大世界-事件] 切换回原舰队: {current_fleet}")
@@ -208,7 +258,8 @@ class MapEventResumeMixin:
     def _resume_pending_map_event(self, drop=None):
         """重启后续查上次没处理完的地图事件。
 
-        装置已提交物品：只补一次自律寻敌，点完清记录。
+        装置已提交物品：按记录里剩余次数补自律寻敌（敌人模式共 3 次，
+        资源模式 1 次），补完清记录。
         其他情况：先全图扫描重新找事件；仍没处理完就升级强制移动（不受
         “强制移动”开关限制，因为事件已经看见了）；全图扫描和强制移动都没能
         看到事件时清记录，继续下一轮正常任务。
@@ -228,8 +279,14 @@ class MapEventResumeMixin:
         logger.attr("塞壬装置模式", mode)
 
         if event_type == "scanning_device" and state.get("submitted"):
-            logger.info("[大世界-事件续查] 装置已提交物品，只补一次自律寻敌")
-            self._run_siren_followup_search(mode, drop=drop)
+            remaining = state.get("remaining")
+            if not isinstance(remaining, int):
+                # 旧记录没有剩余次数：按模式补满（敌人 3 次、资源 1 次）
+                remaining = self._siren_followup_run_count(mode)
+            logger.info(
+                f"[大世界-事件续查] 装置已提交物品，补跑剩余 {remaining} 次自律寻敌"
+            )
+            self._run_siren_followup_search(mode, drop=drop, remaining=remaining)
             self._finish_pending_map_event(event_type, node=node)
             return
 

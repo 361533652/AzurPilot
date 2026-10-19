@@ -10,9 +10,10 @@ handle_akashi_supply_buy，内部的 ui_click 会一直等 is_in_map，点击永
 1. 点击事件没反应时不能再无界空转：收起舰队栏、快速失败，交给换其他舰队，
    其他舰队都不行再升级强制移动（recovery=True 时不受“强制移动”开关限制）。
 2. 已经看见事件、但点击/装置后续自律途中卡死重启时，把待办记进隐藏配置项，
-   重启后先续查：装置已提交物品只剩一次自律（敌人模式自律打敌人、资源模式
-   自律收柱子，点完资源即消耗，不要求对应事件再次完成）；其他情况先全图
-   扫描、再强制移动，都没看到事件就清记录继续下一轮。
+   重启后先续查：装置已提交物品按模式补自律（敌人模式共 3 次——游戏可能把
+   自律暂停，需要重新点击直到三次；资源模式 1 次收柱子，点完资源即消耗，
+   不要求对应事件再次完成），卡死重启后只补记录里剩下的次数；其他情况先
+   全图扫描、再强制移动，都没看到事件就清记录继续下一轮。
 """
 
 import unittest
@@ -77,6 +78,7 @@ def make_state(**overrides):
         "grid": [1, 2],
         "mode": None,
         "submitted": False,
+        "remaining": 0,
         "fleet": 1,
         "created": "2026-10-20T02:00:00",
     }
@@ -126,8 +128,8 @@ class ResumeStub(MapEventResumeMixin):
         if self.forced_action is not None:
             self.forced_action(self)
 
-    def _run_siren_followup_search(self, mode, drop=None):
-        self.followups.append((mode, drop))
+    def _run_siren_followup_search(self, mode, drop=None, remaining=None):
+        self.followups.append((mode, remaining, drop))
 
     def _finish_pending_map_event(self, event_type, node=None):
         self.finish_calls.append((event_type, node))
@@ -252,28 +254,43 @@ class TestBoundedAkashiClick(unittest.TestCase):
 
 
 class TestSirenFollowup(unittest.TestCase):
-    """装置提交物品后只剩一次自律。"""
+    """装置提交物品后的自律：敌人模式 3 次，资源模式 1 次。"""
 
-    def run_followup(self, mode, siren_fleet=0):
-        stub = ResumeStub()
+    def run_followup(self, mode, siren_fleet=0, remaining=None, state=None):
+        stub = ResumeStub(state=state)
         stub.fleet_sets = []
         stub.search_calls = []
         stub.fleet_set = stub.fleet_sets.append
         stub.os_auto_search_run = lambda drop=None: stub.search_calls.append(drop)
         stub.config.siren_fleet = siren_fleet
         # ResumeStub 覆盖了续查方法用于记录，这里直接验证真实实现
-        MapEventResumeMixin._run_siren_followup_search(stub, mode, drop=None)
+        MapEventResumeMixin._run_siren_followup_search(
+            stub, mode, drop=None, remaining=remaining
+        )
         return stub
 
-    def test_enemy_mode_switches_fleet_and_runs_once(self):
+    def test_enemy_mode_switches_fleet_and_runs_three_times(self):
         stub = self.run_followup("enemy", siren_fleet=2)
-        self.assertEqual(stub.search_calls, [None])
+        self.assertEqual(stub.search_calls, [None, None, None])
         self.assertEqual(stub.fleet_sets, [2, 1])
 
-    def test_enemy_mode_without_configured_fleet_runs_once(self):
+    def test_enemy_mode_without_configured_fleet_runs_three_times(self):
         stub = self.run_followup("enemy", siren_fleet=0)
-        self.assertEqual(stub.search_calls, [None])
+        self.assertEqual(stub.search_calls, [None, None, None])
         self.assertEqual(stub.fleet_sets, [])
+
+    def test_enemy_mode_resume_runs_only_remaining_times(self):
+        stub = self.run_followup("enemy", siren_fleet=2, remaining=2)
+        self.assertEqual(stub.search_calls, [None, None])
+        self.assertEqual(stub.fleet_sets, [2, 1])
+
+    def test_enemy_mode_records_remaining_after_each_run(self):
+        state = make_state(
+            type="scanning_device", mode="enemy", submitted=True, remaining=3
+        )
+        stub = self.run_followup("enemy", siren_fleet=2, state=state)
+        self.assertEqual(stub.search_calls, [None, None, None])
+        self.assertEqual(stub._read_pending_map_event()["remaining"], 0)
 
     def test_resource_mode_runs_once(self):
         stub = self.run_followup("resource")
@@ -301,14 +318,25 @@ class TestResumePendingEvent(unittest.TestCase):
         self.assertEqual(stub.forced_calls, [])
 
     @mock.patch("module.os.map_event_resume.get_os_next_reset", return_value=RESET)
-    def test_submitted_device_only_reruns_the_single_search(self, _reset):
-        state = make_state(type="scanning_device", mode="enemy", submitted=True)
+    def test_submitted_device_resumes_remaining_searches(self, _reset):
+        state = make_state(
+            type="scanning_device", mode="enemy", submitted=True, remaining=1
+        )
         stub = ResumeStub(state=state)
         stub._resume_pending_map_event()
-        self.assertEqual(stub.followups, [("enemy", None)])
+        self.assertEqual(stub.followups, [("enemy", 1, None)])
         self.assertEqual(stub.finish_calls, [("scanning_device", "B3")])
         self.assertEqual(stub.map_rescan_calls, [])
         self.assertEqual(stub.forced_calls, [])
+
+    @mock.patch("module.os.map_event_resume.get_os_next_reset", return_value=RESET)
+    def test_legacy_submitted_record_without_remaining_runs_full_mode(self, _reset):
+        state = make_state(type="scanning_device", mode="enemy", submitted=True)
+        state.pop("remaining")
+        stub = ResumeStub(state=state)
+        stub._resume_pending_map_event()
+        self.assertEqual(stub.followups, [("enemy", 3, None)])
+        self.assertEqual(stub.finish_calls, [("scanning_device", "B3")])
 
     @mock.patch("module.os.map_event_resume.get_os_next_reset", return_value=RESET)
     def test_full_scan_found_by_scan(self, _reset):
