@@ -102,11 +102,14 @@ module/os_simulator/
 
 | 类 | 要点 |
 | --- | --- |
-| `AshCombat(Combat)` | 战斗中持续采集信标收集进度（`ash_collect_status`，`DailyDigitCounter` 左裁剪适配信标数字） |
+| `AshCombat(Combat)` | META 战斗中的战斗状态、战前检查及完成信号处理 |
+| `OSAsh(UI, MapEventHandler)` | 地图侧读取信标持有量与每日进度；`AshDigitCounter` 核对持有量的计数格式、范围和完整字形数量，`DailyDigitCounter` 裁掉每日进度左侧文字 |
 | `Meta(UI, MapEventHandler)` | META 页面基类；`MetaState` 枚举（INIT/ATTACKING/COMPLETE/UNDEFINED）驱动页面状态机 |
 | `OpsiAshBeacon(Meta)` | 信标攻击任务：`ui_ensure(page_reward)` → 攻击 → `MetaReward` 领奖 → `task_delay(server_update=True)` → **必须 `ui_goto_main`**（MetaReward 停在 META 页，不回主界面会让下一个任务页面识别失败） |
 | `AshBeaconAssist(Meta)` | 协助好友信标：成功领奖延迟到服务器刷新，失败 `task_delay(minute=(10, 20))` 重试 |
-| `handle_ash_beacon_attack()` | 在大世界战斗链路中调用：收集 ≥100 且可调度时 `task_call('OpsiAshBeacon')`；`AttackMode=current_dossier_only`（只打档案）时不触发——该模式下信标数据永不消耗，触发条件会永久成立并反复打断智能调度|
+| `handle_ash_beacon_attack()` | 在大世界战斗链路中调用：持有量通过字形校验、≥100 且可调度时 `task_call('OpsiAshBeacon')`；读数不可信时不覆盖 META 排期。`AttackMode=current_dossier_only`（只打档案）时不触发——该模式下信标数据永不消耗，触发条件会永久成立并反复打断智能调度 |
+
+地图持有量不能只信任 OCR 文本：两位数若被补出百位，会反复召回数据不足的 META 任务，并中断正在执行的自动搜索。`AshDigitCounter` 用同一原生字图的完整连通字形数核对文字长度，拒绝不一致或越界结果，不截掉首位猜数；下一张地图截图可重新识别。持有量无效时仍独立读取每日进度，已达每日上限的状态继续用于侵蚀一行动力保留判断。离线回归与匿名原生字图见 `tests/test_opsi_ash_status.py`、`tests/fixtures/opsi_beacon/`。
 
 `OpsiAshBeacon.AssistRequestLimit` 替代原「一击即走」开关：`0`（默认）打一刀后持续每半小时求援；`-1` 自行连续出击，是否求援仍由 `RequestAssist` 控制；正整数在求援指定轮数、最后等待半小时后，若信标仍未击破则自行连续打完。首次战斗前的求援计入，好友/大舰队/世界的一次操作合计一轮。正整数模式将轮数及下次检查时刻保存到隐藏的 `AssistRequestState`，防止首刀后立即重复计数，并在重启后继续；确认信标为空或本信标奖励领取完毕时清除。META 主入口、每日刷新和档案信标不会自行清零该记录。旧布尔值迁移为 `true → 0`、`false → -1`。离线回归见 `tests/test_meta_beacon.py`。
 
