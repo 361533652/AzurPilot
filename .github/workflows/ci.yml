@@ -86,6 +86,7 @@ jobs:
           npx playwright install --with-deps chromium
           npm run test:e2e
           npm run test:e2e:mock -- --grep "舰队科技本轮快照"
+          npm run test:e2e:mock -- e2e/pairing.spec.ts
           npx playwright test --config playwright.mind.config.ts
 
   ruff:
