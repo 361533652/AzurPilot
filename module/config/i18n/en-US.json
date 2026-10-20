@@ -1468,7 +1468,7 @@
     },
     "TelemetryReport": {
       "name": "Telemetry data reporting",
-      "help": "After being enabled, CL1 statistics (anonymous data such as the number of battles and Akashi encounter probability) will be reported anonymously to the server on a regular basis. For details on ID generation, please see the source code. For statistical information https://alas.nanoda.work/"
+      "help": "After being enabled, CL1 statistics (anonymous data such as the number of battles and Akashi encounter probability) will be reported anonymously to the server on a regular basis. For details on ID generation, please see the source code. For statistical information https://azurpilot.com/"
     },
     "BugReport": {
       "name": "Bug log reporting",
@@ -4280,6 +4280,10 @@
     "SeaMilesLastRecord": {
       "name": "Last sea miles check",
       "help": "Internal timestamp of the last successful sea miles check, used to calculate the check interval."
+    },
+    "PendingMapEvent": {
+      "name": "Pending map event",
+      "help": "Internal record of a map event that has already been spotted but not finished (Akashi / scanning device / Siren research device). Used to resume it after a stuck restart. No need to edit manually."
     },
     "DebugClip": {
       "name": "Post-battle debug recording",
