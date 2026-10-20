@@ -19,6 +19,8 @@ frontend/README.md 与 frontend/API.md 已经是本前端的详细文档：前�
 
 注意：项目中的 **1280×720 是游戏截图识别的约束，不适用于 WebUI 布局**。前端按普通响应式网页开发，支持移动端折叠菜单，e2e 视口为 1440×1100。
 
+移动端在 950px 及以下使用导航与调度抽屉。新版主题的调度栏必须使用固定定位，桌面 L 形容器中的相对定位仅限 951px 及以上，隐藏抽屉不得占用正文高度；看图模式把手也仅在桌面显示。新版首页在窄屏按公告、实例列表顺序单列排列，由首页内容区整体滚动。480px 及以下，新版总览的日志工具栏独占一行，避免覆盖日志与截图切换入口；统计表格搜索也另起一行，保留标题和导出操作的可读宽度。统计分类在自己的轨道内横向滚动，紧凑主题继续按可用宽度改用下拉。相关回归位于 `frontend/e2e/mobile/mock.spec.ts`，使用触摸移动视口检查正文可见性、滚动可达性、抽屉与桌面断点切换，运行 `npm run test:e2e:mock --prefix frontend -- e2e/mobile/mock.spec.ts`。
+
 统计页各分类均保留历史展示与筛选，并提供导出入口：页面可导出本类数据，表格有各自的导出明细按钮，图表支持保存为图片。
 
 茗喵证券交易所的注册和登录使用 `src/stock/Captcha.tsx` 与 `recaptcha.ts` 中的 Google reCAPTCHA v2，脚本及验证 iframe 统一走 `www.recaptcha.net`，官方静态依赖使用 `www.gstatic.com/recaptcha/`。认证请求字段为 `recaptchaToken`；私密密钥由 Go 交易所环境变量 `RECAPTCHA_SECRET_KEY` 读取。站点停用域名验证，Go 不匹配 hostname 或 action。切换注册/登录时立即清空 token，提交后重置，组件卸载后忽略延迟回调；前端与 Go 服务须同步升级。

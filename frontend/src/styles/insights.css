@@ -377,9 +377,20 @@
 
 @media(max-width:950px) {.resource-grid:not(.resource-fit) {grid-template-columns:repeat(auto-fit,minmax(140px,1fr)) !important}.resource-card-editor,.resource-picker-grid {grid-template-columns:1fr}.resource-settings-heading {gap:10px}.task-row {grid-template-columns:minmax(0,1fr) 48px 74px 10px !important}.stat-metrics {grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.statistics-controls {padding:15px;gap:10px}.statistics-controls label {max-width:100%}.statistics-controls input {max-width:100%}.statistics-sections {flex:none;grid-template-rows:auto auto}.schedule-panel, .monitor-panel {height:500px}.panel.chart-expanded {inset:5px}.statistics-note {font-size:11px}}
 
+@media(max-width:950px) {
+  /* 分类在自己的轨道内横向滚动，避免向外溢出并带着正文一起横移。 */
+  .monitor-segmented.statistics-category-control {min-width:0; overflow-x:auto; background:var(--theme-control-bg); -webkit-backdrop-filter:var(--theme-control-filter); backdrop-filter:var(--theme-control-filter); border-color:var(--theme-segment-border)}
+  .statistics-category-control::before, .statistics-category-control::after {display:none}
+}
+
 /* 手机端：165px 起的网格在窄屏只放得下一列，而卡片是按多列设计的。
    窄屏改成「图标 + 名字在左、数值在右」的紧凑行，并允许名字折行，长物品名不再被省略号吃掉。 */
 @media(max-width:480px) {
+  /* 搜索独占一行，标题与导出操作保留在上方，避免按钮文字被挤成单字竖排。 */
+  .statistics-table > .panel-heading {flex-wrap:wrap; gap:10px}
+  .statistics-table > .panel-heading > .table-search {order:1; flex-basis:100%}
+  .statistics-table > .panel-heading > .table-search input {max-width:none}
+  .statistics-table > .panel-heading > .table-search > span {flex-shrink:0; white-space:nowrap}
   .summary-metrics-panel .summary-metrics {grid-template-columns:1fr;gap:2px}
   .summary-metrics-panel .summary-metric-card {flex-direction:row;align-items:center;gap:12px;min-height:0;padding:9px 10px}
   .summary-metrics-panel .summary-metric-head {flex-direction:row-reverse;justify-content:flex-end;flex:1 1 auto;min-width:0;margin-bottom:0;gap:10px}
