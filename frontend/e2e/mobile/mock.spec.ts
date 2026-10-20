@@ -117,16 +117,13 @@ for (const theme of ['light', 'dark']) {
 }
 
 for (const theme of ['light', 'dark', 'minimal', 'extreme', 'legacy-light', 'legacy-dark']) {
-  test(`移动端 ${theme} 统计分类切换不撑宽页面，搜索与导出可用`, async ({page}, testInfo) => {
+  test(`移动端 ${theme} 统计分类完整显示，搜索与导出可用`, async ({page}, testInfo) => {
     await preferences(page, theme)
     await page.goto('/#/i/demo-main/statistics')
     const categories = page.locator('.statistics-category-control')
-    if (theme === 'extreme') {
-      await expect(page.getByRole('combobox', {name: '统计分类', exact: true})).toBeInViewport()
-    } else {
-      await expect(categories).toBeInViewport()
-      await expect(categories).toHaveCSS('overflow-x', 'auto')
-    }
+    const select = page.getByRole('combobox', {name: '统计分类', exact: true})
+    await expect(select).toBeInViewport()
+    await expect(categories).toBeHidden()
     const search = page.locator('.statistics-table .table-search').first()
     const heading = page.locator('.statistics-table .panel-heading').first()
     await expect(search).toBeVisible()
@@ -137,22 +134,47 @@ for (const theme of ['light', 'dark', 'minimal', 'extreme', 'legacy-light', 'leg
     expect(exportButton.width).toBeGreaterThan(40)
     await expectNoPageOverflow(page)
 
-    if (theme === 'extreme') {
-      // 紧凑主题按可用宽度换成下拉，保留既有的窄屏交互。
-      const select = page.getByRole('combobox', {name: '统计分类', exact: true})
-      const lastLabel = (await page.locator('.statistics-category-select select option').last().textContent())!
+    await page.getByRole('button', {name: '样式编辑', exact: true}).click()
+    const merge = page.locator('.statistics-category-picker .statistics-single-view')
+    await expect(merge).toBeVisible()
+    await expectNoPageOverflow(page)
+    await page.locator('.statistics-category-picker').screenshot({path: testInfo.outputPath('statistics-category-edit.png'), animations: 'disabled'})
+    await page.getByRole('button', {name: '样式编辑', exact: true}).click()
+
+    for (const width of [320, 375, 390, 950]) {
+      await page.setViewportSize({width, height: 844})
+      await select.scrollIntoViewIfNeeded()
+      await expect(select).toBeInViewport({ratio: 1})
+      const box = (await select.boundingBox())!
+      expect(box.x).toBeGreaterThanOrEqual(0)
+      expect(box.x + box.width).toBeLessThanOrEqual(width)
+      expect(await select.locator('span').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+      await expectNoPageOverflow(page)
+    }
+    await page.setViewportSize({width: 375, height: 812})
+    await select.scrollIntoViewIfNeeded()
+    await page.screenshot({path: testInfo.outputPath('statistics-mobile.png'), animations: 'disabled'})
+    await page.locator('.statistics-category-picker').screenshot({path: testInfo.outputPath('statistics-category-picker.png'), animations: 'disabled'})
+    const labels = await page.locator('.statistics-category-select select option').allTextContents()
+    for (const label of labels) {
       await select.click()
-      await page.getByRole('option', {name: lastLabel, exact: true}).click()
-      await expect(select).toHaveText(lastLabel)
-    } else {
-      await categories.scrollIntoViewIfNeeded()
-      const lastTab = categories.getByRole('tab').last()
-      await lastTab.click()
-      await expect(lastTab).toHaveAttribute('aria-selected', 'true')
-      await expect(lastTab).toBeInViewport()
-      expect(await categories.evaluate(element => element.scrollLeft)).toBeGreaterThan(0)
+      const option = page.getByRole('option', {name: label, exact: true})
+      await option.scrollIntoViewIfNeeded()
+      await expect(option).toBeInViewport({ratio: 1})
+      expect(await option.locator('span').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+      await option.click()
+      await expect(select).toHaveText(label)
     }
     await expectNoPageOverflow(page)
-    await page.screenshot({path: testInfo.outputPath('statistics-mobile.png'), animations: 'disabled'})
+    await select.click()
+    await page.getByRole('listbox').evaluate(element => {element.scrollTop = 0})
+    await page.getByRole('listbox').screenshot({path: testInfo.outputPath('statistics-category-menu.png'), animations: 'disabled'})
+    await page.keyboard.press('Escape')
+    if (theme !== 'extreme') {
+      await page.setViewportSize({width: 1920, height: 1080})
+      await expect(categories).toBeVisible()
+      await expect(select).toBeHidden()
+      await categories.screenshot({path: testInfo.outputPath('statistics-category-desktop.png'), animations: 'disabled'})
+    }
   })
 }

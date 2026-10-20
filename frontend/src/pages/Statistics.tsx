@@ -584,19 +584,24 @@ export function Statistics() {
   }
 
   const categoryControl = <SegmentedControl<StatisticsView> className="statistics-category-control" label={ui('stats.categoryLabel')} value={management ? 'management' : category} onChange={selectPage} onItemContextMenu={editMode && !management ? id => {if (id !== 'management') togglePage(id, false)} : undefined} onItemMove={editMode && !management ? (id, delta) => {if (id !== 'management') movePageBy(id, delta)} : undefined} itemClassName={id => id === 'management' ? '' : `${isPageEnabled(layout, id) ? '' : 'is-disabled'}${!editMode && chainOf(id).length > 1 ? ' is-chained' : ''}`.trim()} trailing={!management && singleViewToggle} options={navigationEntries.map(([value, label]) => ({value, label: ui(label)}))}/>
+  /* 窄屏用明确的下拉入口展示全部分类，编辑模式的合并开关仍可单独操作。 */
+  const categoryPicker = <div className="statistics-category-picker">
+    <Select openOnFocus={condensed} className="statistics-category-select" aria-label={ui('stats.categoryLabel')} value={management ? 'management' : category} onChange={event => selectPage(event.target.value as StatisticsView)}>
+      {navigationEntries.map(([value, label]) => <option value={value} key={value}>{ui(label)}</option>)}
+    </Select>
+    {!management && singleViewToggle}
+  </div>
   const content = <>
     {condensed
       ? <div className={`statistics-toolbar-row${compact ? ' is-compact' : ''}`} ref={toolbarRow}>
           {categoryControl}
-          {/* 放不下时改用单按钮下拉；指针移入或键盘聚焦即展开，见 Select 的 openOnFocus */}
-          <Select openOnFocus className="statistics-category-select" aria-label={ui('stats.categoryLabel')} value={management ? 'management' : category} onChange={event => selectPage(event.target.value as StatisticsView)}>
-            {navigationEntries.map(([value, label]) => <option value={value} key={value}>{ui(label)}</option>)}
-          </Select>
+          {categoryPicker}
           <div className="statistics-toolbar-right" ref={toolbarRight}>{!management && <>{hasChart && activeView.foldControl(activeView.chartKey)}{hasChart && <button className="text-button" onClick={() => category && toggleExpanded(category)}>{expandedChart === category ? ui('stats.collapseChart') : ui('stats.expandChart')}</button>}{rangeControls}<ActionGroup>{actions}</ActionGroup></>}</div>
         </div>
       : <>
           <div className="statistics-toolbar-row">
             {categoryControl}
+            {categoryPicker}
             {legacy && !management && <ActionGroup>{actions}</ActionGroup>}
           </div>
           {!management && <div className="statistics-controls period-controls"><strong>{ui(categories[category!])}</strong>{rangeControls}{hints}</div>}
