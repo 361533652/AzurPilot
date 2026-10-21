@@ -8,7 +8,7 @@ from time import monotonic
 
 from module.base.timer import Timer
 from module.config.deep import deep_get
-from module.exception import (CampaignEnd, EmulatorNotRunningError, GameBugError,
+from module.exception import (EmulatorNotRunningError, GameBugError,
                               GameNotRunningError, GameStuckError, GameTooManyClickError)
 from module.logger import logger
 from module.ui.page import Page, page_campaign, page_event, page_sp
@@ -86,13 +86,10 @@ class CampaignRecovery:
                 and campaign.config.Campaign_ContinueAfterRestart
                 and campaign.config.Campaign_UseClearMode and campaign.config.Campaign_UseAutoSearch
                 and campaign.map_is_clear_mode and campaign.map_is_auto_search
-                and campaign.__dict__.get('_auto_search_phase')
+                and campaign.__dict__.get('_recovery_map_active', False)
                 and not campaign.__dict__.get('_restart_stop_requested', False)
                 and not campaign.AUTO_SEARCH_WITHDRAW
                 and not campaign.config.MAP_IS_ONE_TIME_STAGE):
-            return None
-        if campaign.combat_result.emotion_pending:
-            logger.warning('[战役续接] 心情写入未完成，无法确认账本，不生成续接凭据')
             return None
         generation = campaign.__dict__.get('_recovery_map_generation', 0)
         same_map = (previous is not None and previous.map_campaign is campaign
@@ -102,7 +99,7 @@ class CampaignRecovery:
         if attempts >= cls.MAX_ATTEMPTS or restart_attempts >= cls.MAX_ATTEMPTS:
             logger.warning('[战役续接] 同一关卡恢复次数已达上限，回退原有恢复流程')
             return None
-        logger.info('[战役续接] 检测到异常中断，保留原关卡与战斗记账状态，等待 Restart')
+        logger.info('[战役续接] 检测到异常中断，保留原关卡，等待 Restart 后恢复地图自律')
         return cls(runner, recovery_settings(campaign.config), generation=generation,
                    attempts=attempts, restart_attempts=restart_attempts, map_campaign=campaign)
 
@@ -120,7 +117,7 @@ class CampaignRecovery:
         """沿已有 Page 导航图找到保留海域；不选关、不切难度、不处理撤退。
 
         Pages:
-            in: 登录后的主界面、原地图、战斗或结算
+            in: 登录后的主界面或原地图
             out: 已识别的原地图状态，或确认选关页后返回 None
         """
         campaign = self.runner.campaign
@@ -168,29 +165,18 @@ class CampaignRecovery:
         self.runner.campaign.config.update()
         if not self.matches(self.runner.campaign.config):
             logger.warning('[战役续接] 重新读盘后原任务设置或账本已改变，放弃续接')
-            self.runner.campaign._auto_search_phase = None
-            self.runner.campaign.__dict__.pop('_auto_search_resume_state', None)
+            self.runner.campaign._recovery_map_active = False
             return False
-        # 心情从当前持久化账本恢复；本场去重标记仍保存在 CombatResult 中。
+        # 心情读取当前持久化账本；恢复后每场出击仍按普通战斗入口正常扣减。
         campaign = self.runner.campaign
         campaign.emotion = type(campaign.emotion)(campaign.config)
         campaign.emotion.map_is_2x_book = campaign.map_is_2x_book
         logger.info(f'[战役续接] 尝试恢复原任务 {config.task.command}，第 {self.attempts}/{self.MAX_ATTEMPTS} 次')
         state = self.find_state()
         if state is None:
-            campaign._auto_search_phase = None
-            campaign.__dict__.pop('_auto_search_resume_state', None)
+            campaign._recovery_map_active = False
             return False
-        if campaign.prepare_auto_search_recovery(state):
-            return True
-        if state == 'map':
-            # 已确认地图但原舰队、出击状态或账务断点不安全时，关闭自律并复用撤退流程。
-            # 不把这次放弃计为完成一次关卡。
-            try:
-                campaign.auto_search_withdraw(strict=True)
-            except CampaignEnd:
-                pass
-        return False
+        return campaign.prepare_auto_search_recovery(state)
 
     def resume(self, config, device):
         """恢复一次内层出击，外层每日进度和紧急委托换船仍由原任务处理。"""

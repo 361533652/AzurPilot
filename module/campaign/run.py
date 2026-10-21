@@ -475,9 +475,7 @@ class CampaignRun(CampaignEvent, ShopStatus):
             if self.triggered_stop_condition(oil_check=not resume_map and not self.campaign.is_in_auto_search_menu()):
                 if not resume_map:
                     break
-                # 结算尚在途中时不能直接进入地图撤退循环；先由原引擎收尾。
-                if self.campaign._auto_search_resume_state != 'menu':
-                    self.campaign._restart_stop_requested = True
+                self.campaign._restart_stop_requested = True
 
             # 更新配置
             if len(self.config.modified):
