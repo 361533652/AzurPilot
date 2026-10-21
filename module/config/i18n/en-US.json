@@ -1837,7 +1837,7 @@
     },
     "ContinueAfterRestart": {
       "name": "Continue battle after restart",
-      "help": "Available for main and event map tasks, including daily event stages, SP, urgent commissions and three-oil farming; off by default. Resume the original stage after an abnormal restart only when the task, clearing mode and auto search are confirmed. State is retained only within this scheduler process. Uncertain results or morale writes, changed settings, or exhausted retries fall back to the existing flow."
+      "help": "Available for main and event map tasks, including daily event stages, SP, urgent commissions and three-oil farming; off by default. Resume the original stage after an abnormal restart only when the task, clearing mode and auto search are confirmed. State is retained only within this scheduler process. Unconfirmed recovery conditions or morale writes, changed settings, or exhausted retries fall back to the existing flow."
     },
     "Use2xBook": {
       "name": "Use high-efficiency combat manual",

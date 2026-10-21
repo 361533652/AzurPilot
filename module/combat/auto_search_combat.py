@@ -21,7 +21,7 @@ from module.combat.combat import Combat
 from module.exception import CampaignEnd, GameStuckError, RequestHumanTakeover, ScriptEnd
 from module.handler.assets import AUTO_SEARCH_MAP_OPTION_OFF, AUTO_SEARCH_MAP_OPTION_ON, FLEET_UNAVAILABLE
 from module.logger import logger
-from module.map.assets import WITHDRAW, FLEET_NUM_1, FLEET_NUM_2
+from module.map.assets import WITHDRAW, FLEET_NUM_1, FLEET_NUM_2, MAP_OFFENSIVE
 from module.map.map_operation import MapOperation
 
 
@@ -64,6 +64,17 @@ class AutoSearchCombat(MapOperation, Combat, CampaignStatus):
             return 'map'
         return None
 
+    def _can_retry_interrupted_auto_search_battle(self):
+        """原舰队仍可出击时允许重试未结算战斗，不把返回地图视为一次胜利。"""
+        fleet_index = self.combat_result.fleet_index
+        if (self._auto_search_phase not in ('loading', 'executing', 'status')
+                or not self.__dict__.get('_auto_search_fleet_confirmed', False)
+                or self._withdraw or fleet_index not in (1, 2)):
+            return False
+        fleet = FLEET_NUM_1 if fleet_index == 1 else FLEET_NUM_2
+        return (self.appear(fleet, offset=(20, 20))
+                and self.match_template_color(MAP_OFFENSIVE, offset=(10, 10), threshold=10))
+
     def prepare_auto_search_recovery(self, state):
         """校验保存的战斗断点，无法证明战斗归属或结果时安全放弃。"""
         phase = self._auto_search_phase
@@ -72,7 +83,10 @@ class AutoSearchCombat(MapOperation, Combat, CampaignStatus):
         if result.emotion_pending:
             reason = '心情保存中断，账本状态不确定'
         elif state == 'map' and phase != 'moving' and result.rank is None and not result.defeated:
-            reason = '已开始的战斗回到地图，但未保留可确认的结果'
+            if self._can_retry_interrupted_auto_search_battle():
+                logger.info('[战役续接] 原舰队仍可出击，恢复自律重试未结算战斗；保留已记账消耗，不补记胜负')
+            else:
+                reason = '未结算战斗回到地图，无法确认原舰队仍可出击'
         elif state in ('combat', 'loading') and (result.rank is not None or result.defeated):
             reason = '已记录结果的战斗之后又出现战斗，无法确认场次'
         elif state in ('combat', 'loading', 'status') and not self.__dict__.get('_auto_search_fleet_confirmed'):
@@ -143,13 +157,20 @@ class AutoSearchCombat(MapOperation, Combat, CampaignStatus):
         if state == 'map' and self.__dict__.get('_restart_stop_requested', False):
             self.auto_search_combat_status()
             return
-        if state == 'map' and self._auto_search_phase == 'moving':
+        retry_from_map = (state == 'map' and self.combat_result.rank is None
+                          and not self.combat_result.defeated and self._auto_search_phase != 'moving')
+        if state == 'map' and (self._auto_search_phase == 'moving' or retry_from_map):
             logger.info('[战役续接] 接管地图移动与自律寻敌')
             self.auto_search_moving()
             self._auto_search_phase = 'loading'
-            self.auto_search_combat(fleet_index=self.fleet_show_index,
-                                    battle=(self.battle_count, self._map_battle))
-            return
+            if not retry_from_map:
+                self.auto_search_combat(fleet_index=self.fleet_show_index,
+                                        battle=(self.battle_count, self._map_battle))
+                return
+            if self.fleet_show_index != self.combat_result.fleet_index:
+                raise GameStuckError('[战役续接] 重试途中舰队改变，无法继续使用原战斗账本')
+            # 同场重试保留 CombatResult，实际结算后再由原流程计一次战斗。
+            state = 'loading'
         if self._auto_search_phase == 'moving':
             self.combat_result_reset(emotion_reduce=self.emotion.is_calculate,
                                      fleet_index=self.fleet_show_index)

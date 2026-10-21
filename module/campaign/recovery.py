@@ -184,7 +184,7 @@ class CampaignRecovery:
         if campaign.prepare_auto_search_recovery(state):
             return True
         if state == 'map':
-            # 已确认地图但账务断点不安全时，关闭自律并复用撤退流程。
+            # 已确认地图但原舰队、出击状态或账务断点不安全时，关闭自律并复用撤退流程。
             # 不把这次放弃计为完成一次关卡。
             try:
                 campaign.auto_search_withdraw(strict=True)

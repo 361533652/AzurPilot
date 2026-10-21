@@ -20,7 +20,7 @@ from module.combat.result import CombatResult
 from module.exception import CampaignEnd, GameNotRunningError, GameStuckError, ScriptEnd
 from module.handler.assets import AUTO_SEARCH_MAP_OPTION_OFF, AUTO_SEARCH_MAP_OPTION_ON, AUTO_SEARCH_MENU_EXIT
 from module.handler.login import LoginHandler
-from module.map.assets import FLEET_NUM_1, WITHDRAW
+from module.map.assets import FLEET_NUM_1, FLEET_NUM_2, MAP_OFFENSIVE, WITHDRAW
 from module.ui.page import page_campaign
 from tests.test_auto_search_defeat import ScreenReplay, retreat_frames, screen
 
@@ -373,6 +373,99 @@ class RestartBattleReplayTests(unittest.TestCase):
         campaign.emotion.reduce.assert_called_once_with(1)
         self.assertEqual(3, campaign.battle_count)
 
+    def test_interrupted_battle_on_map_restarts_auto_search_without_recharging(self):
+        for phase, reduced, fleet_index in (
+                ('loading', False, 1), ('executing', True, 1), ('status', True, 1), ('status', True, 2)):
+            with self.subTest(phase=phase, reduced=reduced, fleet=fleet_index):
+                fleet = FLEET_NUM_1 if fleet_index == 1 else FLEET_NUM_2
+                replay, campaign = self.make_replay([
+                    screen('MAP', WITHDRAW, MAP_OFFENSIVE, AUTO_SEARCH_MAP_OPTION_OFF, fleet),
+                    screen('MAP', MAP_OFFENSIVE, AUTO_SEARCH_MAP_OPTION_ON, fleet),
+                    screen('COMBAT'), screen('COMBAT'), screen(BATTLE_STATUS_S),
+                    screen(EXP_INFO_S), screen(AUTO_SEARCH_MAP_OPTION_ON)], phase=phase, reduced=reduced)
+                result = campaign.combat_result
+                result.fleet_index = fleet_index
+                campaign.fleet_show_index = fleet_index
+                self.resume(campaign, 'map')
+                self.assertIs(result, campaign.combat_result)
+                self.assertEqual('S', result.rank)
+                self.assertEqual(3, campaign.battle_count)
+                self.assertEqual([AUTO_SEARCH_MAP_OPTION_OFF.name, BATTLE_STATUS_S.name, EXP_INFO_S.name],
+                                 replay.clicks)
+                self.assertEqual([] if reduced else [call(fleet_index)], campaign.emotion.reduce.call_args_list)
+
+    def test_interrupted_battle_map_on_is_not_toggled_off(self):
+        replay, campaign = self.make_replay([
+            screen('MAP', WITHDRAW, MAP_OFFENSIVE, AUTO_SEARCH_MAP_OPTION_ON, FLEET_NUM_1),
+            screen('COMBAT'), screen('COMBAT'), screen(BATTLE_STATUS_S),
+            screen(EXP_INFO_S), screen(AUTO_SEARCH_MAP_OPTION_ON)], phase='status')
+        self.resume(campaign, 'map')
+        self.assertEqual(3, campaign.battle_count)
+        campaign.emotion.reduce.assert_not_called()
+        self.assertNotIn(AUTO_SEARCH_MAP_OPTION_OFF.name, replay.clicks)
+        self.assertNotIn(AUTO_SEARCH_MAP_OPTION_ON.name, replay.clicks)
+
+    def test_interrupted_battle_map_retry_still_obeys_defeat_stop(self):
+        replay, campaign = self.make_replay([
+            screen('MAP', WITHDRAW, MAP_OFFENSIVE, AUTO_SEARCH_MAP_OPTION_OFF, FLEET_NUM_1),
+            screen('MAP', MAP_OFFENSIVE, AUTO_SEARCH_MAP_OPTION_ON, FLEET_NUM_1),
+            screen('COMBAT'), screen('COMBAT'), *retreat_frames(screen(OPTS_INFO_D))], phase='status')
+        campaign._defeat_count = 2
+        self.assertTrue(campaign.prepare_auto_search_recovery('map'))
+        with self.assertRaisesRegex(ScriptEnd, 'DefeatWithdraw=withdraw_stop'):
+            campaign.auto_search_execute_a_battle()
+        self.assertEqual(3, campaign._defeat_count)
+        self.assertEqual(2, campaign.battle_count)
+        campaign.emotion.reduce.assert_called_once_with(1, shipwreck=True)
+        self.assertEqual(1, replay.clicks.count(AUTO_SEARCH_MAP_OPTION_OFF.name))
+
+    def test_interrupted_map_recovery_does_not_invent_result_before_retry(self):
+        _, campaign = self.make_replay([
+            screen('MAP', WITHDRAW, MAP_OFFENSIVE, AUTO_SEARCH_MAP_OPTION_OFF, FLEET_NUM_1)], phase='status')
+        result = campaign.combat_result
+        campaign.auto_search_moving = Mock(side_effect=GameStuckError('retry interrupted'))
+        self.assertTrue(campaign.prepare_auto_search_recovery('map'))
+        with self.assertRaises(GameStuckError):
+            campaign.auto_search_execute_a_battle()
+        self.assertEqual(2, campaign.battle_count)
+        self.assertIs(result, campaign.combat_result)
+        self.assertIsNone(result.rank)
+        self.assertFalse(result.defeated)
+        campaign.emotion.reduce.assert_not_called()
+
+    def test_interrupted_map_requires_same_fleet_and_visible_attack(self):
+        for buttons in ((FLEET_NUM_1,), (MAP_OFFENSIVE, FLEET_NUM_2), (MAP_OFFENSIVE,)):
+            with self.subTest(buttons=buttons):
+                replay, campaign = self.make_replay([
+                    screen('MAP', WITHDRAW, AUTO_SEARCH_MAP_OPTION_OFF, *buttons)], phase='status')
+                self.assertFalse(campaign.prepare_auto_search_recovery('map'))
+                self.assertEqual([], replay.clicks)
+                campaign.emotion.reduce.assert_not_called()
+
+    def test_interrupted_map_keeps_stop_condition_without_enabling(self):
+        replay, campaign = self.make_replay(retreat_frames(
+            screen('MAP', WITHDRAW, MAP_OFFENSIVE, AUTO_SEARCH_MAP_OPTION_OFF, FLEET_NUM_1)), phase='status')
+        campaign._restart_stop_requested = True
+        self.assertTrue(campaign.prepare_auto_search_recovery('map'))
+        with self.assertRaisesRegex(ScriptEnd, '原有停止条件已触发'):
+            campaign.auto_search_execute_a_battle()
+        self.assertEqual(2, campaign.battle_count)
+        self.assertIn(WITHDRAW.name, replay.clicks)
+        self.assertNotIn(AUTO_SEARCH_MAP_OPTION_OFF.name, replay.clicks)
+        campaign.emotion.reduce.assert_not_called()
+
+    def test_interrupted_map_changed_fleet_during_retry_does_not_reuse_charge(self):
+        _, campaign = self.make_replay([
+            screen('MAP', WITHDRAW, MAP_OFFENSIVE, AUTO_SEARCH_MAP_OPTION_OFF, FLEET_NUM_1),
+            screen('MAP', MAP_OFFENSIVE, AUTO_SEARCH_MAP_OPTION_ON, FLEET_NUM_2),
+            screen('LOADING')], phase='status')
+        self.assertTrue(campaign.prepare_auto_search_recovery('map'))
+        with self.assertRaisesRegex(GameStuckError, '舰队改变'):
+            campaign.auto_search_execute_a_battle()
+        self.assertEqual(2, campaign.battle_count)
+        self.assertEqual(1, campaign.combat_result.fleet_index)
+        campaign.emotion.reduce.assert_not_called()
+
     def test_on_or_ambiguous_off_does_not_click(self):
         replay, campaign = self.make_replay([
             screen('MAP', AUTO_SEARCH_MAP_OPTION_ON, AUTO_SEARCH_MAP_OPTION_OFF, FLEET_NUM_1)], phase='moving')
@@ -524,7 +617,8 @@ from module.base.utils import load_image
 from module.combat.auto_search_combat import AutoSearchCombat
 from module.combat.assets import BATTLE_STATUS_S, BATTLE_STATUS_A, BATTLE_STATUS_B, EXP_INFO_S, OPTS_INFO_D
 from module.handler.assets import AUTO_SEARCH_MAP_OPTION_ON, AUTO_SEARCH_MAP_OPTION_OFF, LOGIN_CHECK
-from module.map.assets import WITHDRAW
+from module.map.assets import FLEET_NUM_1, MAP_OFFENSIVE, WITHDRAW
+from module.combat.result import CombatResult
 from module.ui.page import page_main, page_main_white
 c = object.__new__(AutoSearchCombat)
 c.config = SimpleNamespace(SERVER=server.server, BUTTON_OFFSET=(30, 30))
@@ -545,6 +639,15 @@ for button, on in ((AUTO_SEARCH_MAP_OPTION_ON, True), (AUTO_SEARCH_MAP_OPTION_OF
     assert c.auto_search_recovery_state() == 'map', button.name
     assert c.is_auto_search_running() == on, button.name
     assert c.match_template_color(AUTO_SEARCH_MAP_OPTION_OFF, offset=(5, 5), threshold=10) != on, button.name
+for button in (FLEET_NUM_1, MAP_OFFENSIVE):
+    x1, y1, x2, y2 = button.area
+    c.device.image[y1:y2, x1:x2] = load_image(button.file)[y1:y2, x1:x2]
+c._auto_search_phase = 'status'
+c._auto_search_fleet_confirmed = True
+c.combat_result = CombatResult(fleet_index=1, emotion_reduce=True, emotion_reduced=True)
+assert c.prepare_auto_search_recovery('map'), server.server
+assert c.combat_result.rank is None
+assert c.combat_result.emotion_reduced
 '''
         for lang in ('cn', 'en', 'jp', 'tw'):
             with self.subTest(server=lang):
