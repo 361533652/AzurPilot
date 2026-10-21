@@ -13,6 +13,8 @@ class CombatResult:
     defeated: bool = False
     fleet_unavailable: bool = False
     shipwreck_reduced: bool = False
+    emotion_reduced: bool = False
+    emotion_pending: bool = False
 
     @property
     def needs_shipwreck_penalty(self):
