@@ -188,43 +188,40 @@ flowchart TD
 
 `Campaign.ContinueAfterRestart`（「重启后继续战斗」）默认关闭，适用于使用公共 `CampaignRun` 入口的主线与活动海域，包括活动每日 A–D、每日 SP、紧急委托与三油低耗任务。资格按实际地图目录（`campaign_main`、`campaign_hard` 或 `event_*`）判断，不按任务名称白名单判断；突袭、共斗、伏击、作战档案与作战交接等不适用任务隐藏开关。必须同时启用周回与自律寻敌，并在异常前实际确认该图处于这两种模式。三战撤退、一次性地图和重写关键执行入口的自定义战役不生成续接凭据。关闭时继续保留启动遇到地图撤退、章节识别遇到撤退按钮回退的原有行为。
 
-调用链：调度器 `run()` 用 `campaign_recovery_scope()` 绑定当前任务 → 公共 `CampaignRun.run()` 捕获设备／客户端异常 → `CampaignRecovery.capture()` 保留原运行器、战役实例及内层出击参数 → 原异常分支安排 Restart → `restart()` 实际完成登录后标记凭据就绪 → 原任务再次运行时 `CampaignRecovery.resume()` 预检并重新进入原运行器的外层 `run()` → 首次公共调用以 `resume=True` 继续原战役。主动重启、正常任务结束、脚本错误及没有调度上下文的独立调用不自行产生凭据。
+调用链：调度器 `run()` 用 `campaign_recovery_scope()` 绑定当前任务 → 公共 `CampaignRun.run()` 捕获设备／客户端异常 → `CampaignRecovery.capture()` 保留原地图、运行器及出击参数 → 原异常分支安排 Restart → 实际登录成功后允许原任务恢复 → 沿已有 Page 图回到原关卡地图 → 确认自律 OFF 后开启，自律 ON 时直接接管 → 按普通 `auto_search_moving()`、`auto_search_combat()` 流程执行后续战斗。
 
-活动每日恢复原关卡后才记录 `EventDaily.LastStage`，再执行筛选器中的后续关卡；重启跨过日更也先处理保留图，不从第一关重复入场。每日 SP 保留单次出击与次日调度。紧急委托和三油低耗保留 `GemsEmotion`、等级触发状态及原换船编排，续接不执行启动时强制换旗舰；实际舰队心情不足时先撤退，再交回换船策略，不套用普通任务的心情等待。
+恢复入口只处理异常重启后返回地图这一场景，不接管重启前的战斗、加载或结算画面，也不把返回地图推断为旧战斗重试。尚未核实的游戏返回行为不能自行扩展为产品机制；若会影响正确性，应先向用户确认。
 
-凭据只保存在当前调度进程内，包含原任务、配置／设备签名、原地图代次与恢复次数。切换到其他业务任务、配置或账本改变、超过有效期、worker 重启后均不续接。原图归属来自实际入图后的实例和不中断的异常恢复链，而非单凭撤退按钮推断；不支持中途人工换图或换号后继续使用这份上下文。
+活动每日恢复原地图后继续执行原任务编排，记录 `EventDaily.LastStage` 并执行后续关卡；每日 SP 保留单次出击与次日调度。紧急委托和三油低耗保留 `GemsEmotion` 与原换船编排，续接不执行启动时强制换旗舰；实际舰队心情不足时先撤退，再交回换船策略。
 
-恢复导航使用现有 `Page` 图，仅点击已识别页面通往原选关页的链接，不切章节、不重新点击入口。它在每帧先检测地图、加载、战斗、结算或周回菜单，避免进入原章节 OCR 的撤退兜底。正向确认已回到选关页且未再出现保留海域时，丢弃未完成地图的断点，继续普通流程，不补记一次通关。登录直接回到战斗／结算时提前交回原战役；渠道服等待主界面的悬浮球检查延后到后续任务。
+凭据只保存在当前调度进程内，包含原任务、配置／设备签名、原地图代次与恢复次数。切换其他业务任务、配置或账本改变、超过有效期、worker 重启后均不续接。原图归属来自原运行器和异常恢复链，不能只凭任意地图画面断言归属；不支持人工换图或换号后沿用上下文。
 
-| 恢复画面 | 处理 |
+导航复用已有 `Page` 图，不重新选关或入图。登录若直接出现地图，交回原任务恢复自律；渠道服等待主界面的悬浮球检查留待后续任务。已回到选关页且没有原地图时，按普通流程执行，不补记通关次数。
+
+| 当前状态 | 处理 |
 | --- | --- |
-| 地图，原断点在移动阶段 | 复用 `auto_search_moving()`，再进入原战斗流程 |
-| 地图，自律已开启 | 直接接管，不重复点击开关 |
-| 地图，自律关闭 | 同时确认 OFF 模板与颜色、实际舰队和原心情预检后，沿用原点击冷却开启 |
-| 战斗加载／执行 | 保留同场 `CombatResult`，复用 `auto_search_combat_execute(resume=True)` |
-| 评级／经验结算 | 有战斗发生的正向证据后补记尚未保存的基础消耗，复用原结算、战败处理 |
-| 周回完成菜单 | 原结算流程抛 `CampaignEnd`，原运行器统一增加一次周回，不自动多打一次 |
-| 未结算战斗回到地图，原舰队编号及出击按钮均可确认 | 开启自律并重试，保留同场基础／额外心情去重；等真实结算出现后才记一次战斗 |
-| 未结算战斗回到地图，原舰队或出击状态不可确认 | 放弃续接，保留已成功写入的账本，回退原撤退流程，不伪造胜负或场次 |
+| 原地图，自律关闭 | 首次确认地图后至少等待两秒，期间持续截图；再确认 OFF 模板与颜色、当前实际舰队及心情后开启，进入加载／战斗则不点击 |
+| 原地图，自律开启 | 直接进入普通移动／战斗循环，不反向关闭开关 |
+| 原地图，先前已有战斗记录 | 不依据旧评级或阶段分流；清理旧场结果，后续每场正常计算心情 |
+| 已触发停止条件 | 从地图直接撤退并结束本次调用，不开启自律、不接管旧结算、不增加未完成周回计数 |
+| 无法确认原地图 | 回退原流程或沿用有界导航超时，不猜测战斗／结算状态 |
 
-`CampaignBase` 保留 `battle_count`、舰队编号、等级状态与移动／加载／执行／结算阶段；续接不重新入图、不重置这些字段。基础心情是否已保存及结果的额外消耗去重保存在同场 `CombatResult` 中。心情写入中断时用 `emotion_pending` 标记不确定状态，不能重试同一次扣减来猜测保存是否成功。已有 A/B/C/D 的保守额外消耗规则不变。原有停止条件已触发时，只处理在途战斗与结算，再退出海域，不重新开启自律或给未完成地图计一次周回。
+`CampaignBase` 保留本地图已记录的 `battle_count`、周回次数与地图代次，不重新入图或重置地图进度。恢复前读取当前持久化心情，旧场 `CombatResult` 不跨重启继续使用。后续每场由普通战斗入口新建结果、确认进入战斗后正常扣基础心情；真实 A/B 或确定战败的额外消耗继续执行原有策略。不回滚重启前已经保存的消耗，也不让旧扣减标记免掉新出击的消耗。
 
-客户端在战斗中退出后可能回到原海域的待出击状态。没有评级并不等于已丢失一个完成结果；确认原实际舰队编号与 `MAP_OFFENSIVE` 模板及颜色后，可交回原移动、战斗执行与结算流程重试，执行入口使用 `resume=True` 保留 `CombatResult`。已保存的基础消耗不重复扣减，未保存的基础消耗在重新确认进入战斗时记一次；重试前不补评级、不增加战斗次数、不凭地图进度推断胜负。重试途中实际舰队改变时中断恢复，不把原队扣减用于另一队。
+每个海域最多恢复三次，关联 Restart 也最多三次（包括登录失败）；导航与开启自律有短期限，设备卡死、过量点击及任务重启限制继续生效。只有正常进入新地图后才分配新的预算。
 
-每个海域最多尝试续接三次，关联 Restart 也最多三次（包括登录未成功的尝试）；导航与开启自律各有短期限，并继续使用设备卡死、过量点击及任务重启限制。达到次数上限后丢弃续接凭据，回退原恢复流程；不会通过无限重启延长本图预算。正常进入下一图后才分配新的预算。
+离线验证入口：`uv run python -m unittest tests.test_campaign_restart_recovery tests.test_campaign_restart_tasks`。覆盖地图 OFF/ON、每场正常扣减、实际舰队识别、停止条件、普通战败、周回计数、每日／SP 及换船编排。四服资源组合与 Mock 回放不代表真实重启验收。
 
-离线验证入口：`uv run python -m unittest tests.test_campaign_restart_recovery tests.test_campaign_restart_tasks`。回放覆盖断点接管、开关、心情去重、战败、停止条件、周回计数、每日关卡进度、SP 调度、紧急委托换船及配置显示；四服资源验证使用现有按钮资源组合，不代表真实重启验收。实机还需检查异常重启、慢速加载、自动换队以及各活动地图。
-
-限制：进程退出会丢失断点；截图间隙未观察到的战斗／结算、客户端重启丢失的结果及人工干预无法由本地账本可靠还原。确认可出击后重试不代表还原了未知结算；缺失的评级和额外消耗仍不推断。发生这种不确定性时不能声称心情与客户端精确一致；本功能不从敌人数量或地图进度虚构补账，必要时应核对游戏实测值。
+限制：进程退出会丢失原地图上下文；未观察到的旧结果不补造，也不凭地图进度推断胜负或消耗。当前支持范围以已确认的重启返回地图行为为准。
 
 相关实现与配置索引：
 
 | 文件 | 用途 |
 | --- | --- |
 | [alas.py](../../alas.py)、[login.py](../../module/handler/login.py) | 异常来源、原任务凭据、Restart 预算与登录交接 |
-| [recovery.py](../../module/campaign/recovery.py)、[run.py](../../module/campaign/run.py)、[campaign_base.py](../../module/campaign/campaign_base.py) | 原实例保留、恢复导航、单场断点和周回计数 |
+| [recovery.py](../../module/campaign/recovery.py)、[run.py](../../module/campaign/run.py)、[campaign_base.py](../../module/campaign/campaign_base.py) | 原地图保留、恢复导航和周回计数 |
 | [campaign_abcd.py](../../module/event/campaign_abcd.py)、[gems_farming.py](../../module/campaign/gems_farming.py)、[emotion.py](../../module/combat/emotion.py) | 每日关卡进度、紧急委托换船和实际舰队心情预检 |
-| [auto_search_combat.py](../../module/combat/auto_search_combat.py)、[combat.py](../../module/combat/combat.py)、[result.py](../../module/combat/result.py) | 接管原战斗流程、严格开关检测、基础／额外心情去重和写入中断标记 |
+| [auto_search_combat.py](../../module/combat/auto_search_combat.py)、[combat.py](../../module/combat/combat.py)、[result.py](../../module/combat/result.py) | 普通战斗执行、严格开关检测与每场心情记录 |
 | [argument.yaml](../../module/config/argument/argument.yaml)、[override.yaml](../../module/config/argument/override.yaml) | 默认关闭的配置定义与不适用任务的隐藏覆盖 |
 | [args.json](../../module/config/argument/args.json)、[config_generated.py](../../module/config/config_generated.py)、[template.json](../../config/template.json) | 配置生成器维护的定义、Python 属性和模板 |
 | [zh-CN.json](../../module/config/i18n/zh-CN.json)、[zh-MIAO.json](../../module/config/i18n/zh-MIAO.json)、[en-US.json](../../module/config/i18n/en-US.json)、[ja-JP.json](../../module/config/i18n/ja-JP.json)、[zh-TW.json](../../module/config/i18n/zh-TW.json) | 五种语言的名称与限制说明 |

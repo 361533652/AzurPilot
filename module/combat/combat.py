@@ -80,10 +80,8 @@ class Combat(Level, HPBalancer, Retirement, SubmarineCall, CombatAuto, CombatMan
         result.defeated |= defeated
         if result.emotion_reduce and self.combat_shipwreck_emotion \
                 and result.needs_shipwreck_penalty and not result.shipwreck_reduced:
-            result.emotion_pending = True
             self.emotion.reduce(result.fleet_index, shipwreck=True)
             result.shipwreck_reduced = True
-            result.emotion_pending = False
         if first_defeat:
             logger.warning('[战斗-结算] 已确认战败结算')
             self.combat_defeat_recovery()

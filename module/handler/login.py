@@ -111,11 +111,10 @@ class LoginHandler(UI):
 
             self.device.screenshot()
 
-            # 仅由异常恢复凭据设置。战斗或结算已可接管时交回原战役，
-            # 避免登录通用弹窗处理器提前消费未记账的结算。
+            # 仅由异常恢复凭据设置；识别到原地图后交回任务开启自律。
             recovery_check = self.__dict__.get('campaign_recovery_check')
             if recovery_check is not None and recovery_check() is not None:
-                logger.info('[登录] 检测到异常重启保留的关卡，交回原战役处理')
+                logger.info('[登录] 检测到异常重启保留的地图，交回原任务恢复自律')
                 break
 
             # 渠道服启动悬浮球处理：先像素检测再拖拽，无球时不产生任何输入

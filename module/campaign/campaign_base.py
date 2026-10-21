@@ -14,7 +14,7 @@
 from module.base.decorator import Config, cached_property
 from module.campaign.campaign_ui import CampaignUI
 from module.combat.auto_search_combat import AutoSearchCombat
-from module.exception import CampaignEnd, MapEnemyMoved, ScriptError
+from module.exception import CampaignEnd, MapEnemyMoved, ScriptEnd, ScriptError
 from module.handler.assets import AUTO_SEARCH_MAP_OPTION_OFF, AUTO_SEARCH_MAP_OPTION_ON
 from module.logger import logger
 from module.map.map import Map
@@ -222,8 +222,7 @@ class CampaignBase(CampaignUI, Map, AutoSearchCombat):
 
         resume = self.__dict__.pop('_resume_after_restart', False)
         if not resume:
-            self._auto_search_phase = None
-            self.__dict__.pop('_auto_search_resume_state', None)
+            self._recovery_map_active = False
             self._recovery_map_generation = self.__dict__.get('_recovery_map_generation', 0) + 1
             self._restart_resume_guard = False
             self._restart_stop_requested = False
@@ -237,6 +236,13 @@ class CampaignBase(CampaignUI, Map, AutoSearchCombat):
         # 地图初始化
         if resume:
             logger.info('[战役续接] 保留舰队、等级和战斗次数，继续原关卡')
+            if self.__dict__.get('_restart_stop_requested', False):
+                try:
+                    self.auto_search_withdraw(strict=True)
+                except CampaignEnd:
+                    pass
+                self._recovery_map_active = False
+                raise ScriptEnd('[战役续接] 原有停止条件已触发')
         elif not self.map_is_auto_search:
             self.handle_map_fleet_lock()
             self.map_init(self.MAP)
@@ -259,7 +265,7 @@ class CampaignBase(CampaignUI, Map, AutoSearchCombat):
                         return True
                     self.auto_search_execute_a_battle()
             except CampaignEnd:
-                self._auto_search_phase = None
+                self._recovery_map_active = False
                 self._restart_resume_guard = False
                 logger.hr('战役结束')
                 return True
@@ -321,18 +327,11 @@ class CampaignBase(CampaignUI, Map, AutoSearchCombat):
         战斗完成后自动递增 battle_count。
         """
         logger.hr(f'{self.FUNCTION_NAME_BASE}{self.battle_count}', level=2)
-        if '_auto_search_resume_state' in self.__dict__:
-            self.resume_auto_search_battle()
-        else:
-            self._auto_search_phase = 'moving'
-            self._auto_search_fleet_confirmed = False
-            self.combat_result_reset()
-            self.auto_search_moving()
-            self._auto_search_phase = 'loading'
-            self.auto_search_combat(fleet_index=self.fleet_show_index,
-                                    battle=(self.battle_count, self._map_battle))
+        self._recovery_map_active = True
+        self.auto_search_moving()
+        self.auto_search_combat(fleet_index=self.fleet_show_index,
+                                battle=(self.battle_count, self._map_battle))
         self.battle_count += 1
-        self._auto_search_phase = None
 
     def auto_search_withdraw(self, skip_first_screenshot=True, strict=False):
         """自律寻敌运行中撤退。

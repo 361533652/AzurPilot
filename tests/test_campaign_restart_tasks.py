@@ -41,7 +41,7 @@ class CampaignTaskRecoveryTests(unittest.TestCase):
         campaign = object.__new__(CampaignBase)
         campaign.config = copy.deepcopy(runner.config)
         campaign.map_is_auto_search = campaign.map_is_clear_mode = True
-        campaign._auto_search_phase = 'moving'
+        campaign._recovery_map_active = True
         campaign.combat_result = CombatResult()
         runner.campaign = campaign
 
@@ -157,7 +157,7 @@ class CampaignTaskRecoveryTests(unittest.TestCase):
         campaign = runner.campaign
         campaign.map_is_clear_mode = campaign.map_is_auto_search = True
         campaign.map_is_2x_book = False
-        campaign._auto_search_phase = 'moving'
+        campaign._recovery_map_active = True
         campaign.combat_result = CombatResult()
         runner.run_count, runner.run_limit = 0, 0
         return runner
