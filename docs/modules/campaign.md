@@ -333,6 +333,9 @@ stateDiagram-v2
 | `TaskBalancer.Enable` / `CoinLimit` / `TaskCall` | 混合 | false / 10000 / Main | 金币不足时切换到指定任务 |
 | `GemsFarming.*` | 混合 | — | 换旗舰/先锋、普通船筛选、装备码、情绪策略、先锋等级区间 |
 | `Emotion.Mode` / `Fleet1Value` 等 | 混合 | — | 心情计算模式与各舰队心情记录 |
+| `Hard.RunAt18` | bool | `false` | 困难图改为服务器时间 18:00 运行；关闭时沿用零点调度 |
+
+开启 `Hard.RunAt18` 后，若困难图在服务器时间 18:00 前被调起，只将任务延后到当天 18:00，不进入困难关卡；18:00 后到期则正常执行剩余次数，完成后安排到下一次 18:00。旧配置自动补齐为关闭，保留原有零点调度。
 
 关键关联：`GemsFarming`/`ThreeOilLowCost` 共用同一组 `GemsFarming.*` 参数；`StopCondition_MapAchievement` 与 `can_use_auto_search_continue()` 联动（非 `non_stop` 时禁用续战，因为自动搜索菜单里读不到地图信息）；活动类配置 `MAP_CHAPTER_SWITCH_*`、`STAGE_ENTRANCE` 由地图文件 `Config` 注入而非用户设置。
 
