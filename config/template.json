@@ -2508,7 +2508,8 @@
     },
     "Hard": {
       "HardStage": "11-4",
-      "HardFleet": 1
+      "HardFleet": 1,
+      "RunAt18": false
     },
     "Storage": {
       "Storage": {}
