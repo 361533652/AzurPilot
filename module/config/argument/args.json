@@ -20189,6 +20189,10 @@
   },
   "FleetInfo": {
     "FleetInfo": {
+      "UpdateEmotion": {
+        "type": "checkbox",
+        "value": true
+      },
       "Result": {
         "type": "stored",
         "value": {},

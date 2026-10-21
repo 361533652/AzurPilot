@@ -1187,6 +1187,7 @@ class GeneratedConfig:
     FleetTech_Record = {}
 
     # 配置组 `FleetInfo`
+    FleetInfo_UpdateEmotion = True
     FleetInfo_Result = {}
     FleetInfo_Record = datetime.datetime(2020, 1, 1, 0, 0)
 

@@ -1150,11 +1150,17 @@ class AzurLaneAutoScript:
             logger.error(str(e))
             self._storage_statistics_failed = True
             return False
-        except MindCalculatorScanError as e:
+        except (MindCalculatorScanError, FleetManagementError) as e:
             logger.error_context(
-                title='舰船科技扫描未完成' if command == 'fleet_tech_scan' else '心智单元船坞扫描未完成', reason=str(e), exc=e,
-                impact='本次扫描结束，保留上次完整舰船清单，不重启模拟器。',
-                action='查看错误截图和具体原因，确认船坞布局及控制方式后重新启动扫描。',
+                title=('舰队管理未完成' if isinstance(e, FleetManagementError) else
+                       '舰船科技扫描未完成' if command == 'fleet_tech_scan' else '心智单元船坞扫描未完成'),
+                reason=str(e), exc=e,
+                impact=('本次舰队任务结束，不重启模拟器或重复换船；已操作但未核验的舰队参考记录会失效。'
+                        if isinstance(e, FleetManagementError) else
+                        '本次扫描结束，保留上次完整舰船清单，不重启模拟器。'),
+                action=('查看错误截图和游戏提示，核对当前编队后再启动任务。'
+                        if isinstance(e, FleetManagementError) else
+                        '查看错误截图和具体原因，确认船坞布局及控制方式后重新启动扫描。'),
                 level=50,
             )
             self.save_error_log()

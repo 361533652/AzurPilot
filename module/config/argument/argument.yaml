@@ -2505,6 +2505,7 @@ FleetTech:
     display: hide
 
 FleetInfo:
+  UpdateEmotion: true
   Result:
     type: stored
     value: {}
