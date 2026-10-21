@@ -290,7 +290,48 @@ class RestartMapReplayTests(unittest.TestCase):
         campaign.auto_search_watch_coin = Mock(return_value=True)
         campaign.match_template_color = Mock(side_effect=replay.appear)
         self.enterContext(patch('module.base.timer.time', side_effect=lambda: replay.time))
+        self.replay = replay
         return replay, campaign
+
+    def prepare_map(self, campaign):
+        ready = campaign.prepare_auto_search_recovery('map')
+        # 其余用例关注地图恢复和心情；两秒边界由独立计时回放验证。
+        self.replay.time += 2.01
+        return ready
+
+    def test_first_resume_click_waits_two_seconds(self):
+        replay, campaign = self.make_replay([
+            screen('MAP', WITHDRAW, AUTO_SEARCH_MAP_OPTION_OFF, FLEET_NUM_1)])
+        self.assertTrue(campaign.prepare_auto_search_recovery('map'))
+        self.assertFalse(campaign.handle_auto_search_map_option())
+        replay.time += 1.99
+        self.assertFalse(campaign.handle_auto_search_map_option())
+        self.assertEqual([], replay.clicks)
+        replay.time += 0.02
+        self.assertTrue(campaign.handle_auto_search_map_option())
+        self.assertEqual([AUTO_SEARCH_MAP_OPTION_OFF.name], replay.clicks)
+
+    def test_battle_start_during_delay_does_not_click_stale_map_switch(self):
+        for transition in ('LOADING', 'COMBAT'):
+            with self.subTest(transition=transition):
+                replay, campaign = self.make_replay([
+                    screen('MAP', WITHDRAW, AUTO_SEARCH_MAP_OPTION_OFF, FLEET_NUM_1),
+                    screen('MAP', WITHDRAW, AUTO_SEARCH_MAP_OPTION_OFF, FLEET_NUM_1),
+                    screen(transition, AUTO_SEARCH_MAP_OPTION_OFF, FLEET_NUM_1),
+                    screen('COMBAT'), screen(BATTLE_STATUS_S), screen(EXP_INFO_S),
+                    screen(AUTO_SEARCH_MAP_OPTION_ON)])
+                self.assertTrue(campaign.prepare_auto_search_recovery('map'))
+                replay.time += 0.01
+                campaign.auto_search_execute_a_battle()
+                self.assertNotIn(AUTO_SEARCH_MAP_OPTION_OFF.name, replay.clicks)
+                campaign.emotion.reduce.assert_called_once_with(1)
+
+    def test_normal_auto_search_enable_keeps_existing_timing(self):
+        replay, campaign = self.make_replay([
+            screen('MAP', WITHDRAW, AUTO_SEARCH_MAP_OPTION_OFF, FLEET_NUM_1)])
+        self.assertTrue(campaign.handle_auto_search_map_option())
+        self.assertEqual([AUTO_SEARCH_MAP_OPTION_OFF.name], replay.clicks)
+        self.assertEqual(100.0, replay.time)
 
     def test_map_resumes_normal_battle_and_deducts_fresh_morale(self):
         for old_rank in (None, 'S', 'A'):
@@ -302,7 +343,7 @@ class RestartMapReplayTests(unittest.TestCase):
                     screen(EXP_INFO_S), screen(AUTO_SEARCH_MAP_OPTION_ON)])
                 old_result = campaign.combat_result = CombatResult(
                     fleet_index=2, emotion_reduce=True, rank=old_rank, shipwreck_reduced=True)
-                self.assertTrue(campaign.prepare_auto_search_recovery('map'))
+                self.assertTrue(self.prepare_map(campaign))
                 campaign.auto_search_execute_a_battle()
                 self.assertIsNot(old_result, campaign.combat_result)
                 self.assertEqual('S', campaign.combat_result.rank)
@@ -317,7 +358,7 @@ class RestartMapReplayTests(unittest.TestCase):
         campaign.combat_result = CombatResult(rank='A', defeated=True, shipwreck_reduced=True)
         campaign._withdraw = True
         campaign.auto_search_combat_status = Mock(side_effect=AssertionError('不得接管旧结算'))
-        self.assertTrue(campaign.prepare_auto_search_recovery('map'))
+        self.assertTrue(self.prepare_map(campaign))
         self.assertTrue(campaign.handle_auto_search_map_option())
         self.assertEqual([AUTO_SEARCH_MAP_OPTION_OFF.name], replay.clicks)
         self.assertEqual(2, campaign.battle_count)
@@ -334,7 +375,7 @@ class RestartMapReplayTests(unittest.TestCase):
             screen('MAP', AUTO_SEARCH_MAP_OPTION_ON, FLEET_NUM_1),
             screen('COMBAT'), screen('COMBAT'), screen(BATTLE_STATUS_A), screen(EXP_INFO_A),
             screen(AUTO_SEARCH_MAP_OPTION_ON)])
-        self.assertTrue(campaign.prepare_auto_search_recovery('map'))
+        self.assertTrue(self.prepare_map(campaign))
         campaign.auto_search_execute_a_battle()
         campaign.auto_search_execute_a_battle()
         self.assertEqual([call(1), call(1), call(1, shipwreck=True)], campaign.emotion.reduce.call_args_list)
@@ -347,7 +388,7 @@ class RestartMapReplayTests(unittest.TestCase):
             screen('COMBAT'), screen('COMBAT'), screen(BATTLE_STATUS_S),
             screen(EXP_INFO_S), screen(AUTO_SEARCH_MAP_OPTION_ON)])
         campaign.combat_result = CombatResult(fleet_index=1, rank='S')
-        self.assertTrue(campaign.prepare_auto_search_recovery('map'))
+        self.assertTrue(self.prepare_map(campaign))
         campaign.auto_search_execute_a_battle()
         campaign.emotion.check_fleet.assert_called_once_with(2, after_restart=True)
         campaign.emotion.reduce.assert_called_once_with(2)
@@ -358,7 +399,7 @@ class RestartMapReplayTests(unittest.TestCase):
             screen('MAP', AUTO_SEARCH_MAP_OPTION_ON, FLEET_NUM_1),
             screen('COMBAT'), screen('COMBAT'), screen(BATTLE_STATUS_S),
             screen(EXP_INFO_S), screen(AUTO_SEARCH_MAP_OPTION_ON)])
-        self.assertTrue(campaign.prepare_auto_search_recovery('map'))
+        self.assertTrue(self.prepare_map(campaign))
         campaign.auto_search_execute_a_battle()
         self.assertNotIn(AUTO_SEARCH_MAP_OPTION_OFF.name, replay.clicks)
         self.assertNotIn(AUTO_SEARCH_MAP_OPTION_ON.name, replay.clicks)
@@ -367,7 +408,7 @@ class RestartMapReplayTests(unittest.TestCase):
     def test_ambiguous_switch_does_not_click(self):
         replay, campaign = self.make_replay([
             screen('MAP', WITHDRAW, AUTO_SEARCH_MAP_OPTION_OFF, FLEET_NUM_1)])
-        self.assertTrue(campaign.prepare_auto_search_recovery('map'))
+        self.assertTrue(self.prepare_map(campaign))
         campaign.match_template_color.side_effect = None
         campaign.match_template_color.return_value = False
         self.assertFalse(campaign.handle_auto_search_map_option())
@@ -378,7 +419,7 @@ class RestartMapReplayTests(unittest.TestCase):
             screen('MAP', WITHDRAW, AUTO_SEARCH_MAP_OPTION_OFF, FLEET_NUM_1)])
         campaign.emotion.check_fleet.side_effect = ScriptEnd('emotion delay')
         campaign.withdraw = Mock(side_effect=CampaignEnd('Withdraw'))
-        self.assertTrue(campaign.prepare_auto_search_recovery('map'))
+        self.assertTrue(self.prepare_map(campaign))
         with self.assertRaisesRegex(ScriptEnd, 'emotion delay'):
             campaign.handle_auto_search_map_option()
         campaign.withdraw.assert_called_once_with()
@@ -396,7 +437,7 @@ class RestartMapReplayTests(unittest.TestCase):
 
     def test_missing_button_reaches_timeout_without_clicking(self):
         replay, campaign = self.make_replay([screen('MAP', WITHDRAW)])
-        self.assertTrue(campaign.prepare_auto_search_recovery('map'))
+        self.assertTrue(self.prepare_map(campaign))
         with self.assertRaises(GameStuckError):
             for _ in range(62):
                 replay.time += 1
@@ -409,7 +450,7 @@ class RestartMapReplayTests(unittest.TestCase):
             screen('MAP', AUTO_SEARCH_MAP_OPTION_ON, FLEET_NUM_1),
             screen('COMBAT'), screen('COMBAT'), *retreat_frames(screen(OPTS_INFO_D))])
         campaign._defeat_count = 2
-        self.assertTrue(campaign.prepare_auto_search_recovery('map'))
+        self.assertTrue(self.prepare_map(campaign))
         with self.assertRaisesRegex(ScriptEnd, 'DefeatWithdraw=withdraw_stop'):
             campaign.auto_search_execute_a_battle()
         self.assertEqual([call(1), call(1, shipwreck=True)], campaign.emotion.reduce.call_args_list)
@@ -442,7 +483,7 @@ class RestartMapReplayTests(unittest.TestCase):
         campaign.enter_map = Mock()
         campaign.map_init = Mock()
         campaign.lv_reset = Mock()
-        self.assertTrue(campaign.prepare_auto_search_recovery('map'))
+        self.assertTrue(self.prepare_map(campaign))
         self.assertTrue(campaign.run())
         self.assertEqual(3, campaign.battle_count)
         campaign.emotion.reduce.assert_called_once_with(1)

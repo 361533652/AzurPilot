@@ -63,6 +63,7 @@ class AutoSearchCombat(MapOperation, Combat, CampaignStatus):
         if self.is_auto_search_running():
             logger.info('[战役续接] 自律寻敌已开启，直接接管，不重复点击')
         self._restart_resume_timer = Timer(30, count=60).start()
+        self._restart_resume_click_timer = Timer(2).start()
         self._restart_resume_guard = True
         self._restart_emotion_checked = False
         self._auto_search_in_stage_timer.reset()
@@ -80,6 +81,11 @@ class AutoSearchCombat(MapOperation, Combat, CampaignStatus):
         if self._restart_resume_timer.reached():
             raise GameStuckError('[战役续接] 自律寻敌未在期限内进入战斗')
         if self.is_auto_search_running():
+            return False
+        # 刚回到地图时先持续截图两秒，避免游戏尚未就绪就触发开关。
+        if not self._restart_resume_click_timer.reached():
+            return False
+        if self.is_combat_loading() or self.is_combat_executing():
             return False
         if not self.match_template_color(AUTO_SEARCH_MAP_OPTION_OFF,
                                          offset=self._auto_search_offset, threshold=10):
