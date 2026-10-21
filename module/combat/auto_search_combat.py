@@ -18,8 +18,8 @@ from module.base.timer import Timer
 from module.campaign.campaign_status import CampaignStatus
 from module.combat.assets import *
 from module.combat.combat import Combat
-from module.exception import CampaignEnd, RequestHumanTakeover, ScriptEnd
-from module.handler.assets import AUTO_SEARCH_MAP_OPTION_ON, FLEET_UNAVAILABLE
+from module.exception import CampaignEnd, GameStuckError, RequestHumanTakeover, ScriptEnd
+from module.handler.assets import AUTO_SEARCH_MAP_OPTION_OFF, AUTO_SEARCH_MAP_OPTION_ON, FLEET_UNAVAILABLE
 from module.logger import logger
 from module.map.assets import WITHDRAW, FLEET_NUM_1, FLEET_NUM_2
 from module.map.map_operation import MapOperation
@@ -45,6 +45,125 @@ class AutoSearchCombat(MapOperation, Combat, CampaignStatus):
     auto_search_defeat_recovery = True
     auto_search_oil_limit_triggered = False
     auto_search_coin_limit_triggered = False
+
+    def auto_search_recovery_state(self):
+        """只读识别可交回原战斗引擎的画面，不观察结果或操作按钮。"""
+        if self.is_in_auto_search_menu():
+            return 'menu'
+        if self.is_combat_executing():
+            return 'combat'
+        if any(self.match_template_color(button, offset=(30, 30), threshold=10)
+               for button in (OPTS_INFO_D, FLEET_UNAVAILABLE)) \
+                or any(self.match_template_color(button, offset=(10, 10), threshold=10) for button in (
+                    BATTLE_STATUS_S, BATTLE_STATUS_A, BATTLE_STATUS_B, BATTLE_STATUS_C, BATTLE_STATUS_D,
+                    EXP_INFO_S, EXP_INFO_A, EXP_INFO_B, EXP_INFO_C, EXP_INFO_D)):
+            return 'status'
+        if self.is_combat_loading():
+            return 'loading'
+        if self.is_auto_search_running() or (self.is_in_map() and self.appear(WITHDRAW, offset=(30, 30))):
+            return 'map'
+        return None
+
+    def prepare_auto_search_recovery(self, state):
+        """校验保存的战斗断点，无法证明战斗归属或结果时安全放弃。"""
+        phase = self._auto_search_phase
+        result = self.combat_result
+        reason = None
+        if result.emotion_pending:
+            reason = '心情保存中断，账本状态不确定'
+        elif state == 'map' and phase != 'moving' and result.rank is None and not result.defeated:
+            reason = '已开始的战斗回到地图，但未保留可确认的结果'
+        elif state in ('combat', 'loading') and (result.rank is not None or result.defeated):
+            reason = '已记录结果的战斗之后又出现战斗，无法确认场次'
+        elif state in ('combat', 'loading', 'status') and not self.__dict__.get('_auto_search_fleet_confirmed'):
+            reason = '尚未确认实际出战舰队'
+        if reason:
+            logger.warning(f'[战役续接] 放弃续接：{reason}，回退原有处理流程')
+            self._auto_search_phase = None
+            self.__dict__.pop('_auto_search_resume_state', None)
+            self._restart_resume_guard = False
+            return False
+        if state == 'map' and self.is_auto_search_running():
+            logger.info('[战役续接] 自律寻敌已开启，直接接管，不重复点击')
+        self._auto_search_resume_state = state
+        self._restart_resume_timer = Timer(30, count=60).start() if state == 'map' else None
+        self._restart_resume_guard = True
+        self._restart_emotion_checked = False
+        self._auto_search_in_stage_timer.reset()
+        return True
+
+    def handle_auto_search_map_option(self):
+        """重启续接时以模板和颜色共同确认 OFF，沿用原点击冷却。"""
+        if not self.__dict__.get('_restart_resume_guard', False):
+            return super().handle_auto_search_map_option()
+        if self._restart_resume_timer is None:
+            if not (self.is_auto_search_running() or self.is_in_map()):
+                return False
+            self._restart_resume_timer = Timer(30, count=60).start()
+        if self._restart_resume_timer.reached():
+            raise GameStuckError('[战役续接] 自律寻敌未在期限内进入战斗')
+        if self.is_auto_search_running():
+            return False
+        if not self.match_template_color(AUTO_SEARCH_MAP_OPTION_OFF,
+                                         offset=self._auto_search_offset, threshold=10):
+            return False
+        if not self._restart_emotion_checked:
+            self.auto_search_watch_fleet()
+            if not self.__dict__.get('_auto_search_fleet_confirmed'):
+                return False
+            try:
+                self.emotion.check_fleet(self.fleet_show_index, after_restart=True)
+            except (ScriptEnd, RequestHumanTakeover):
+                logger.warning('[战役续接] 舰队心情检查未通过，先撤退再交回任务处理')
+                try:
+                    self.withdraw()
+                except CampaignEnd:
+                    pass
+                raise
+            self._restart_emotion_checked = True
+            logger.info('[战役续接] 已确认自律寻敌关闭，尝试恢复')
+        return super().handle_auto_search_map_option()
+
+    def _auto_search_reduce_emotion(self, emotion_reduce):
+        """基础消耗只在已确认战斗发生后记一次；异常写入不猜测是否成功。"""
+        result = self.combat_result
+        if emotion_reduce and not result.emotion_reduced:
+            result.emotion_pending = True
+            self.emotion.reduce(result.fleet_index)
+            result.emotion_reduced = True
+            result.emotion_pending = False
+
+    def resume_auto_search_battle(self):
+        """从保存的阶段交回原移动、执行或结算处理器。"""
+        state = self.__dict__.pop('_auto_search_resume_state')
+        if state == 'menu':
+            # 原结算处理器负责战败策略与关卡结束，不点击下一轮继续。
+            self.auto_search_combat_status()
+            return
+        if state == 'map' and self.__dict__.get('_restart_stop_requested', False):
+            self.auto_search_combat_status()
+            return
+        if state == 'map' and self._auto_search_phase == 'moving':
+            logger.info('[战役续接] 接管地图移动与自律寻敌')
+            self.auto_search_moving()
+            self._auto_search_phase = 'loading'
+            self.auto_search_combat(fleet_index=self.fleet_show_index,
+                                    battle=(self.battle_count, self._map_battle))
+            return
+        if self._auto_search_phase == 'moving':
+            self.combat_result_reset(emotion_reduce=self.emotion.is_calculate,
+                                     fleet_index=self.fleet_show_index)
+        if state in ('combat', 'loading'):
+            self._restart_resume_guard = False
+            self.auto_search_combat_execute(emotion_reduce=self.emotion.is_calculate,
+                                            fleet_index=self.combat_result.fleet_index,
+                                            battle=(self.battle_count, self._map_battle), resume=True)
+        elif state == 'status':
+            # 评级/经验页证明战斗已发生；仅补记尚未成功保存的基础消耗。
+            self._auto_search_reduce_emotion(self.emotion.is_calculate)
+        self._auto_search_phase = 'status'
+        self.auto_search_combat_status()
+        logger.info('[战役续接] 已恢复正常战斗流程')
 
     def _handle_auto_search_menu_missing(self):
         """处理自动搜索菜单缺失的异常情况。
@@ -83,7 +202,8 @@ class AutoSearchCombat(MapOperation, Combat, CampaignStatus):
             # 处理碧蓝航线客户端异常：
             # 从退役界面退出并立即开启自动搜索时，图标显示正在运行但实际未动作。
             # 定时点击：每 3 秒尝试关闭自动搜索一次，不包含初始阶段
-            if self.appear(AUTO_SEARCH_MAP_OPTION_ON, offset=self._auto_search_offset, interval=3) \
+            if not self.__dict__.get('_restart_resume_guard', False) \
+                    and self.appear(AUTO_SEARCH_MAP_OPTION_ON, offset=self._auto_search_offset, interval=3) \
                     and self.appear_then_click(AUTO_SEARCH_MAP_OPTION_ON):
                 continue
             if self.handle_combat_low_emotion():
@@ -113,6 +233,7 @@ class AutoSearchCombat(MapOperation, Combat, CampaignStatus):
         else:
             # 转场读不到编号时保留上一次正向确认，不能把二队改记为默认一队。
             return checked
+        self._auto_search_fleet_confirmed = True
         self.get_fleet_current_index()
         if self.fleet_current_index == prev:
             # 与当前舰队一致，仅输出一次日志
@@ -260,7 +381,7 @@ class AutoSearchCombat(MapOperation, Combat, CampaignStatus):
                 raise CampaignEnd
 
     def auto_search_combat_execute(self, emotion_reduce, fleet_index, battle=None, expected_end=None,
-                                   shipwreck_reduce=None):
+                                   shipwreck_reduce=None, resume=False):
         """执行自动搜索战斗过程。
 
         包含战斗加载、自律/手动控制、潜艇召唤、弹窗处理及结算判定。
@@ -272,6 +393,7 @@ class AutoSearchCombat(MapOperation, Combat, CampaignStatus):
             expected_end (callable, optional): 外部传入的战斗结束判定回调函数。默认为 None。
             shipwreck_reduce (bool, optional): 是否记录本场结果的额外心情扣减，默认跟随基础扣减。
                 联盟多队模式仅首场扣基础心情，但每场仍需观察结果。
+            resume (bool): 保留同一场的结果与心情去重标记，仅供异常重启续接。
 
         Raises:
             CampaignEnd: 检测到自动搜索菜单时抛出，表示探索已结束。
@@ -280,16 +402,20 @@ class AutoSearchCombat(MapOperation, Combat, CampaignStatus):
             in: is_combat_loading()
             out: 战斗结算状态
         """
-        self._withdraw = False
-        self.combat_result_reset(
-            emotion_reduce=emotion_reduce if shipwreck_reduce is None else shipwreck_reduce,
-            fleet_index=fleet_index)
+        if not resume:
+            self._withdraw = False
+            self.combat_result_reset(
+                emotion_reduce=emotion_reduce if shipwreck_reduce is None else shipwreck_reduce,
+                fleet_index=fleet_index)
         logger.info('自动搜索战斗加载中')
         self.device.stuck_record_clear()
         self.device.click_record_clear()
         self.device.screenshot_interval_set('combat')
         for _ in self.loop():
 
+            if resume and self.auto_search_recovery_state() == 'status':
+                self._auto_search_reduce_emotion(emotion_reduce)
+                return
             if self.handle_combat_automation_confirm():
                 continue
             if self.handle_story_skip():
@@ -319,6 +445,9 @@ class AutoSearchCombat(MapOperation, Combat, CampaignStatus):
                 break
 
         logger.info('[自动搜索-战斗] 战斗执行')
+        if self.__dict__.get('_auto_search_phase'):
+            self._auto_search_phase = 'executing'
+        self._restart_resume_guard = False
         self.submarine_call_reset()
         submarine_mode = 'do_not_use'
         if self.config.Submarine_Fleet:
@@ -328,8 +457,7 @@ class AutoSearchCombat(MapOperation, Combat, CampaignStatus):
         self.combat_manual_reset()
         self.device.stuck_record_clear()
         self.device.click_record_clear()
-        if emotion_reduce:
-            self.emotion.reduce(fleet_index)
+        self._auto_search_reduce_emotion(emotion_reduce)
         auto = self.config.Fleet_Fleet1Mode if fleet_index == 1 else self.config.Fleet_Fleet2Mode
 
         confirm_timer = Timer(10)
@@ -445,9 +573,16 @@ class AutoSearchCombat(MapOperation, Combat, CampaignStatus):
         resume_checked = False
         resume_started = False
         resume_error = None
+        stop_requested = self.__dict__.get('_restart_stop_requested', False)
+        if stop_requested:
+            self._withdraw = True
 
         for _ in self.loop():
 
+            # 原有停止条件已触发时，只完成在途结算，再借用撤退分支退出。
+            if stop_requested and self.is_auto_search_running():
+                if self.appear_then_click(AUTO_SEARCH_MAP_OPTION_ON, interval=2):
+                    continue
             if self.handle_combat_defeat():
                 continue
             # 该正文意味着游戏将自动换队；不能让通用「确定」误识别成紧急委托。
@@ -468,6 +603,8 @@ class AutoSearchCombat(MapOperation, Combat, CampaignStatus):
                 # 战败后可能直接回到菜单或选关页，仍须退出并执行关闭任务策略。
                 if self.is_in_stage():
                     self._withdraw = False
+                    if stop_requested:
+                        raise ScriptEnd('[战役续接] 原有停止条件已触发')
                     if resume_error is not None:
                         raise resume_error
                     if self.config.Campaign_DefeatWithdraw == 'withdraw_stop' and self._defeat_count >= 3:
@@ -503,7 +640,8 @@ class AutoSearchCombat(MapOperation, Combat, CampaignStatus):
             # 撤退处理
             if self._withdraw:
                 defeat_withdraw = self.config.Campaign_DefeatWithdraw
-                allow_switch = defeat_withdraw == 'switch_fleet' and self.combat_result.fleet_unavailable \
+                allow_switch = not stop_requested and defeat_withdraw == 'switch_fleet' \
+                    and self.combat_result.fleet_unavailable \
                     and not handoff_failed
                 if allow_switch:
                     if handoff_timer is None:
@@ -572,6 +710,8 @@ class AutoSearchCombat(MapOperation, Combat, CampaignStatus):
         emotion_reduce = emotion_reduce if emotion_reduce is not None else self.emotion.is_calculate
 
         self.auto_search_combat_execute(emotion_reduce=emotion_reduce, fleet_index=fleet_index, battle=battle)
+        if self.__dict__.get('_auto_search_phase'):
+            self._auto_search_phase = 'status'
         self.auto_search_combat_status()
 
         logger.info('[自动搜索-战斗] 战斗结束')

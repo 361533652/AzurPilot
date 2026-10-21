@@ -43,6 +43,7 @@
 ```
 module/campaign/
 ├── run.py               # CampaignRun：任务级多轮编排（选关、加载、停止条件）
+├── recovery.py          # CampaignRecovery：异常 Restart 凭据、预算和原海域导航
 ├── campaign_base.py     # CampaignBase：单次出击执行与战斗策略分发
 ├── campaign_ui.py       # CampaignUI：章节/模式导航、入口获取、活动 UI 适配
 ├── campaign_ocr.py      # CampaignOcr：关卡入口模板匹配 + 关卡名 OCR
@@ -182,6 +183,50 @@ flowchart TD
 ### 首发与复刻的选关布局
 
 活动地图目录可能同时用于首发和复刻。`event_20240912_cn` 在进入选关页后按实际按钮识别布局：左下角作战／剧情选择器走 `20241219` 侧边栏导航，普通／困难开关走旧导航；未知画面通过 `CampaignNameError` 回到选关循环重截图，不盲点模式按钮。布局标记仅覆盖当前战役配置副本，每次导航重新判断；普通和困难关卡在新版地图准备页切换难度，SP 不启用该难度开关。不要按服务器或单一当前活动全局替换导航逻辑。
+
+### 异常重启后续接原关卡
+
+`Campaign.ContinueAfterRestart`（「重启后继续战斗」）默认关闭，适用于使用公共 `CampaignRun` 入口的主线与活动海域，包括活动每日 A–D、每日 SP、紧急委托与三油低耗任务。资格按实际地图目录（`campaign_main`、`campaign_hard` 或 `event_*`）判断，不按任务名称白名单判断；突袭、共斗、伏击、作战档案与作战交接等不适用任务隐藏开关。必须同时启用周回与自律寻敌，并在异常前实际确认该图处于这两种模式。三战撤退、一次性地图和重写关键执行入口的自定义战役不生成续接凭据。关闭时继续保留启动遇到地图撤退、章节识别遇到撤退按钮回退的原有行为。
+
+调用链：调度器 `run()` 用 `campaign_recovery_scope()` 绑定当前任务 → 公共 `CampaignRun.run()` 捕获设备／客户端异常 → `CampaignRecovery.capture()` 保留原运行器、战役实例及内层出击参数 → 原异常分支安排 Restart → `restart()` 实际完成登录后标记凭据就绪 → 原任务再次运行时 `CampaignRecovery.resume()` 预检并重新进入原运行器的外层 `run()` → 首次公共调用以 `resume=True` 继续原战役。主动重启、正常任务结束、脚本错误及没有调度上下文的独立调用不自行产生凭据。
+
+活动每日恢复原关卡后才记录 `EventDaily.LastStage`，再执行筛选器中的后续关卡；重启跨过日更也先处理保留图，不从第一关重复入场。每日 SP 保留单次出击与次日调度。紧急委托和三油低耗保留 `GemsEmotion`、等级触发状态及原换船编排，续接不执行启动时强制换旗舰；实际舰队心情不足时先撤退，再交回换船策略，不套用普通任务的心情等待。
+
+凭据只保存在当前调度进程内，包含原任务、配置／设备签名、原地图代次与恢复次数。切换到其他业务任务、配置或账本改变、超过有效期、worker 重启后均不续接。原图归属来自实际入图后的实例和不中断的异常恢复链，而非单凭撤退按钮推断；不支持中途人工换图或换号后继续使用这份上下文。
+
+恢复导航使用现有 `Page` 图，仅点击已识别页面通往原选关页的链接，不切章节、不重新点击入口。它在每帧先检测地图、加载、战斗、结算或周回菜单，避免进入原章节 OCR 的撤退兜底。正向确认已回到选关页且未再出现保留海域时，丢弃未完成地图的断点，继续普通流程，不补记一次通关。登录直接回到战斗／结算时提前交回原战役；渠道服等待主界面的悬浮球检查延后到后续任务。
+
+| 恢复画面 | 处理 |
+| --- | --- |
+| 地图，原断点在移动阶段 | 复用 `auto_search_moving()`，再进入原战斗流程 |
+| 地图，自律已开启 | 直接接管，不重复点击开关 |
+| 地图，自律关闭 | 同时确认 OFF 模板与颜色、实际舰队和原心情预检后，沿用原点击冷却开启 |
+| 战斗加载／执行 | 保留同场 `CombatResult`，复用 `auto_search_combat_execute(resume=True)` |
+| 评级／经验结算 | 有战斗发生的正向证据后补记尚未保存的基础消耗，复用原结算、战败处理 |
+| 周回完成菜单 | 原结算流程抛 `CampaignEnd`，原运行器统一增加一次周回，不自动多打一次 |
+| 已开始战斗却回到地图，结果未知 | 放弃续接，保留已成功写入的账本，回退原撤退流程，不伪造胜负或场次 |
+
+`CampaignBase` 保留 `battle_count`、舰队编号、等级状态与移动／加载／执行／结算阶段；续接不重新入图、不重置这些字段。基础心情是否已保存及结果的额外消耗去重保存在同场 `CombatResult` 中。心情写入中断时用 `emotion_pending` 标记不确定状态，不能重试同一次扣减来猜测保存是否成功。已有 A/B/C/D 的保守额外消耗规则不变。原有停止条件已触发时，只处理在途战斗与结算，再退出海域，不重新开启自律或给未完成地图计一次周回。
+
+每个海域最多尝试续接三次，关联 Restart 也最多三次（包括登录未成功的尝试）；导航与开启自律各有短期限，并继续使用设备卡死、过量点击及任务重启限制。达到次数上限后丢弃续接凭据，回退原恢复流程；不会通过无限重启延长本图预算。正常进入下一图后才分配新的预算。
+
+离线验证入口：`uv run python -m unittest tests.test_campaign_restart_recovery tests.test_campaign_restart_tasks`。回放覆盖断点接管、开关、心情去重、战败、停止条件、周回计数、每日关卡进度、SP 调度、紧急委托换船及配置显示；四服资源验证使用现有按钮资源组合，不代表真实重启验收。实机还需检查异常重启、慢速加载、自动换队以及各活动地图。
+
+限制：进程退出会丢失断点；截图间隙未观察到的战斗／结算、客户端重启丢失的结果及人工干预无法由本地账本可靠还原。发生这种不确定性时不能声称心情与客户端精确一致；本功能不从敌人数量或地图进度虚构补账，必要时应核对游戏实测值。
+
+相关实现与配置索引：
+
+| 文件 | 用途 |
+| --- | --- |
+| [alas.py](../../alas.py)、[login.py](../../module/handler/login.py) | 异常来源、原任务凭据、Restart 预算与登录交接 |
+| [recovery.py](../../module/campaign/recovery.py)、[run.py](../../module/campaign/run.py)、[campaign_base.py](../../module/campaign/campaign_base.py) | 原实例保留、恢复导航、单场断点和周回计数 |
+| [campaign_abcd.py](../../module/event/campaign_abcd.py)、[gems_farming.py](../../module/campaign/gems_farming.py)、[emotion.py](../../module/combat/emotion.py) | 每日关卡进度、紧急委托换船和实际舰队心情预检 |
+| [auto_search_combat.py](../../module/combat/auto_search_combat.py)、[combat.py](../../module/combat/combat.py)、[result.py](../../module/combat/result.py) | 接管原战斗流程、严格开关检测、基础／额外心情去重和写入中断标记 |
+| [argument.yaml](../../module/config/argument/argument.yaml)、[override.yaml](../../module/config/argument/override.yaml) | 默认关闭的配置定义与不适用任务的隐藏覆盖 |
+| [args.json](../../module/config/argument/args.json)、[config_generated.py](../../module/config/config_generated.py)、[template.json](../../config/template.json) | 配置生成器维护的定义、Python 属性和模板 |
+| [zh-CN.json](../../module/config/i18n/zh-CN.json)、[zh-MIAO.json](../../module/config/i18n/zh-MIAO.json)、[en-US.json](../../module/config/i18n/en-US.json)、[ja-JP.json](../../module/config/i18n/ja-JP.json)、[zh-TW.json](../../module/config/i18n/zh-TW.json) | 五种语言的名称与限制说明 |
+| [test_campaign_restart_recovery.py](../../tests/test_campaign_restart_recovery.py)、[test_campaign_restart_tasks.py](../../tests/test_campaign_restart_tasks.py) | 隔离配置、恢复回放、跨任务编排及四服资源组合测试 |
+| 本文、[combat.md](combat.md)、[entry/alas.md](entry/alas.md) | 战役、战斗与调度的机制及验收边界 |
 
 ### 大世界入口聚合（os_run.py）
 
