@@ -61,10 +61,38 @@ class Benchmark(DaemonBase, CampaignUI):
             raise ValueError('uiautomator2 测速截图无效')
         return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
+    @cached_property
+    def _u2_benchmark_click_client(self):
+        """点击还需要 uiautomator 服务；仅启动已有服务一次，限时确认就绪。"""
+        client = self._u2_benchmark_client
+        with client.http.get('/services/uiautomator', timeout=self.U2_PROBE_TIMEOUT, retry=False) as response:
+            response.raise_for_status()
+            if response.json().get('running'):
+                return client
+        with client.http.post('/services/uiautomator', timeout=self.U2_PROBE_TIMEOUT, retry=False) as response:
+            response.raise_for_status()
+
+        deadline = time.monotonic() + self.U2_PROBE_TIMEOUT[1]
+        payload = {'jsonrpc': '2.0', 'id': 1, 'method': 'deviceInfo', 'params': []}
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError('uiautomator2 测速点击服务启动超时')
+            timeout = tuple(min(limit, remaining) for limit in self.U2_PROBE_TIMEOUT)
+            with client.http.post('/jsonrpc/0', json=payload, timeout=timeout, retry=False) as response:
+                # 进程启动到 RPC 端口就绪之间，atx-agent 暂时返回 502。
+                if response.status_code != 502:
+                    response.raise_for_status()
+                    result = response.json()
+                    if result.get('error') is not None:
+                        raise RuntimeError(f'uiautomator2 测速服务启动失败: {result["error"]}')
+                    return client
+            time.sleep(min(0.1, remaining))
+
     def _benchmark_u2_click(self, x, y):
         """完整测速中的 u2 点击同样只尝试一次，不触发 JSON-RPC 自动恢复。"""
         payload = {'jsonrpc': '2.0', 'id': 1, 'method': 'click', 'params': [x, y]}
-        with self._u2_benchmark_client.http.post(
+        with self._u2_benchmark_click_client.http.post(
                 '/jsonrpc/0', json=payload, timeout=self.U2_PROBE_TIMEOUT, retry=False) as response:
             response.raise_for_status()
             result = response.json()

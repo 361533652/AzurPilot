@@ -163,11 +163,13 @@ class TestScreenshotBenchmarkCompatibility(unittest.TestCase):
         return methods
 
     @staticmethod
-    def response(content=b'', payload=None):
-        reply = Mock(content=content)
+    def response(content=b'', payload=None, status=200):
+        reply = Mock(content=content, status_code=status)
         reply.__enter__ = Mock(return_value=reply)
         reply.__exit__ = Mock(return_value=False)
         reply.json.return_value = payload
+        if status != 200:
+            reply.raise_for_status.side_effect = HTTPError(status)
         return reply
 
     def test_mumu15_auto_tests_healthy_u2_and_can_select_it(self):
@@ -211,7 +213,9 @@ class TestScreenshotBenchmarkCompatibility(unittest.TestCase):
                     'uiautomator2': Mock(side_effect=AssertionError('测速不应进入普通点击恢复')),
                     'MaaTouch': Mock(__name__='click_maatouch'),
                 }
+                self.bench.__dict__.pop('_u2_benchmark_click_client', None)
                 self.bench._u2_benchmark_client = Mock()
+                self.bench._u2_benchmark_client.http.get.return_value = self.response(payload={'running': True})
                 post = self.bench._u2_benchmark_client.http.post
                 post.side_effect = error
                 post.return_value = self.response(payload={'error': {'code': -32000, 'message': 'service unavailable'}})
@@ -227,6 +231,7 @@ class TestScreenshotBenchmarkCompatibility(unittest.TestCase):
 
     def test_healthy_u2_click_uses_bounded_rpc(self):
         self.bench._u2_benchmark_client = Mock()
+        self.bench._u2_benchmark_client.http.get.return_value = self.response(payload={'running': True})
         self.bench._u2_benchmark_client.http.post.return_value = self.response(payload={'result': True})
 
         self.assertTrue(self.bench._benchmark_u2_click(100, 50))
@@ -235,6 +240,68 @@ class TestScreenshotBenchmarkCompatibility(unittest.TestCase):
             '/jsonrpc/0', json={'jsonrpc': '2.0', 'id': 1, 'method': 'click', 'params': [100, 50]},
             timeout=(3, 5), retry=False,
         )
+
+    def test_u2_click_starts_stopped_service_once_and_waits_for_readiness(self):
+        self.bench.TEST_TOTAL = 3
+        self.bench.TEST_BEST = 1
+        client = self.bench._u2_benchmark_client = Mock()
+        client.http.get.return_value = self.response(payload={'running': False})
+        state = {'starts': 0, 'probes': 0, 'clicks': 0}
+
+        def post(path, **kwargs):
+            self.assertFalse(kwargs['retry'])
+            if path == '/services/uiautomator':
+                state['starts'] += 1
+                return self.response(payload={'success': True})
+            if kwargs['json']['method'] == 'deviceInfo':
+                state['probes'] += 1
+                if state['probes'] == 1:
+                    return self.response(status=502)
+                return self.response(payload={'result': {'sdkInt': 32}})
+            state['clicks'] += 1
+            if not state['starts'] or state['probes'] < 2:
+                return self.response(status=502)
+            return self.response(payload={'result': True})
+
+        client.http.post.side_effect = post
+        with patch('module.daemon.benchmark.time.sleep'):
+            result = self.bench.benchmark_test(self.bench._benchmark_u2_click, 100, 50)
+
+        self.assertIsInstance(result, float)
+        self.assertEqual(state, {'starts': 1, 'probes': 2, 'clicks': 3})
+        client.http.get.assert_called_once_with('/services/uiautomator', timeout=(3, 5), retry=False)
+        client._prepare_atx_agent.assert_not_called()
+
+    def test_u2_click_service_start_timeout_continues_other_candidates(self):
+        self.bench.TEST_TOTAL = 3
+        self.bench.TEST_BEST = 1
+        client = self.bench._u2_benchmark_client = Mock()
+        client.http.get.return_value = self.response(payload={'running': False})
+        client.http.post.side_effect = [self.response(), self.response(status=502)]
+        self.bench.device.click_methods = {
+            'uiautomator2': Mock(side_effect=AssertionError('不应进入普通点击恢复')),
+            'MaaTouch': Mock(__name__='click_maatouch'),
+        }
+
+        with patch('module.daemon.benchmark.time.monotonic', side_effect=[0, 0, 6]), \
+                patch('module.daemon.benchmark.time.sleep'):
+            _, fastest = self.bench.benchmark(click=('uiautomator2', 'MaaTouch'), quiet=True)
+
+        self.assertEqual(fastest, 'MaaTouch')
+        self.assertEqual(client.http.post.call_count, 2)
+        self.assertEqual(client.http.post.call_args.kwargs['json']['method'], 'deviceInfo')
+        self.assertEqual(self.bench.device.click_methods['MaaTouch'].call_count, 3)
+        client._prepare_atx_agent.assert_not_called()
+
+    def test_u2_click_service_start_failure_is_not_retried(self):
+        client = self.bench._u2_benchmark_client = Mock()
+        client.http.get.return_value = self.response(payload={'running': False})
+        client.http.post.return_value = self.response(status=403)
+
+        self.assertEqual(self.bench.benchmark_test(self.bench._benchmark_u2_click, 100, 50), 'Failed')
+
+        client.http.post.assert_called_once_with('/services/uiautomator', timeout=(3, 5), retry=False)
+        client._prepare_atx_agent.assert_not_called()
 
     def test_probe_client_does_not_initialize_keepalive_or_install_agent(self):
         client = Mock()
