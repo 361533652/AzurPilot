@@ -254,10 +254,6 @@
       "name": "META Battle",
       "help": ""
     },
-    "OpsiAshAssist": {
-      "name": "META Support",
-      "help": ""
-    },
     "OpsiExplore": {
       "name": "Monthly Exploration",
       "help": ""
@@ -3863,6 +3859,10 @@
       "name": "META assist",
       "help": "Beacon assist three times a day"
     },
+    "Enable": {
+      "name": "Enable META assists",
+      "help": "Complete the three daily assists within META fights, sharing equipment settings with your current-season beacons."
+    },
     "Tier": {
       "name": "Find beacons with level above X",
       "help": "If you try several times and still can't find a beacon that meets the criteria, fight a random one."
@@ -3963,6 +3963,10 @@
     "DossierAutoAttackMode": {
       "name": "Dossier beacon auto combat",
       "help": "Automatically fight after the first battle at the Dossier beacon. Currently only available on CN Server."
+    },
+    "DossierSkipAssist": {
+      "name": "Pause assists while a Dossier is active",
+      "help": "Pause daily META assists while a Dossier is open, being analyzed, or in auto combat. Collect pending Dossier rewards before resuming assists.\nYou must enable this option when using automatic equipment switching."
     },
     "RequestAssist": {
       "name": "Request assist",

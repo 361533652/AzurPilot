@@ -326,9 +326,6 @@ Opsi:
     OpsiAshBeacon:
       - Scheduler
       - OpsiAshBeacon
-      - Equipment
-    OpsiAshAssist:
-      - Scheduler
       - OpsiAshAssist
       - Equipment
     OpsiExplore:
