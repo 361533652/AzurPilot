@@ -394,6 +394,7 @@ image = device.screenshot()
 
 ## 19. 调试方法
 
+- 画面采集工具 [dev_tools/uiautomator2_screenshot.py](../../dev_tools/uiautomator2_screenshot.py) 使用实例配置中的截图后端，将首帧和变化帧保存为无损 WebP。默认相似度阈值为 0.98；调用 `watch(similarity=1)` 可跳过相似度计算，保存每轮的新截图，首帧只保存一次。
 - 日志统一带 `[设备-]` 前缀：`[设备-连接]` 连接与重连、`[设备-截图]` 分发与间隔、`[设备-卡死]`/`[设备-点击]` 触发的恢复检测、`[设备-Windows]` 模拟器启停。启动即打印 ADB 路径、serial、包名、服务器等 attr 行，可快速定位连错设备。
 - 截图方式可疑时：手动把 `Emulator.ScreenshotMethod` 设为 `auto` 重启，或在 WebUI 运行 Benchmark 任务看各后端耗时表（nemu_ipc/ldopengl 仅在对应模拟器可用时出现）。
 - 模拟器发现与启停可单独验证：`python -m module.device.platform.emulator_windows` 直接打印本机所有实例；`PlatformWindows('alas')` 可单独调试启停。
