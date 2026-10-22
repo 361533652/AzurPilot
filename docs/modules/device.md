@@ -159,6 +159,12 @@ Input(Uiautomator2)
 失败时清除残片并继续抛出错误。其他资源的下载以及 ABI 选择、禁用 minicap 的补丁保持原有流程。
 离线验证见 `tests.test_atx_agent_download`；下载和模拟推送验证不能代替真实设备上的 agent 启动验收。
 
+uiautomator2 的测试辅助 APK `com.github.uiautomator.test` 未声明 `versionName`。
+上游配套 packaging 20.9 会将空字符串解析为旧版 `LegacyVersion`，本项目使用的 packaging 24.2
+则会抛 `InvalidVersion`；不能把正常的测试 APK 当作损坏安装或依靠降级依赖处理。
+兼容类 `Device._is_apk_required()` 通过 `pm path` 的退出码与 `package:/...` 安装路径检查两份辅助 APK，
+只有缺失时才进入原有安装恢复；传输异常继续向上传播。回归见 `tests.test_uiautomator_apk_presence`。
+
 ### 连续触控（live_drag.py）
 
 `with device.live_drag(name) as touch` 提供独立的 `down / move / up` 原语。

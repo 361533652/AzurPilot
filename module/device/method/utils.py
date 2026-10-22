@@ -505,7 +505,20 @@ class IniterNoMinicap(u2.init.Initer):
 
 
 class Device(u2.Device):
-    """继承 u2.Device，覆写悬浮窗等行为。"""
+    """继承 u2.Device，兼容辅助 APK 检查并禁用悬浮窗。"""
+
+    def _is_apk_required(self) -> bool:
+        """按安装路径检查辅助 APK，避免解析测试包未声明的 versionName。
+
+        uiautomator2 旧实现用版本解析判断存在性；新版 packaging 拒绝空版本，
+        但随库分发的测试 APK 本身没有 versionName，不能据此要求重新安装。
+        """
+        for package in ('com.github.uiautomator', 'com.github.uiautomator.test'):
+            result = self.shell(['pm', 'path', package])
+            if result.exit_code != 0 or not any(
+                    line.strip().startswith('package:/') for line in result.output.splitlines()):
+                return True
+        return False
 
     def show_float_window(self, show=True):
         """禁止弹出悬浮窗。"""
