@@ -14,7 +14,7 @@ from module.retire.assets import DOCK_CHECK, DOCK_EMPTY, DOCK_SEARCH_ACTIVE, DOC
 from module.retire.dock import Dock
 from module.retire.fleet_emotion import learn_fleet_emotion, screenshot_window
 from module.runtime.fleet_formation import (CATEGORY_SLOTS, SLOT_CENTERS, SUBMARINE_SLOT_CENTERS, TYPE_BUTTON_AREAS,
-    FormationCardMerger, FormationDetailScanner, FormationDockScanner, PortraitMatcher, VisualDockScanner,
+    FormationCardMerger, FormationDetailScanner, FormationDockScanner, MoraleDockScanner, PortraitMatcher, VisualDockScanner,
     choose_portrait, combine_references, detail_occupied, detail_portraits, menu_area, selected_count_changed,
     fleet_type_selected, selected_menu_fleet, selector_closed, slot_swap_plan, preserve_emotions,
     validate_position, validate_swap)
@@ -75,6 +75,9 @@ class FleetManagement(Dock):
         validate_position(fleet, 1, fleet_type)
         if method not in ('menu', 'arrows'):
             raise ValueError('切队方式必须为 menu 或 arrows')
+        # 工具任务的 Device 可能尚未截过图，不能先调用任何 appear()。
+        if not self.device.has_cached_image:
+            self.device.screenshot()
         if self.appear(FLEET_DETAIL_CHECK):
             self.ui_click(FLEET_DETAIL_CHECK, appear_button=FLEET_DETAIL_CHECK,
                           check_button=self._formation_visible, retry_wait=2)
@@ -343,6 +346,90 @@ class FleetManagement(Dock):
                     elif score > found[existing][2]:
                         found[existing] = (card, absolute_y, score)
         return found
+
+    def highest_morale_slot(self, source_fleet, fleet, slot):
+        """从目标舰位的同排候选中，按游戏心情降序选指定来源队的第一张卡。
+
+        Pages:
+            in: Any
+            out: page_fleet
+        """
+        validate_swap(source_fleet, slot, fleet, slot)
+        self.fleet_enter(fleet)
+        self._open_slot(slot)
+        scanner = VisualDockScanner()
+        selected = None
+        try:
+            self._prepare_dock(sort='mood')
+            for cards, _ in self._dock_pages(scanner):
+                candidates = [card for card in cards if card.fleet == source_fleet]
+                if candidates:
+                    card = min(candidates, key=lambda item: (item.y, item.col))
+                    selected = scanner.portrait(self.device.image, card).copy()
+                    break
+        finally:
+            self.dock_reset()
+            self._close_picker()
+        if selected is None:
+            raise FleetManagementError(f'当前舰位候选中未找到第{source_fleet}舰队可交换舰船')
+        _, portraits, occupied = self._capture_formation(source_fleet)
+        matcher = PortraitMatcher(selected)
+        scores = sorted(((matcher.score(portrait), position) for position, portrait in portraits.items()
+                         if occupied[position] and (position <= 3) == (slot <= 3)), reverse=True)
+        if not scores or scores[0][0] < 12 or (len(scores) > 1 and scores[1][0] >= scores[0][0] * .75):
+            raise FleetManagementError('最高心情候选卡面未能对应唯一来源舰位，尚未执行互换')
+        return scores[0][1]
+
+    def read_fleet_morale(self, fleet):
+        """用固定舰位卡面对应选船页心情，名称OCR不会影响最低值或舰位。
+
+        Pages:
+            in: Any
+            out: page_fleet
+        """
+        _, portraits, occupied = self._capture_formation(fleet)
+        readings = {}
+        scanner = MoraleDockScanner()
+        for slots in ((1, 2, 3), (4, 5, 6)):
+            positions = [slot for slot in slots if occupied[slot]]
+            if not positions:
+                continue
+            matchers = {slot: PortraitMatcher(portraits[slot]) for slot in positions}
+            candidates = {slot: [] for slot in positions}
+            self.fleet_enter(fleet)
+            self._open_slot(positions[0])
+            try:
+                self._prepare_dock(sort='mood')
+                for cards, _ in self._dock_pages(scanner):
+                    for card in cards:
+                        for slot, matcher in matchers.items():
+                            score = matcher.score(scanner.portrait(self.device.image, card))
+                            if score >= 12:
+                                absolute = card.y + self._dock_offset
+                                old = next((item for item in candidates[slot]
+                                            if item[0].col == card.col and abs(item[1] - absolute) <= 12), None)
+                                if old is None:
+                                    candidates[slot].append((card, absolute, score))
+                for slot in positions:
+                    try:
+                        card, _ = choose_portrait(candidates[slot], fleet)
+                        readings[slot] = card.ship.get('emotion')
+                    except ValueError:
+                        readings[slot] = None
+            finally:
+                self.dock_reset()
+                self._close_picker()
+        result = deepcopy(self.config.cross_get(self.RESULT_PATH, {}))
+        if not isinstance(result, dict):
+            result = {}
+        for category in ('main', 'vanguard'):
+            old = {ship.get('slot'): ship for ship in result.get(category, {}).get(str(fleet), [])
+                   if isinstance(ship, dict)}
+            result.setdefault(category, {})[str(fleet)] = [dict(old.get(slot, dict(name='', level=0)),
+                slot=slot, emotion=readings.get(slot), occupied=True) for slot in CATEGORY_SLOTS[category]
+                if occupied[slot]]
+        self._save_result(result)
+        return readings
 
     def _verify_plan(self, captures, expected, original):
         for fleet, positions in expected.items():

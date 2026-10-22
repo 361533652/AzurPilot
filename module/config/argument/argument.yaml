@@ -2504,6 +2504,15 @@ FleetTech:
     value: {}
     display: hide
 
+FleetRotation:
+  Enabled: false
+  Rules:
+    type: textarea
+    value: '{}'
+  State:
+    type: storage
+    value: {}
+
 FleetInfo:
   UpdateEmotion: true
   Result:

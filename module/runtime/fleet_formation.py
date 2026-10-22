@@ -256,6 +256,27 @@ class VisualDockScanner:
         return np.asarray(image)[card.y + 28:card.y + 162, card.x:card.x + 138]
 
 
+class MoraleDockScanner(VisualDockScanner):
+    """只增加心情参考，自动换船不加载舰名或等级OCR。"""
+
+    def __init__(self):
+        super().__init__()
+        self.emotions = FleetEmotionScanner(grid_shape=(7, 1))
+        self.row_offset = 0
+
+    def scan(self, image, bottom=627, has_remove=True):
+        cards = super().scan(image, bottom, has_remove)
+        for y in sorted({card.y for card in cards}):
+            offset = y - int(CARD_GRIDS.origin[1])
+            self.emotions.move((0, offset - self.row_offset))
+            self.row_offset = offset
+            values = reference_read(self.emotions, image, 7, '心情')
+            for card in cards:
+                if card.y == y:
+                    card.ship['emotion'] = values[card.col]
+        return cards
+
+
 class FormationDockScanner:
     """动态定位完整卡片行，舰名、等级、心情与徽标均作为参考信息。"""
 

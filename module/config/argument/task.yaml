@@ -474,6 +474,7 @@ FleetManagement:
   tasks:
     FleetInfo:
       - FleetInfo
+      - FleetRotation
 
 # ==================== Run Params ====================
 

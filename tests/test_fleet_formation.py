@@ -1,6 +1,5 @@
 """舰位互换的无OCR操作链、图像定位和参考扫描回归；不连接模拟器。"""
 
-from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
@@ -28,7 +27,8 @@ def frame(name):
 def runner():
     tool = FleetManagement.__new__(FleetManagement)
     tool.config = SimpleNamespace(cross_get=Mock(return_value={}), modified={}, save=Mock())
-    tool.device = SimpleNamespace(image=frame('vanguard_top'), click=Mock(), screenshot=Mock(), swipe=Mock())
+    tool.device = SimpleNamespace(image=frame('vanguard_top'), has_cached_image=True,
+                                  click=Mock(), screenshot=Mock(), swipe=Mock())
     tool.dock_filter = SimpleNamespace(reset_first=True)
     for method in ('fleet_enter', '_open_slot', '_close_picker', '_prepare_dock', 'dock_reset',
                    'ui_ensure', '_save_result', '_confirm_replacement', '_commit_formation'):
@@ -112,6 +112,100 @@ class GeometryTests(unittest.TestCase):
 
 
 class VisualTargetTests(unittest.TestCase):
+    def test_game_morale_sort_selects_first_eligible_source_without_name_or_level_ocr(self):
+        tool = runner()
+        native = frame('vanguard_top')
+        tool._capture_formation = Mock(return_value=(None, detail_portraits(frame('detail_surface')),
+                                                     dict.fromkeys(range(1, 7), True)))
+
+        def pages(scanner, **kwargs):
+            tool.device.image = native
+            yield scanner.scan(native), []
+
+        tool._dock_pages = pages
+        with (patch('module.runtime.fleet_formation.FleetNameScanner', side_effect=AssertionError('禁止舰名OCR')),
+              patch('module.runtime.fleet_formation.LevelScanner', side_effect=AssertionError('禁止等级OCR'))):
+            self.assertEqual(tool.highest_morale_slot(1, 4, 5), 5)
+        tool._prepare_dock.assert_called_once_with(sort='mood')
+        tool._open_slot.assert_called_once_with(5)
+
+    def test_morale_uses_actual_portrait_positions_including_unchanged_slots_without_name_ocr(self):
+        tool = runner()
+        tool.config.cross_get.return_value = '旧版未结构化参考记录'
+        tool._capture_formation = Mock(return_value=(None, detail_portraits(frame('detail_surface')),
+                                                     dict.fromkeys(range(1, 7), True)))
+        reads = iter(([None, 119, 150, 119, 119, 150, 150], [150] * 7,
+                      [None, 119, 119, 119, 148, 138, 150], [150, 2, 150, 148, 119, 150, 150]))
+
+        def pages(scanner, **kwargs):
+            name = 'main_top' if tool._open_slot.call_args.args[0] == 1 else 'vanguard_top'
+            tool.device.image = frame(name)
+            tool._dock_offset = 0
+            yield scanner.scan(tool.device.image), []
+
+        tool._dock_pages = pages
+        with (patch('module.runtime.fleet_formation.FleetNameScanner', side_effect=AssertionError('禁止舰名OCR')),
+              patch('module.runtime.fleet_formation.LevelScanner', side_effect=AssertionError('禁止等级OCR')),
+              patch('module.runtime.fleet_formation.reference_read', side_effect=lambda *args: next(reads))):
+            readings = tool.read_fleet_morale(1)
+        self.assertEqual(readings, {1: 150, 2: 150, 3: 150, 4: 2, 5: 150, 6: 150})
+        saved = tool._save_result.call_args.args[0]
+        self.assertEqual(saved['vanguard']['1'][0]['slot'], 4)
+        self.assertEqual(saved['vanguard']['1'][0]['emotion'], 2)
+
+    def test_native_cross_fleet_popup_is_confirmed_after_selection_submit(self):
+        from module.handler.assets import POPUP_CANCEL, POPUP_CONFIRM
+        from module.handler.info_handler import InfoHandler
+        from module.retire.assets import DOCK_CHECK
+        tool = runner()
+        baseline = frame('vanguard_top')
+        selected = baseline.copy()
+        selected[665:682, 589:605] = 255
+        index = -1
+
+        def images(**kwargs):
+            nonlocal index
+            for image in (selected, frame('exchange_popup'), baseline):
+                index += 1
+                tool.device.image = image
+                yield image
+
+        tool.loop = images
+        tool._formation_visible = lambda: index == 2
+        tool.appear = lambda button, **kwargs: (index == 0 if button is DOCK_CHECK else
+            button.match(tool.device.image, offset=kwargs.get('offset', (0, 0))))
+        tool.handle_popup_confirm = InfoHandler.handle_popup_confirm.__get__(tool)
+        self.assertTrue(POPUP_CANCEL.match(frame('exchange_popup'), offset=(3, 30)))
+        with patch('module.retire.fleet_management.Timer') as timer:
+            timer.return_value.reached.return_value = True
+            FleetManagement._confirm_replacement(tool, baseline)
+        self.assertEqual([call.args[0] for call in tool.device.click.call_args_list],
+                         [PICKER_CONFIRM, POPUP_CONFIRM])
+
+    def test_real_device_without_first_image_screenshots_before_any_appearance_check(self):
+        from module.device.device import Device
+        tool = runner()
+        device = Device.__new__(Device)
+        device.click = Mock()
+        device.screenshot = Mock(side_effect=lambda: setattr(device, 'image', frame('closed_surface')))
+        tool.device = device
+        tool.ui_ensure = Mock()
+        tool.appear = lambda *args, **kwargs: bool(device.image is None)
+        tool._formation_visible = Mock(return_value=True)
+
+        def images(**kwargs):
+            for name in ('closed_surface', 'closed_surface', 'menu_surface', 'closed_surface'):
+                device.image = frame(name)
+                yield device.image
+
+        tool.loop = images
+        self.assertFalse(device.has_cached_image)
+        with patch('module.retire.fleet_management.Timer') as timer:
+            timer.return_value.reached.return_value = True
+            FleetManagement.fleet_enter(tool, 3)
+        device.screenshot.assert_called_once()
+        self.assertTrue(device.has_cached_image)
+
     def test_each_native_detail_card_finds_its_dock_card_without_any_ocr(self):
         expected = {1: ('main_top', 2, 0), 2: ('main_top', 6, 0), 3: ('main_top', 5, 0),
                     4: ('vanguard_top', 1, 1), 5: ('vanguard_top', 6, 0), 6: ('vanguard_top', 0, 1)}
@@ -381,10 +475,14 @@ class ReferenceScanTests(unittest.TestCase):
                 slot: dict(name='读错也保留', level=0, emotion=None, slot=slot, occupied=True, review=True)
                 for slot in range(1, 7 if kind == 'surface' else 4)}
             tool.run(update_emotion=False)
-        self.assertEqual(tool._open_slot.call_args_list[0].args, (4, 'surface'))
-        self.assertEqual(tool._open_slot.call_args_list[2].args, (1, 'submarine'))
+        self.assertEqual([call.args for call in tool.fleet_enter.call_args_list],
+                         [(1, 'surface'), (1, 'surface'), (1, 'submarine')])
+        self.assertEqual([call.args for call in tool._open_slot.call_args_list],
+                         [(4, 'surface'), (1, 'surface'), (1, 'submarine')])
+        tool._save_result.assert_called_once()
         saved = tool._save_result.call_args.args[0]
         self.assertEqual(len(saved['main']), 6)
+        self.assertEqual(len(saved['vanguard']), 6)
         self.assertEqual(len(saved['submarine']), 2)
         self.assertEqual([ship['slot'] for ship in saved['submarine']['2']], [1, 2, 3])
         self.assertTrue(tool.dock_filter.reset_first)

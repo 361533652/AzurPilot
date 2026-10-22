@@ -11,10 +11,19 @@
 
 [资源管理](resource-management.md) 位于「资源统计」内的「资源趋势」旁边，路径为 `/i/:instance/statistics?view=management`；旧 `/resources` 路径自动跳转。由 `pages/ResourceManagement.tsx` 与 `resources/` 提供 ECharts 桑基图、库存与收支明细。图节点支持资源与任务筛选，明细支持分页和完整区间 CSV 导出；原调度的石油自动控制使用现有配置事务接口保存。五种语言、窄屏和空数据状态均沿用控制台组件与主题。
 
-「舰队管理」下并列放置「舰队信息」与 [心智单元计算器](mind-calculator.md)。计算器路径为 `/i/:instance/task/MindCalculator`，旧 `/mind-calculator` 自动跳转；沿用 `components/taskNavItems.ts` 的 WebUI 页面导航机制，同时覆盖侧栏树、悬浮菜单及顶栏任务跳转，不注册新的游戏任务。「舰队信息」由 `pages/FleetInfoPage.tsx` 提供舰队卡片和扫描开关，调用 `tasks.run(FleetScan)`，只在该扫描运行时调用 `scheduler.stop`；其他任务运行、更新或连接不可用时禁用。启动前等待配置队列保存，再以最新修订保存 `FleetInfo.FleetInfo.UpdateEmotion`（扫描时更新心情）选项；关闭时保留已有舰位心情参考，不进行被动学习。扫描运行期间及结束后重读舰队信息，显示扫描确认的舰位，不为历史记录推断舰位。浏览页面不启动游戏，也不修改实例自启设置；此阶段不提供换船操作按钮。
+「舰队管理」下并列放置「舰队信息」与 [心智单元计算器](mind-calculator.md)。计算器路径为 `/i/:instance/task/MindCalculator`，旧 `/mind-calculator` 自动跳转；沿用 `components/taskNavItems.ts` 的 WebUI 页面导航机制，同时覆盖侧栏树、悬浮菜单及顶栏任务跳转，不注册新的游戏任务。「舰队信息」由 `pages/FleetInfoPage.tsx` 提供舰队卡片和扫描开关，调用 `tasks.run(FleetScan)`，只在该扫描运行时调用 `scheduler.stop`；其他任务运行、更新或连接不可用时禁用。启动前等待配置队列保存，再以最新修订保存 `FleetInfo.FleetInfo.UpdateEmotion`（扫描时更新心情）选项；关闭时保留已有舰位心情参考，不进行被动学习。扫描运行期间及结束后重读舰队信息，显示扫描确认的舰位，不为历史记录推断舰位。浏览页面不启动游戏，也不修改实例自启设置；手动指定舰位互换尚未提供独立按钮，智能换船使用下述策略页。
 
 舰队信息的[桌面截图](images/fleet-management-desktop.png)与[手机截图](images/fleet-management-mobile.png)
 来自隔离服务及合成记录，只验证舰位、未知心情和扫描选项展示，不代表实际账号操作。
+
+「舰队管理」另有 `/i/:instance/task/FleetRotation` 智能换船页面，属于独立配置页，
+不注册游戏任务，也不显示调度状态或启动任务按钮。顶部启用开关默认关闭；六支水面
+舰队的36个舰位默认均为“不变”，可逐位改为“换船”，并为每支目标队多选候补队。
+规则保存到 `FleetInfo.FleetRotation.Enabled/Rules`，不调用 `tasks.run`。页面显示已保存
+的上次来源与本轮进度，任务运行时只刷新进度，不覆盖尚未保存的规则编辑。
+清空记录按钮仅在任务停止时可用，不允许直接改写内部进度。当前效果见
+[桌面截图](images/fleet-rotation-desktop.png)与[手机截图](images/fleet-rotation-mobile.png)，
+均为隔离服务和合成配置。实际刷图触发由战役出击前策略负责。
 
 frontend/ 是 AzurPilot 的浏览器控制台，替代旧版 PyWebIO 界面，覆盖主页与实例导航、任务配置表单、总览日志与截图预览、统计图表、系统设置、远程访问与更新器。前端不包含任何游戏逻辑，所有业务操作都通过 WebSocket API 交给 [API 服务](api.md)执行。
 

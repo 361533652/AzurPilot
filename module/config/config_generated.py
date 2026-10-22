@@ -1186,6 +1186,11 @@ class GeneratedConfig:
     FleetTech_MaxLevel = 125
     FleetTech_Record = {}
 
+    # 配置组 `FleetRotation`
+    FleetRotation_Enabled = False
+    FleetRotation_Rules = '{}'
+    FleetRotation_State = {}
+
     # 配置组 `FleetInfo`
     FleetInfo_UpdateEmotion = True
     FleetInfo_Result = {}
