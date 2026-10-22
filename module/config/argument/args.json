@@ -13543,6 +13543,21 @@
         "validate": "datetime"
       }
     },
+    "Equipment": {
+      "Enable": {
+        "type": "checkbox",
+        "value": false
+      },
+      "ClearBeforeApply": {
+        "type": "checkbox",
+        "value": true
+      },
+      "Config": {
+        "type": "textarea",
+        "value": "flagship:\n  before: null\n  after: null\nup:\n  before: null\n  after: null\ndown:\n  before: null\n  after: null\nhead:\n  before: null\n  after: null\nmiddle:\n  before: null\n  after: null\ntail:\n  before: null\n  after: null",
+        "mode": "yaml"
+      }
+    },
     "Storage": {
       "Storage": {
         "type": "storage",
@@ -14636,6 +14651,21 @@
         "value": true
       }
     },
+    "Equipment": {
+      "Enable": {
+        "type": "checkbox",
+        "value": false
+      },
+      "ClearBeforeApply": {
+        "type": "checkbox",
+        "value": true
+      },
+      "Config": {
+        "type": "textarea",
+        "value": "flagship:\n  before: null\n  after: null\nup:\n  before: null\n  after: null\ndown:\n  before: null\n  after: null\nhead:\n  before: null\n  after: null\nmiddle:\n  before: null\n  after: null\ntail:\n  before: null\n  after: null",
+        "mode": "yaml"
+      }
+    },
     "Storage": {
       "Storage": {
         "type": "storage",
@@ -14701,6 +14731,21 @@
       "Tier": {
         "type": "input",
         "value": 15
+      }
+    },
+    "Equipment": {
+      "Enable": {
+        "type": "checkbox",
+        "value": false
+      },
+      "ClearBeforeApply": {
+        "type": "checkbox",
+        "value": true
+      },
+      "Config": {
+        "type": "textarea",
+        "value": "flagship:\n  before: null\n  after: null\nup:\n  before: null\n  after: null\ndown:\n  before: null\n  after: null\nhead:\n  before: null\n  after: null\nmiddle:\n  before: null\n  after: null\ntail:\n  before: null\n  after: null",
+        "mode": "yaml"
       }
     },
     "Storage": {

@@ -7128,6 +7128,24 @@
       "help": "For debugging. Generally should be off."
     }
   },
+  "Equipment": {
+    "_info": {
+      "name": "Automatic equipment changes",
+      "help": "For exercises, META beacons, and META assists. Dossier fleets are excluded."
+    },
+    "Enable": {
+      "name": "Enable",
+      "help": "Apply the before setup before the first battle and restore the after setup when the task ends. Requires a control method that supports equipment code input."
+    },
+    "ClearBeforeApply": {
+      "name": "Clear equipment before applying codes",
+      "help": "Before both setup changes, unequip all selected ships before applying any codes so shared equipment can move between ships."
+    },
+    "Config": {
+      "name": "Equipment code configuration",
+      "help": "YAML: before is the code used before battle; after is the code restored afterward. The entire configuration is checked before changing equipment.\nAn empty before skips that position. If before is set and after is empty, all equipment on that ship is removed afterward. Unused positions or phases may be omitted; blank strings count as empty.\nflagship: flagship; up/down: upper/lower main fleet escort; head/middle/tail: leading/middle/rear vanguard ship."
+    }
+  },
   "Storage": {
     "_info": {
       "name": "Task status",
