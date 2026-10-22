@@ -152,6 +152,13 @@ Input(Uiautomator2)
 | `Hermit` | HTTP 注入，仅 VMOS（无 u2/minitouch 的环境） |
 | `scrcpy` | scrcpy 控制通道（代码保留，配置选项未暴露） |
 
+`PatchedIniter.push_url()` 为 atx-agent 预填 uiautomator2 的原有缓存，再沿用上游解包和 ADB 推送。
+下载时不发送固定的 GitHub `Origin`，避免 `atx.azurpilot.com` 重定向到 CNB 后被拒绝；连接/读取
+超时分别为 5/30 秒，镜像失败时回退到相同版本和架构的 OpenATX 官方 GitHub Release。
+已有缓存和新下载都检查归档内的完整 `atx-agent` 文件；下载先写临时文件，检查后原子替换缓存，
+失败时清除残片并继续抛出错误。其他资源的下载以及 ABI 选择、禁用 minicap 的补丁保持原有流程。
+离线验证见 `tests.test_atx_agent_download`；下载和模拟推送验证不能代替真实设备上的 agent 启动验收。
+
 ### 连续触控（live_drag.py）
 
 `with device.live_drag(name) as touch` 提供独立的 `down / move / up` 原语。
