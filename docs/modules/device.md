@@ -29,9 +29,14 @@
 
 MaaTouch 与 nemu_ipc 控制下，前台应用检测、游戏启动/停止和 UI 层级读取使用 ADB，
 不因选择原生触控而初始化 uiautomator2 或安装 atx-agent；uiautomator2、minitouch、scrcpy
-控制保留原有应用管理通路。MuMu Android 15（SDK ≥ 35）的自动截图测速跳过 uiautomator2，
-避免可选后端的 agent 安装阻塞启动；手动指定截图后端和完整基准测试仍可使用 uiautomator2。
+控制保留原有应用管理通路。MuMu Android 15 的自动截图测速保留 uiautomator2 候选，
+成功时正常参与排名；异常或超时后才跳过本次候选，不按系统版本提前排除。
 简化测速与完整测速一样，只在 SDK 23–32 测试 DroidCast / DroidCast_raw。
+
+简化/完整截图测速和完整点击测速中的 u2 请求使用独立客户端，连接/读取超时分别为 3/5 秒，
+不经过 keepalive 初始化、agent 自动安装、JSON-RPC 自动恢复或设备后端多轮重试。
+单项第一次失败即记为 `Failed` 并继续其他候选，成功则保留原有采样次数与排名方式；
+再次运行测速仍可尝试 u2。此限制仅用于测速，正常任务的截图、点击和恢复流程保持原有策略。
 
 ### 不负责
 

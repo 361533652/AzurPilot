@@ -4,11 +4,14 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
+import cv2
+import numpy as np
+
 # 先安装项目的 pkg_resources 兼容补丁，不构造设备或加载用户配置。
 from module.device.device import Device  # noqa: F401
 from module.daemon.benchmark import Benchmark
 from module.device.app_control import AppControl
-from requests.exceptions import HTTPError
+from requests.exceptions import HTTPError, ReadTimeout
 
 
 class TestNativeAppControl(unittest.TestCase):
@@ -110,31 +113,118 @@ class TestScreenshotBenchmarkCompatibility(unittest.TestCase):
             is_chinac_phone_cloud=False, ldopengl_available=Mock(return_value=False),
         )
 
-    def test_mumu15_auto_selects_working_screenshot_without_agent_download(self):
-        clock = [0.0]
+    def screenshot_methods(self, u2_error=None):
+        self.clock = [0.0]
 
         def capture(name, cost):
             def screenshot():
-                clock[0] += cost
+                self.clock[0] += cost
             return Mock(__name__=name, side_effect=screenshot)
 
         methods = {
             'ADB': capture('screenshot_adb', 0.4),
             'ADB_nc': capture('screenshot_adb_nc', 0.1),
-            'uiautomator2': Mock(__name__='screenshot_uiautomator2', side_effect=HTTPError('403 Forbidden')),
+            'uiautomator2': Mock(side_effect=AssertionError('测速不应进入普通后端的多轮恢复')),
             'DroidCast': capture('screenshot_droidcast', 0.02),
             'DroidCast_raw': capture('screenshot_droidcast_raw', 0.01),
         }
         self.bench.device.screenshot_methods = methods
+        self.bench._u2_benchmark_client = Mock()
+        encoded = cv2.imencode('.png', np.zeros((2, 3, 3), dtype=np.uint8))[1].tobytes()
+        reply = self.response(content=encoded)
 
-        with patch('module.daemon.benchmark.time.perf_counter', side_effect=lambda: clock[0]):
-            self.assertEqual(self.bench.run_simple_screenshot_benchmark(), 'ADB_nc')
+        def get(*args, **kwargs):
+            self.clock[0] += 0.05
+            if u2_error is not None:
+                raise u2_error
+            return reply
 
-        self.assertEqual(methods['ADB'].call_count, 3)
-        self.assertEqual(methods['ADB_nc'].call_count, 3)
-        for method in ('uiautomator2', 'DroidCast', 'DroidCast_raw'):
-            methods[method].assert_not_called()
-        self.assertEqual(self.bench.config.Emulator_ControlMethod, 'MaaTouch')
+        self.bench._u2_benchmark_client.http.get.side_effect = get
+        self.enterContext(patch('module.daemon.benchmark.time.perf_counter', side_effect=lambda: self.clock[0]))
+        return methods
+
+    @staticmethod
+    def response(content=b'', payload=None):
+        reply = Mock(content=content)
+        reply.__enter__ = Mock(return_value=reply)
+        reply.__exit__ = Mock(return_value=False)
+        reply.json.return_value = payload
+        return reply
+
+    def test_mumu15_auto_tests_healthy_u2_and_can_select_it(self):
+        methods = self.screenshot_methods()
+
+        self.assertEqual(self.bench.run_simple_screenshot_benchmark(), 'uiautomator2')
+
+        get = self.bench._u2_benchmark_client.http.get
+        self.assertEqual(get.call_count, 3)
+        get.assert_called_with('/screenshot/0', timeout=(3, 5), retry=False)
+        methods['uiautomator2'].assert_not_called()
+
+    def test_mumu15_auto_skips_u2_only_after_one_failed_attempt(self):
+        for error in (HTTPError('403 Forbidden'), ReadTimeout('读取超时')):
+            with self.subTest(error=type(error).__name__):
+                methods = self.screenshot_methods(u2_error=error)
+                self.assertEqual(self.bench.run_simple_screenshot_benchmark(), 'ADB_nc')
+                get = self.bench._u2_benchmark_client.http.get
+                get.assert_called_once_with('/screenshot/0', timeout=(3, 5), retry=False)
+                self.assertEqual(methods['ADB'].call_count, 3)
+                self.assertEqual(methods['ADB_nc'].call_count, 3)
+                for method in ('uiautomator2', 'DroidCast', 'DroidCast_raw'):
+                    methods[method].assert_not_called()
+                self.assertEqual(self.bench.config.Emulator_ControlMethod, 'MaaTouch')
+
+    def test_invalid_u2_image_is_failed_and_other_candidates_continue(self):
+        self.screenshot_methods()
+        self.bench._u2_benchmark_client.http.get.side_effect = None
+        self.bench._u2_benchmark_client.http.get.return_value = self.response(content=b'not an image')
+
+        self.assertEqual(self.bench.run_simple_screenshot_benchmark(), 'ADB_nc')
+
+        self.bench._u2_benchmark_client.http.get.assert_called_once()
+
+    def test_full_benchmark_u2_click_failure_is_not_retried(self):
+        for error in (ReadTimeout('读取超时'), None):
+            with self.subTest(error=error):
+                self.bench.TEST_TOTAL = 3
+                self.bench.TEST_BEST = 1
+                self.bench.device.click_methods = {
+                    'uiautomator2': Mock(side_effect=AssertionError('测速不应进入普通点击恢复')),
+                    'MaaTouch': Mock(__name__='click_maatouch'),
+                }
+                self.bench._u2_benchmark_client = Mock()
+                post = self.bench._u2_benchmark_client.http.post
+                post.side_effect = error
+                post.return_value = self.response(payload={'error': {'code': -32000, 'message': 'service unavailable'}})
+
+                _, fastest = self.bench.benchmark(click=('uiautomator2', 'MaaTouch'), quiet=True)
+
+                self.assertEqual(fastest, 'MaaTouch')
+                post.assert_called_once()
+                self.assertEqual(post.call_args.kwargs['timeout'], (3, 5))
+                self.assertFalse(post.call_args.kwargs['retry'])
+                self.bench.device.click_methods['uiautomator2'].assert_not_called()
+                self.assertEqual(self.bench.device.click_methods['MaaTouch'].call_count, 3)
+
+    def test_healthy_u2_click_uses_bounded_rpc(self):
+        self.bench._u2_benchmark_client = Mock()
+        self.bench._u2_benchmark_client.http.post.return_value = self.response(payload={'result': True})
+
+        self.assertTrue(self.bench._benchmark_u2_click(100, 50))
+
+        self.bench._u2_benchmark_client.http.post.assert_called_once_with(
+            '/jsonrpc/0', json={'jsonrpc': '2.0', 'id': 1, 'method': 'click', 'params': [100, 50]},
+            timeout=(3, 5), retry=False,
+        )
+
+    def test_probe_client_does_not_initialize_keepalive_or_install_agent(self):
+        client = Mock()
+        with patch('module.daemon.benchmark.u2.connect_usb', return_value=client) as connect:
+            self.assertIs(self.bench._u2_benchmark_client, client)
+            self.assertIs(self.bench._u2_benchmark_client, client)
+
+        connect.assert_called_once_with(self.bench.device.serial)
+        client.set_new_command_timeout.assert_not_called()
 
     def test_auto_respects_droidcast_sdk_boundaries(self):
         self.bench.benchmark = Mock(return_value=('ADB_nc', 'minitouch'))
