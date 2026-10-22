@@ -27,13 +27,13 @@ class TestNativeAppControl(unittest.TestCase):
         device.serial = device.config.Emulator_Serial
         device.package = 'com.bilibili.azurlane'
         device.adb_shell = Mock()
-        # 模拟日志中的不可用 agent；原生应用管理不应触发此分支。
+        # ADB 应用管理不访问 u2；属于 u2 家族的方法应透传该错误。
         for action in ('app_current', 'app_start', 'app_stop', 'dump_hierarchy'):
             setattr(device, f'{action}_uiautomator2', Mock(side_effect=HTTPError('403 Forbidden')))
         return device
 
-    def test_native_foreground_check_works_without_atx_agent(self):
-        for method in ('MaaTouch', 'nemu_ipc'):
+    def test_adb_foreground_check_works_without_atx_agent(self):
+        for method in ('ADB',):
             with self.subTest(method=method):
                 device = self.device(method)
                 device.adb_shell.return_value = (
@@ -46,8 +46,8 @@ class TestNativeAppControl(unittest.TestCase):
                 device.adb_shell.assert_called_once_with(['dumpsys', 'window', 'windows'])
                 device.app_current_uiautomator2.assert_not_called()
 
-    def test_native_foreground_check_keeps_activity_fallback(self):
-        for method in ('MaaTouch', 'nemu_ipc'):
+    def test_adb_foreground_check_keeps_activity_fallback(self):
+        for method in ('ADB',):
             with self.subTest(method=method):
                 device = self.device(method)
                 device.adb_shell.side_effect = [
@@ -63,14 +63,14 @@ class TestNativeAppControl(unittest.TestCase):
                 ])
                 device.app_current_uiautomator2.assert_not_called()
 
-    def test_native_foreground_check_does_not_assume_game_is_running(self):
-        device = self.device('MaaTouch')
+    def test_adb_foreground_check_does_not_assume_game_is_running(self):
+        device = self.device('ADB')
         device.adb_shell.return_value = 'mCurrentFocus=Window{123abc u0 com.example.launcher/.MainActivity}'
 
         self.assertFalse(device.app_is_running())
 
-    def test_native_start_stop_and_hierarchy_do_not_require_atx_agent(self):
-        for method in ('MaaTouch', 'nemu_ipc'):
+    def test_adb_start_stop_and_hierarchy_do_not_require_atx_agent(self):
+        for method in ('ADB',):
             with self.subTest(method=method):
                 device = self.device(method)
                 device.app_start_adb = Mock()
@@ -88,14 +88,33 @@ class TestNativeAppControl(unittest.TestCase):
                     getattr(device, f'{action}_uiautomator2').assert_not_called()
 
     def test_agent_based_controls_keep_existing_app_routing(self):
-        for method in ('uiautomator2', 'minitouch', 'scrcpy'):
+        for method in ('uiautomator2', 'minitouch', 'scrcpy', 'MaaTouch', 'nemu_ipc'):
             with self.subTest(method=method):
                 device = self.device(method)
-                device.app_current_uiautomator2.side_effect = None
+                for action in ('app_current', 'app_start', 'app_stop', 'dump_hierarchy'):
+                    getattr(device, f'{action}_uiautomator2').side_effect = None
                 device.app_current_uiautomator2.return_value = device.package
+                device.app_start_adb = Mock()
+                device.dump_hierarchy_adb = Mock()
+                device._hierarchy_interval = Mock()
 
                 self.assertTrue(device.app_is_running())
+                device.app_start()
+                device.app_stop()
+                self.assertIs(device.dump_hierarchy(), device.dump_hierarchy_uiautomator2.return_value)
 
+                for action in ('app_current', 'app_start', 'app_stop', 'dump_hierarchy'):
+                    getattr(device, f'{action}_uiautomator2').assert_called_once_with()
+                device.app_start_adb.assert_not_called()
+                device.dump_hierarchy_adb.assert_not_called()
+                device.adb_shell.assert_not_called()
+
+    def test_native_control_app_query_preserves_u2_errors(self):
+        for method in ('MaaTouch', 'nemu_ipc'):
+            with self.subTest(method=method):
+                device = self.device(method)
+                with self.assertRaises(HTTPError):
+                    device.app_current()
                 device.app_current_uiautomator2.assert_called_once_with()
                 device.adb_shell.assert_not_called()
 

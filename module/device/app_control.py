@@ -32,8 +32,7 @@ class AppControl(AzurPilotAndroid, Adb, WSA, Uiautomator2):
         _hierarchy_interval (Timer): 层级获取间隔计时器。
     """
     hierarchy: etree._Element
-    # MaaTouch 与 nemu_ipc 不依赖 atx-agent，应用管理也走 ADB，避免前台检查触发安装。
-    _app_u2_family = ['uiautomator2', 'minitouch', 'scrcpy']
+    _app_u2_family = ['uiautomator2', 'minitouch', 'scrcpy', 'MaaTouch', 'nemu_ipc']
     _hierarchy_interval = Timer(0.1)
 
     def app_current(self) -> str:

@@ -27,9 +27,9 @@
 - 单按钮连击保护阈值为 12 次；仅 S 经验结算按钮 `EXP_INFO_S` 放宽为 15 次，配合普通战斗处理器的 2 秒点击间隔等待自动跳转。双按钮各 6 次的交替点击保护不变。
 - 基准测试入口：首次连接时自动为截图方式与 OCR 设备跑简化基准并写回配置。
 
-MaaTouch 与 nemu_ipc 控制下，前台应用检测、游戏启动/停止和 UI 层级读取使用 ADB，
-不因选择原生触控而初始化 uiautomator2 或安装 atx-agent；uiautomator2、minitouch、scrcpy
-控制保留原有应用管理通路。MuMu Android 15 的自动截图测速保留 uiautomator2 候选，
+uiautomator2、minitouch、scrcpy、MaaTouch、nemu_ipc 控制下，前台应用检测、游戏启动/停止和
+UI 层级读取沿用 uiautomator2 通路，实际触控使用各自配置的后端。
+MuMu Android 15 的自动截图测速保留 uiautomator2 候选，
 成功时正常参与排名；异常或超时后才跳过本次候选，不按系统版本提前排除。
 简化测速与完整测速一样，只在 SDK 23–32 测试 DroidCast / DroidCast_raw。
 
