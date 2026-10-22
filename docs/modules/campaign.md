@@ -396,6 +396,7 @@ stateDiagram-v2
 
 - 国服、国际服和日服共用 `campaign/event_20261022_cn/` 的 T1–T6 与 SP。关卡数据来自活动 `51601` 的 `config_data`：`2070001`–`2070006`、`2070041`；该活动的 `act_id` 也出现在旧 `197xxxx` 章节中，不能仅按关联结果的首项提取。EX 不在自动刷图范围内。
 - Lua 的 `expedition_data_by_map` 使用 `ui_type=10`，T1–T3 属于上篇、T4–T6 属于下篇，SP 使用独立分区。活动基类沿用 `page_sp` 和 20241219 四分区导航；关卡没有普通／困难模式切换。`stage_name.py` 保留 T 关名，并支持与同类活动一致的 A/SP 数字别名及 A/B 日常关卡转换。
+- 活动剧情工具同样使用 `page_sp` 作为本期活动入口，到达后通过左下角模式开关进入剧情模式；上下篇作战页和剧情页共用 `S.P.` 页面标识。
 - T 关精英为 `type=95`，由客户端 `ChapterConst.EnemySize` 与 `StaticChampionCellView.StartEggCellView` 渲染小型橙色精英图标，复用 `MAP_SIREN_HAS_BOSS_ICON_SMALL`。SP 的 `type=98` 不显示此图标且 `is_ai=0`，每次出击从地图的三个 `MS` 出生格（D2、C3、B4）初始化固定敌人，保留清除后的正常状态更新。
 - 日文名称「テンペスタと霧靄回廊」来自 JP `memory_group[380].title` 与 `expedition_data_by_map[2070001].name`。当前 EN Lua 尚无对应条目，英文名称暂自行翻译为 “Tempesta and the Corridor of Mist”；后续有正式名称时更新 `campaign/Readme.md` 并重新生成配置。
 - 地图、波次、配置和导航可离线核对；新海面背景的网格识别与滑动参数仍需本期 1280×720 截图或经授权的模拟器验收，不能将旧活动的校准值视为本期实测结果。
