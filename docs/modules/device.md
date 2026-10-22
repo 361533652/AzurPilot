@@ -27,6 +27,12 @@
 - 单按钮连击保护阈值为 12 次；仅 S 经验结算按钮 `EXP_INFO_S` 放宽为 15 次，配合普通战斗处理器的 2 秒点击间隔等待自动跳转。双按钮各 6 次的交替点击保护不变。
 - 基准测试入口：首次连接时自动为截图方式与 OCR 设备跑简化基准并写回配置。
 
+MaaTouch 与 nemu_ipc 控制下，前台应用检测、游戏启动/停止和 UI 层级读取使用 ADB，
+不因选择原生触控而初始化 uiautomator2 或安装 atx-agent；uiautomator2、minitouch、scrcpy
+控制保留原有应用管理通路。MuMu Android 15（SDK ≥ 35）的自动截图测速跳过 uiautomator2，
+避免可选后端的 agent 安装阻塞启动；手动指定截图后端和完整基准测试仍可使用 uiautomator2。
+简化测速与完整测速一样，只在 SDK 23–32 测试 DroidCast / DroidCast_raw。
+
 ### 不负责
 
 - 恢复策略决策：收到 `EmulatorNotRunningError` 后何时重启模拟器、是否深度重启，由调度器 `alas.py` 的 `_try_restart_emulator()` 决定（见 [调度器](entry/alas.md)）。

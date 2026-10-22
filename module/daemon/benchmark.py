@@ -412,6 +412,11 @@ class Benchmark(DaemonBase, CampaignUI):
         logger.info(f'sdk_ver: {sdk}')
         if not (21 <= sdk <= 28):
             screenshot = remove('aScreenCap', 'aScreenCap_nc')
+        if not (23 <= sdk <= 32):
+            screenshot = remove('DroidCast', 'DroidCast_raw')
+        # MuMu Android 15 的原生截图可直接使用；自动测速不为可选的 u2 截图安装 atx-agent。
+        if sdk >= 35 and self.device.is_mumu_family:
+            screenshot = remove('uiautomator2')
         if self.device.is_chinac_phone_cloud:
             screenshot = remove('ADB_nc', 'aScreenCap_nc')
         # 注意：nemu_ipc 不参与自动选择（速度虽快但触控有兼容性风险），
