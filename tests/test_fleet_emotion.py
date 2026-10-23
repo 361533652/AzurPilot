@@ -116,6 +116,7 @@ class FleetEmotionTests(unittest.TestCase):
     def test_cleanup_on_failure_does_not_save_partial_result(self):
         runner = FleetManagement.__new__(FleetManagement)
         runner.config = SimpleNamespace(SERVER='cn')
+        runner.device = SimpleNamespace(has_cached_image=True)
         for name in ('ui_ensure', 'dock_favourite_set', 'dock_sort_method_dsc_set',
                      'dock_reset', '_save_result', 'fleet_enter', '_open_slot', '_close_picker'):
             setattr(runner, name, Mock())

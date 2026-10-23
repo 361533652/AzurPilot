@@ -8,13 +8,17 @@ from unittest.mock import Mock, patch
 import numpy as np
 from PIL import Image
 
+from module.base.base import ModuleBase
 from module.exception import FleetManagementError, GameStuckError, GameTooManyClickError, RequestHumanTakeover
+from module.retire.assets import DOCK_CHECK
 from module.retire.fleet_management import FleetManagement, PICKER_CONFIRM
 from module.runtime.fleet_formation import (SLOT_CENTERS, SUBMARINE_SLOT_CENTERS, FormationCardMerger,
     FormationDetailScanner, FormationDockScanner, PortraitMatcher, VisualDockScanner, choose_portrait,
     combine_references, detail_occupied, detail_portraits, menu_area, selected_count_changed,
     fleet_type_selected, selected_menu_fleet, selector_closed, slot_swap_plan, preserve_emotions,
     validate_position, validate_swap)
+from module.ui.assets import BACK_ARROW
+from module.ui.page import page_fleet
 
 
 FIXTURES = Path(__file__).parent / 'fixtures/fleet_formation'
@@ -31,7 +35,8 @@ def runner():
                                   click=Mock(), screenshot=Mock(), swipe=Mock())
     tool.dock_filter = SimpleNamespace(reset_first=True)
     for method in ('fleet_enter', '_open_slot', '_close_picker', '_prepare_dock', 'dock_reset',
-                   'ui_ensure', '_save_result', '_confirm_replacement', '_commit_formation'):
+                   'ui_ensure', '_save_result', '_confirm_replacement', '_commit_formation',
+                   '_enter_scan_submarine'):
         setattr(tool, method, Mock())
     tool.appear = Mock(return_value=False)
     tool._scan_window = None
@@ -393,6 +398,117 @@ class VisualTargetTests(unittest.TestCase):
                     self.assertIn(menu_area(4), [call.args[0].button for call in tool.device.click.call_args_list])
 
 
+class ScanNavigationTests(unittest.TestCase):
+    @staticmethod
+    def native_runner():
+        tool = runner()
+        tool.device.image = frame('scan_surface')
+        tool.device.stuck_record_add = Mock()
+        tool.appear = ModuleBase.appear.__get__(tool)
+        for name in ('_open_slot', '_close_picker', '_enter_scan_submarine'):
+            setattr(tool, name, getattr(FleetManagement, name).__get__(tool))
+
+        def images(**kwargs):
+            for index in range(12):
+                if index or not kwargs.get('skip_first', True):
+                    tool.device.screenshot()
+                yield tool.device.image
+
+        tool.loop = images
+        return tool
+
+    def test_native_formation_titles_match_dock_color_but_not_dock_template(self):
+        tool = self.native_runner()
+        for name in ('scan_surface', 'scan_surface_menu', 'scan_submarine'):
+            with self.subTest(frame=name):
+                tool.device.image = frame(name)
+                self.assertTrue(tool.appear(DOCK_CHECK))
+                self.assertFalse(tool.appear(DOCK_CHECK, offset=(20, 20)))
+        tool.device.image = frame('scan_dock')
+        self.assertTrue(tool.appear(DOCK_CHECK, offset=(20, 20)))
+
+    def test_scan_clicks_slots_four_one_then_submarine_once_and_its_slot_one(self):
+        from module.device.device import Device
+
+        tool = self.native_runner()
+        # 使用尚无首帧的真实 Device 类型，只替换截图和点击，不连接模拟器。
+        device = Device.__new__(Device)
+        device.stuck_record_add = Mock()
+        tool.device = device
+        images = {name: frame(name) for name in ('scan_surface', 'scan_submarine', 'scan_dock')}
+        current, pending, return_to, delay = 'scan_surface', None, None, 0
+        clicks = []
+
+        def screenshot():
+            nonlocal current, pending, delay
+            if delay:
+                delay -= 1
+            elif pending:
+                current, pending = pending, None
+            device.image = images[current]
+
+        def click(button):
+            nonlocal pending, return_to, delay
+            clicks.append(button.name)
+            if button.name in ('surface舰位4', 'surface舰位1', 'submarine舰位1'):
+                expected = 'scan_submarine' if button.name.startswith('submarine') else 'scan_surface'
+                self.assertEqual(current, expected)
+                return_to, pending = current, 'scan_dock'
+            elif button is BACK_ARROW:
+                self.assertEqual(current, 'scan_dock')
+                pending = return_to
+            elif button.name == 'submarine舰队选择':
+                self.assertEqual(current, 'scan_surface')
+                pending, delay = 'scan_submarine', 3
+            else:
+                self.fail(f'扫描入口出现了多余点击：{button.name}')
+
+        device.screenshot = Mock(side_effect=screenshot)
+        device.click = Mock(side_effect=click)
+        tool._prepare_dock.side_effect = lambda: self.assertTrue(tool.appear(DOCK_CHECK, offset=(20, 20)))
+        tool._scan_category = Mock(return_value={})
+        tool._capture_formation = Mock(side_effect=lambda number, kind: (frame(f'detail_{kind}'), {}, {}))
+        self.assertFalse(device.has_cached_image)
+        with (patch('module.retire.fleet_management.Timer') as timer,
+              patch('module.retire.fleet_management.FormationDockScanner'),
+              patch('module.retire.fleet_management.FormationDetailScanner') as details):
+            timer.return_value.reached.return_value = True
+            details.return_value.scan.side_effect = lambda image, kind: {
+                slot: dict(name='', level=0, emotion=None, slot=slot, occupied=False)
+                for slot in range(1, 7 if kind == 'surface' else 4)}
+            tool.run(update_emotion=False)
+
+        self.assertEqual(clicks, ['surface舰位4', 'BACK_ARROW', 'surface舰位1', 'BACK_ARROW',
+                                 'submarine舰队选择', 'submarine舰位1', 'BACK_ARROW'])
+        tool.ui_ensure.assert_called_once_with(page_fleet)
+        tool.fleet_enter.assert_not_called()
+        self.assertEqual(tool._scan_category.call_count, 3)
+        self.assertEqual(tool._capture_formation.call_count, 8)
+        self.assertEqual(tool.dock_reset.call_count, 3)
+        tool._save_result.assert_called_once()
+        self.assertTrue(tool.dock_filter.reset_first)
+
+    def test_failed_slot_entry_does_not_start_dock_cleanup_or_save(self):
+        tool = self.native_runner()
+        with (patch('module.retire.fleet_management.Timer') as timer,
+              patch('module.retire.fleet_management.FormationDockScanner'),
+              patch('module.retire.fleet_management.FormationDetailScanner')):
+            timer.return_value.reached.return_value = True
+            with self.assertRaisesRegex(FleetManagementError, '未能从指定舰位进入选船页'):
+                tool.run(update_emotion=False)
+        tool._prepare_dock.assert_not_called()
+        tool.dock_reset.assert_not_called()
+        tool._save_result.assert_not_called()
+        self.assertTrue(tool.dock_filter.reset_first)
+
+    def test_submarine_transition_does_not_reopen_selector_when_switch_fails(self):
+        tool = self.native_runner()
+        with self.assertRaisesRegex(FleetManagementError, '未能从水面编队进入潜艇编队'):
+            tool._enter_scan_submarine()
+        tool.device.click.assert_called_once()
+        self.assertEqual(tool.device.click.call_args.args[0].button, (500, 650, 710, 702))
+
+
 class ReferenceScanTests(unittest.TestCase):
     def test_disabling_morale_update_preserves_existing_slot_values_including_zero(self):
         current = {'vanguard': {'1': [{'slot': 4, 'name': '未知', 'emotion': None},
@@ -475,8 +591,9 @@ class ReferenceScanTests(unittest.TestCase):
                 slot: dict(name='读错也保留', level=0, emotion=None, slot=slot, occupied=True, review=True)
                 for slot in range(1, 7 if kind == 'surface' else 4)}
             tool.run(update_emotion=False)
-        self.assertEqual([call.args for call in tool.fleet_enter.call_args_list],
-                         [(1, 'surface'), (1, 'surface'), (1, 'submarine')])
+        tool.ui_ensure.assert_called_once_with(page_fleet)
+        tool.fleet_enter.assert_not_called()
+        tool._enter_scan_submarine.assert_called_once_with()
         self.assertEqual([call.args for call in tool._open_slot.call_args_list],
                          [(4, 'surface'), (1, 'surface'), (1, 'submarine')])
         tool._save_result.assert_called_once()

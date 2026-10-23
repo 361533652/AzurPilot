@@ -139,12 +139,29 @@ class FleetManagement(Dock):
         """
         click = Timer(2)
         for _ in self.loop(timeout=20):
-            if self.appear(DOCK_CHECK):
+            # “编队”和“船坞”标题的平均颜色接近，必须匹配字形确认已经进入选船页。
+            if self.appear(DOCK_CHECK, offset=(20, 20)):
                 return
             if self._formation_visible() and click.reached():
                 self.device.click(self.slot_button(slot, fleet_type))
                 click.reset()
         raise FleetManagementError('未能从指定舰位进入选船页')
+
+    def _enter_scan_submarine(self):
+        """从水面扫描切到默认第一潜艇舰队，只点击一次右侧舰队入口。
+
+        Pages:
+            in: page_fleet，第一水面舰队，选船页已关闭
+            out: page_fleet，第一潜艇舰队
+        """
+        clicked = False
+        for _ in self.loop(timeout=20):
+            if self._formation_visible() and fleet_type_selected(self.device.image, 'submarine'):
+                return
+            if self._formation_visible() and not clicked:
+                self.device.click(fleet_menu_button('submarine'))
+                clicked = True
+        raise FleetManagementError('未能从水面编队进入潜艇编队')
 
     def _close_picker(self):
         """取消选船并返回编队，不点击确定或离队。
@@ -304,12 +321,17 @@ class FleetManagement(Dock):
         scanner = FormationDockScanner(update_emotion=update_emotion)
         details = FormationDetailScanner()
         dock, windows = {}, {}
+        if not self.device.has_cached_image:
+            self.device.screenshot()
+        self.ui_ensure(page_fleet)
         reset_first = self.dock_filter.reset_first
         try:
             self.dock_filter.reset_first = False
             for category, fleet_type, slot in (('vanguard', 'surface', 4), ('main', 'surface', 1),
                                                 ('submarine', 'submarine', 1)):
-                self.fleet_enter(1, fleet_type)
+                # 新进入编队即为第一水面舰队；返回选船页也保留当前队伍，无需展开列表。
+                if fleet_type == 'submarine':
+                    self._enter_scan_submarine()
                 self._open_slot(slot, fleet_type)
                 try:
                     self._prepare_dock()
