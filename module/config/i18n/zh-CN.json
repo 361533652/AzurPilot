@@ -254,10 +254,6 @@
       "name": "META作战",
       "help": ""
     },
-    "OpsiAshAssist": {
-      "name": "META支援",
-      "help": ""
-    },
     "OpsiExplore": {
       "name": "每月开荒",
       "help": ""
@@ -3865,6 +3861,10 @@
       "name": "META支援",
       "help": "打每天三次的信标支援"
     },
+    "Enable": {
+      "name": "启用META支援",
+      "help": "在META作战中完成每天三次支援，与当期信标共用自动换装配置。"
+    },
     "Tier": {
       "name": "寻找等级大于 X 的信标",
       "help": "如果尝试若干次仍找不到符合条件的信标，随缘打"
@@ -3965,6 +3965,10 @@
     "DossierAutoAttackMode": {
       "name": "档案信标自动作战",
       "help": "在档案信标首次战斗后进行自动作战，目前仅国服可用"
+    },
+    "DossierSkipAssist": {
+      "name": "开启档案时不进行支援",
+      "help": "档案已开启、正在解析或自动攻击时暂停每日META支援，待领奖时先领取奖励再恢复支援。\n开启自动换装备功能时务必开启此功能。"
     },
     "RequestAssist": {
       "name": "呼叫支援",
