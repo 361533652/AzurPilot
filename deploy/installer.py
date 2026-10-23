@@ -16,7 +16,11 @@ class Installer(GitManager, PipManager, AdbManager, AppManager, AlasManager):
     def install(self):
         """执行完整的安装与环境部署流程。"""
         from deploy.atomic import atomic_failure_cleanup
+        from deploy.sync_upstream import sync_with_upstream
         atomic_failure_cleanup('./config')
+        if not sync_with_upstream():
+            print("[Installer] 上游同步发生代码冲突，安装与启动流程已阻断。")
+            exit(1)
         try:
             self.git_install()
             self.alas_kill()

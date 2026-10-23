@@ -1085,6 +1085,14 @@ def main() -> int:
         logger.warning('[GUI] 启动文件日志不可用，继续输出到控制台')
     logger.info('[GUI] 开始检查普通业务存储；启动日志：%s', logger.log_file or '控制台')
     try:
+        from deploy.sync_upstream import sync_with_upstream
+        if not sync_with_upstream():
+            logger.critical('[GUI] 检测到与上游官方代码冲突，启动已拦截！请在 DSH 中召唤小肥鱼排错。')
+            return EXIT_STARTUP_FAILURE
+    except Exception as exc:
+        logger.warning('[GUI] 上游同步检查跳过: %s', exc)
+
+    try:
         from module.persistence.database import initialize
         initialize()
     except Exception as exc:
