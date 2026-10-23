@@ -124,6 +124,25 @@ def fleet_type_selected(image, fleet_type='surface'):
     return image_color_count(region, (160, 120, 70), threshold=45, count=350)
 
 
+@lru_cache(maxsize=1)
+def fleet_index_templates():
+    root = Path(__file__).parents[2] / 'assets/ship'
+    return tuple(np.array(Image.open(root / f'formation_index_{fleet}.png').convert('L'))
+                 for fleet in range(1, 7))
+
+
+def bottom_fleet_index(image, fleet_type='surface'):
+    """按底部大号数字的原生字形核对队号，不展开列表或读取文字OCR。"""
+    left = 298 if fleet_type == 'surface' else 664
+    region = cv2.cvtColor(np.asarray(image)[647:707, left:left + 50], cv2.COLOR_RGB2GRAY)
+    count = 6 if fleet_type == 'surface' else 2
+    scores = [cv2.minMaxLoc(cv2.matchTemplate(region, template, cv2.TM_CCOEFF_NORMED))[1]
+              for template in fleet_index_templates()[:count]]
+    ordered = sorted(range(count), key=scores.__getitem__, reverse=True)
+    best, second = ordered[:2]
+    return best + 1 if scores[best] >= .85 and scores[best] - scores[second] >= .1 else None
+
+
 def selected_count_changed(before, after):
     """新打开的单选页从0选到1：比对计数图像变化，不调用数字 OCR。"""
     x1, y1, x2, y2 = DOCK_SELECTED.area

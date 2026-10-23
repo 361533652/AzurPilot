@@ -16,7 +16,7 @@ from module.retire.fleet_emotion import learn_fleet_emotion, screenshot_window
 from module.runtime.fleet_formation import (CATEGORY_SLOTS, SLOT_CENTERS, SUBMARINE_SLOT_CENTERS, TYPE_BUTTON_AREAS,
     FormationCardMerger, FormationDetailScanner, FormationDockScanner, MoraleDockScanner, PortraitMatcher, VisualDockScanner,
     choose_portrait, combine_references, detail_occupied, detail_portraits, menu_area, selected_count_changed,
-    fleet_type_selected, selected_menu_fleet, selector_closed, slot_swap_plan, preserve_emotions,
+    bottom_fleet_index, fleet_type_selected, selected_menu_fleet, selector_closed, slot_swap_plan, preserve_emotions,
     validate_position, validate_swap)
 from module.ui.assets import BACK_ARROW, FLEET_CHECK
 from module.ui.page import page_fleet
@@ -79,7 +79,7 @@ class FleetManagement(Dock):
         if not self.device.has_cached_image:
             self.device.screenshot()
         if self.appear(FLEET_DETAIL_CHECK):
-            self.ui_click(FLEET_DETAIL_CHECK, appear_button=FLEET_DETAIL_CHECK,
+            self.ui_click(BACK_ARROW, appear_button=FLEET_DETAIL_CHECK,
                           check_button=self._formation_visible, retry_wait=2)
         self.ui_ensure(page_fleet)
         phase, current = 'kind', None
@@ -179,14 +179,43 @@ class FleetManagement(Dock):
                 click.reset()
         raise FleetManagementError('未能从选船页返回编队')
 
-    def _capture_formation(self, fleet, fleet_type='surface'):
+    def _scan_fleet_enter(self, fleet, fleet_type='surface'):
+        """详情扫描按箭头顺序切队，以底部编号确认，不展开舰队列表。
+
+        Pages:
+            in: page_fleet，编队视图
+            out: page_fleet，指定类型和编号的舰队
+        """
+        validate_position(fleet, 1, fleet_type)
+        type_requested = False
+        click = Timer(2)
+        for _ in self.loop(timeout=75):
+            if self._formation_visible():
+                if fleet_type_selected(self.device.image, fleet_type):
+                    current = bottom_fleet_index(self.device.image, fleet_type)
+                    if current == fleet:
+                        logger.attr('详情采集舰队', f'{fleet_type}-{fleet}')
+                        return
+                    if current is not None and click.reached():
+                        self.device.click(FLEET_NEXT if current < fleet else FLEET_PREV)
+                        click.reset()
+                elif not type_requested:
+                    self.device.click(fleet_menu_button(fleet_type))
+                    type_requested = True
+        raise FleetManagementError(f'未能从底部编号确认{fleet_type}第{fleet}舰队')
+
+    def _capture_formation(self, fleet, fleet_type='surface', *, navigate=True):
         """按固定列采集详情卡面，用于源舰位定位及交换后核对。
+
+        Args:
+            navigate (bool): 默认使用通用切队；顺序扫描已核对底部编号时传入False。
 
         Pages:
             in: Any
             out: page_fleet
         """
-        self.fleet_enter(fleet, fleet_type)
+        if navigate:
+            self.fleet_enter(fleet, fleet_type)
         self.ui_click(FLEET_DETAIL, appear_button=FLEET_DETAIL, check_button=FLEET_DETAIL_CHECK,
                       skip_first_screenshot=True, retry_wait=2)
         # 已确认详情页后获取当前帧，卡面提取与任何文字识别无关。
@@ -194,7 +223,8 @@ class FleetManagement(Dock):
         image = self.device.image.copy()
         portraits = detail_portraits(image, fleet_type)
         occupied = {slot: detail_occupied(image, slot) for slot in portraits}
-        self.ui_click(FLEET_DETAIL_CHECK, appear_button=FLEET_DETAIL_CHECK,
+        # 左侧金色“详情界面”只是已选中的页签，点击左上返回关闭详情。
+        self.ui_click(BACK_ARROW, appear_button=FLEET_DETAIL_CHECK,
                       check_button=self._formation_visible, retry_wait=2)
         return image, portraits, occupied
 
@@ -343,7 +373,8 @@ class FleetManagement(Dock):
             formations = {'surface': {}, 'submarine': {}}
             for fleet_type, count in (('surface', 6), ('submarine', 2)):
                 for fleet in range(1, count + 1):
-                    image, _, _ = self._capture_formation(fleet, fleet_type)
+                    self._scan_fleet_enter(fleet, fleet_type)
+                    image, _, _ = self._capture_formation(fleet, fleet_type, navigate=False)
                     formations[fleet_type][fleet] = details.scan(image, fleet_type)
             result = combine_references(dock, formations)
             if update_emotion:

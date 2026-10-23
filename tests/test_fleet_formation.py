@@ -9,13 +9,14 @@ import numpy as np
 from PIL import Image
 
 from module.base.base import ModuleBase
+from module.equipment.assets import FLEET_DETAIL, FLEET_DETAIL_CHECK, FLEET_NEXT, FLEET_PREV
 from module.exception import FleetManagementError, GameStuckError, GameTooManyClickError, RequestHumanTakeover
 from module.retire.assets import DOCK_CHECK
 from module.retire.fleet_management import FleetManagement, PICKER_CONFIRM
 from module.runtime.fleet_formation import (SLOT_CENTERS, SUBMARINE_SLOT_CENTERS, FormationCardMerger,
     FormationDetailScanner, FormationDockScanner, PortraitMatcher, VisualDockScanner, choose_portrait,
     combine_references, detail_occupied, detail_portraits, menu_area, selected_count_changed,
-    fleet_type_selected, selected_menu_fleet, selector_closed, slot_swap_plan, preserve_emotions,
+    bottom_fleet_index, fleet_type_selected, selected_menu_fleet, selector_closed, slot_swap_plan, preserve_emotions,
     validate_position, validate_swap)
 from module.ui.assets import BACK_ARROW
 from module.ui.page import page_fleet
@@ -36,7 +37,7 @@ def runner():
     tool.dock_filter = SimpleNamespace(reset_first=True)
     for method in ('fleet_enter', '_open_slot', '_close_picker', '_prepare_dock', 'dock_reset',
                    'ui_ensure', '_save_result', '_confirm_replacement', '_commit_formation',
-                   '_enter_scan_submarine'):
+                   '_enter_scan_submarine', '_scan_fleet_enter'):
         setattr(tool, method, Mock())
     tool.appear = Mock(return_value=False)
     tool._scan_window = None
@@ -467,7 +468,7 @@ class ScanNavigationTests(unittest.TestCase):
         device.click = Mock(side_effect=click)
         tool._prepare_dock.side_effect = lambda: self.assertTrue(tool.appear(DOCK_CHECK, offset=(20, 20)))
         tool._scan_category = Mock(return_value={})
-        tool._capture_formation = Mock(side_effect=lambda number, kind: (frame(f'detail_{kind}'), {}, {}))
+        tool._capture_formation = Mock(side_effect=lambda number, kind, **kwargs: (frame(f'detail_{kind}'), {}, {}))
         self.assertFalse(device.has_cached_image)
         with (patch('module.retire.fleet_management.Timer') as timer,
               patch('module.retire.fleet_management.FormationDockScanner'),
@@ -507,6 +508,137 @@ class ScanNavigationTests(unittest.TestCase):
             tool._enter_scan_submarine()
         tool.device.click.assert_called_once()
         self.assertEqual(tool.device.click.call_args.args[0].button, (500, 650, 710, 702))
+
+
+class DetailNavigationTests(unittest.TestCase):
+    def native_tool(self, kind='surface', fleet=1, detail=False):
+        tool = runner()
+        tool.appear = ModuleBase.appear.__get__(tool)
+        tool._scan_fleet_enter = FleetManagement._scan_fleet_enter.__get__(tool)
+        tool.device.stuck_record_add = Mock()
+        regions, controls = frame('fleet_index_regions'), frame('detail_controls')
+        formations = {kind: frame(f'scan_{kind}') for kind in ('surface', 'submarine')}
+        details = {kind: frame(f'detail_{kind}') for kind in ('surface', 'submarine')}
+        state = SimpleNamespace(kind=kind, fleet=fleet, detail=detail, pending=None,
+                                delay=0, clock=100., events=[])
+
+        def image():
+            result = formations[state.kind].copy()
+            row = state.fleet - 1 if state.kind == 'surface' else state.fleet + 5
+            left = 298 if state.kind == 'surface' else 664
+            result[647:707, left:left + 50] = regions[row * 60:(row + 1) * 60, :50]
+            if state.detail:
+                current = details[state.kind].copy()
+                current[640:] = controls[640:]
+                current[640:, :720] = result[640:, :720]
+                return current
+            return result
+
+        def screenshot():
+            self.assertLess(tool.device.screenshot.call_count, 250, '页面切换没有推进')
+            state.clock += .25
+            if state.delay:
+                state.delay -= 1
+            elif state.pending:
+                state.kind, state.fleet, state.detail = state.pending
+                state.pending = None
+            tool.device.image = image()
+
+        def click(button):
+            self.assertIsNone(state.pending, '动画期间重复点击了切换按钮')
+            state.events.append((button.name, state.kind, state.fleet))
+            if button is FLEET_DETAIL and not state.detail:
+                state.pending = state.kind, state.fleet, True
+            elif button is BACK_ARROW and state.detail:
+                state.pending = state.kind, state.fleet, False
+            elif button in (FLEET_NEXT, FLEET_PREV) and not state.detail:
+                target = state.fleet + (1 if button is FLEET_NEXT else -1)
+                self.assertIn(target, range(1, 7 if state.kind == 'surface' else 3))
+                state.pending = state.kind, target, False
+            elif button.name in ('surface舰队选择', 'submarine舰队选择') and not state.detail:
+                target = button.name.split('舰队')[0]
+                self.assertNotEqual(state.kind, target, '详情扫描不应展开当前类型的舰队下拉列表')
+                state.pending = target, 1, False
+            else:
+                self.fail(f'页面切换使用了错误按钮：{button.name}')
+            state.delay = 2
+
+        tool.device.image = image()
+        tool.device.screenshot = Mock(side_effect=screenshot)
+        tool.device.click = Mock(side_effect=click)
+        return tool, state, image
+
+    def test_bottom_numbers_read_all_surface_and_submarine_fleets_without_ocr(self):
+        for kind, count in (('surface', 6), ('submarine', 2)):
+            tool, state, image = self.native_tool(kind)
+            for fleet in range(1, count + 1):
+                with self.subTest(kind=kind, fleet=fleet):
+                    state.fleet = fleet
+                    self.assertEqual(bottom_fleet_index(image(), kind), fleet)
+            blank = np.zeros_like(tool.device.image)
+            self.assertIsNone(bottom_fleet_index(blank, kind))
+
+    def test_capture_uses_back_and_keeps_native_fixed_portraits(self):
+        for kind in ('surface', 'submarine'):
+            with self.subTest(kind=kind):
+                tool, state, image = self.native_tool(kind)
+                with patch('module.base.timer.time', side_effect=lambda: state.clock):
+                    captured, portraits, occupied = tool._capture_formation(1, kind)
+                self.assertEqual([event[0] for event in state.events], ['FLEET_DETAIL', 'BACK_ARROW'])
+                self.assertFalse(state.detail)
+                self.assertTrue(tool._formation_visible())
+                self.assertTrue(FLEET_DETAIL_CHECK.appear_on(captured))
+                expected = detail_portraits(frame(f'detail_{kind}'), kind)
+                self.assertEqual(set(portraits), set(expected))
+                for slot, portrait in portraits.items():
+                    np.testing.assert_array_equal(portrait, expected[slot])
+                self.assertTrue(all(occupied.values()))
+                tool.fleet_enter.assert_called_once_with(1, kind)
+
+    def test_interrupted_detail_returns_before_handing_back_to_general_navigation(self):
+        tool, state, image = self.native_tool(detail=True)
+        # 只验证恢复到编队视图这一步，通用下拉导航已由既有测试单独覆盖。
+        class NavigationReady(Exception):
+            pass
+
+        tool.ui_ensure.side_effect = NavigationReady
+        with patch('module.base.timer.time', side_effect=lambda: state.clock):
+            with self.assertRaises(NavigationReady):
+                FleetManagement.fleet_enter(tool, 1)
+        self.assertEqual([event[0] for event in state.events], ['BACK_ARROW'])
+        self.assertFalse(state.detail)
+        self.assertTrue(tool._formation_visible())
+        tool.ui_ensure.assert_called_once_with(page_fleet)
+
+    def test_scan_captures_eight_fleets_with_right_arrows_and_no_dropdown(self):
+        tool, state, image = self.native_tool('submarine')
+        tool._scan_category = Mock(return_value={})
+        with (patch('module.base.timer.time', side_effect=lambda: state.clock),
+              patch('module.retire.fleet_management.FormationDockScanner'),
+              patch('module.retire.fleet_management.FormationDetailScanner') as scanner):
+            scanner.return_value.scan.side_effect = lambda pixels, kind: {
+                slot: dict(name='', level=0, emotion=None, slot=slot, occupied=True, review=True)
+                for slot in range(1, 7 if kind == 'surface' else 4)}
+            tool.run(update_emotion=False)
+        expected = [('surface', fleet) for fleet in range(1, 7)] + [('submarine', 1), ('submarine', 2)]
+        self.assertEqual([(kind, fleet) for name, kind, fleet in state.events if name == 'FLEET_DETAIL'], expected)
+        self.assertEqual(sum(name == 'FLEET_NEXT' for name, _, _ in state.events), 6)
+        self.assertEqual(sum(name == 'BACK_ARROW' for name, _, _ in state.events), 8)
+        self.assertEqual(sum(name.endswith('舰队选择') for name, _, _ in state.events), 2)
+        self.assertNotIn('FLEET_DETAIL_CHECK', [event[0] for event in state.events])
+        tool.fleet_enter.assert_not_called()
+        self.assertEqual(scanner.return_value.scan.call_count, 8)
+        saved = tool._save_result.call_args.args[0]
+        self.assertEqual([len(saved[key]) for key in ('main', 'vanguard', 'submarine')], [6, 6, 2])
+
+    def test_unknown_bottom_number_does_not_click_or_guess_a_fleet(self):
+        tool, state, image = self.native_tool()
+        tool.device.image[647:707, 298:348] = 0
+        tool.device.screenshot.side_effect = lambda: setattr(state, 'clock', state.clock + 1)
+        with patch('module.base.timer.time', side_effect=lambda: state.clock):
+            with self.assertRaisesRegex(FleetManagementError, '未能从底部编号确认'):
+                tool._scan_fleet_enter(2)
+        tool.device.click.assert_not_called()
 
 
 class ReferenceScanTests(unittest.TestCase):
@@ -582,7 +714,7 @@ class ReferenceScanTests(unittest.TestCase):
         tool = runner()
         tool.config.cross_get.return_value = False
         tool._scan_category = Mock(return_value={})
-        tool._capture_formation = Mock(side_effect=lambda number, kind:
+        tool._capture_formation = Mock(side_effect=lambda number, kind, **kwargs:
             (frame(f'detail_{kind}'), {}, {}))
         with (patch('module.retire.fleet_management.FormationDockScanner') as dock,
               patch('module.retire.fleet_management.FormationDetailScanner') as details):
