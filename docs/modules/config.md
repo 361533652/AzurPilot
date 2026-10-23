@@ -284,6 +284,8 @@ stateDiagram-v2
 | `Dashboard.*`（Oil/Coin/Gem 等） | 仪表盘资源，由 dashboard.yaml 定义、任务运行时写回 Value/Record |
 | `Storage.Storage` | 生成器给每个任务附加的 `storage` 类型组，WebUI 禁止编辑，运行时当作键值状态区使用 |
 
+META 支援并入 `OpsiAshBeacon`：菜单、参数与模板只保留一个调度任务，内部支援设置为 `OpsiAshBeacon.OpsiAshAssist.Enable/Tier`，共用 `OpsiAshBeacon.Equipment`。`DossierSkipAssist` 默认关闭，启用后先处理所选信标/档案，只有确认档案未开启且没有正在解析的档案时才支援；待领奖也属于已开启状态，必须先领奖，再用新截图确认回到解析入口后恢复支援。原「META支援完成后再开启档案」开关已从配置定义和运行逻辑删除，旧字段随配置加载更新被丢弃，不再阻挡开启档案，也不改变新开关的值。五语标签随配置一并生成并维护。
+
 ## 11. 异常与错误处理
 
 | 异常 | 原因 | 处理 |
