@@ -690,7 +690,7 @@ class FleetManagement(Dock):
         """
         click = Timer(2)
         for _ in self.loop(skip_first=False, timeout=25):
-            if self.ui_main_appear():
+            if self.is_in_main():
                 return
             if self._formation_visible() and click.reached():
                 self.device.click(BACK_ARROW)

@@ -18,8 +18,8 @@ from module.runtime.fleet_formation import (SLOT_CENTERS, SUBMARINE_SLOT_CENTERS
     combine_references, detail_occupied, detail_portraits, menu_area, selected_count_changed,
     bottom_fleet_index, fleet_type_selected, selected_menu_fleet, selector_closed, slot_swap_plan, preserve_emotions,
     validate_position, validate_swap)
-from module.ui.assets import BACK_ARROW
-from module.ui.page import page_fleet
+from module.ui.assets import BACK_ARROW, FLEET_CHECK
+from module.ui.page import page_fleet, page_main, page_main_white
 
 
 FIXTURES = Path(__file__).parent / 'fixtures/fleet_formation'
@@ -336,6 +336,8 @@ class VisualTargetTests(unittest.TestCase):
         tool._save_swap_reference.side_effect = lambda *args: setattr(tool.device, 'image', frame('scan_surface'))
         tool.device.stuck_record_add = Mock()
         tool.appear = ModuleBase.appear.__get__(tool)
+        tool._commit_formation = Mock(wraps=FleetManagement._commit_formation.__get__(tool))
+        tool.is_in_main = Mock(return_value=True)
         tool.run = Mock(side_effect=GameStuckError('模拟交换后参考刷新未完成'))
         with patch('module.runtime.fleet_formation.FleetNameScanner', side_effect=AssertionError('舰名不可用')), \
                 patch('module.runtime.fleet_formation.LevelScanner', side_effect=AssertionError('等级不可用')), \
@@ -348,6 +350,7 @@ class VisualTargetTests(unittest.TestCase):
         tool._open_slot.assert_called_once_with(5, 'surface')
         tool._confirm_replacement.assert_called_once()
         tool._commit_formation.assert_called_once()
+        tool.is_in_main.assert_called_once()
         tool._save_swap_reference.assert_called_once_with(expected, 'surface')
         tool.dock_reset.assert_not_called()
         tool._close_picker.assert_not_called()
@@ -465,6 +468,63 @@ class VisualTargetTests(unittest.TestCase):
                     self.assertIn(FLEET_NEXT, [call.args[0] for call in tool.device.click.call_args_list])
                 else:
                     self.assertIn(menu_area(4), [call.args[0].button for call in tool.device.click.call_args_list])
+
+
+class CommitFormationTests(unittest.TestCase):
+    def commit_tool(self, theme=page_main, current='fleet'):
+        tool = runner()
+        tool.config.SERVER = 'cn'
+        state = SimpleNamespace(page=current, pending=None, clock=100.)
+
+        def screenshot():
+            state.clock += .5
+            if state.pending is not None:
+                if state.pending:
+                    state.pending -= 1
+                else:
+                    state.page, state.pending = 'main', None
+
+        def appear(button, **kwargs):
+            if state.page == 'fleet':
+                return button is FLEET_CHECK or button is FLEET_DETAIL
+            return state.page == 'main' and button is theme.check_button
+
+        def click(button):
+            self.assertIs(button, BACK_ARROW)
+            self.assertIsNone(state.pending, '返回主界面的动画期间不应连续点击')
+            state.pending = 2
+
+        tool.device.screenshot = Mock(side_effect=screenshot)
+        tool.device.click = Mock(side_effect=click)
+        tool.appear = appear
+        tool.handle_popup_confirm = Mock(side_effect=AssertionError('不得自动确认意外编队弹窗'))
+        return tool, state
+
+    def test_real_main_page_detector_commits_both_themes_after_a_fresh_screenshot(self):
+        for theme in (page_main, page_main_white):
+            with self.subTest(theme=str(theme)):
+                tool, state = self.commit_tool(theme)
+                with patch('module.base.timer.time', side_effect=lambda: state.clock):
+                    FleetManagement._commit_formation(tool)
+                tool.device.click.assert_called_once_with(BACK_ARROW)
+                self.assertGreater(tool.device.screenshot.call_count, 1)
+                self.assertEqual(state.page, 'main')
+                tool.handle_popup_confirm.assert_not_called()
+
+    def test_already_in_main_confirms_without_clicking_back(self):
+        tool, state = self.commit_tool(current='main')
+        with patch('module.base.timer.time', side_effect=lambda: state.clock):
+            FleetManagement._commit_formation(tool)
+        tool.device.screenshot.assert_called_once()
+        tool.device.click.assert_not_called()
+
+    def test_unexpected_popup_remains_unconfirmed_and_stops_with_management_error(self):
+        tool, state = self.commit_tool(current='popup')
+        with patch('module.base.timer.time', side_effect=lambda: state.clock):
+            with self.assertRaisesRegex(FleetManagementError, '尚未确认游戏已提交编队'):
+                FleetManagement._commit_formation(tool)
+        tool.device.click.assert_not_called()
+        tool.handle_popup_confirm.assert_not_called()
 
 
 class ScanNavigationTests(unittest.TestCase):
