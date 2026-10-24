@@ -65,6 +65,8 @@ module/api/
 
 仓库报告使用 `statistics.report(category='storage', days=7)` 只读查询最近完整快照及时间窗口内成功扫描的历史序列。序列的可选 `icon` 在逐点与共用时间轴两种格式中保留，物品图标由 `/storage-items/` 静态挂载提供。主动扫描沿用 `tasks.run(task='StorageStatistics')` 与实例运行互斥；页面刷新不启动扫描。
 
+统计报表与 `statistics.resourceFlows` 的标签、表头、备注保持中文（前端按中文名查图标、导出与筛选）。两者附带 `glossary`（`{中文名: {语言: 名称}}`，只含本次出现的物品名与任务名，来源为物品名称表、仓库目录与配置页 i18n）；固定文案由前端 `components/statisticsText.ts` 在显示前翻译，新增后端文案时需同步补齐该字典的英、日、繁三列。
+
 其他分类报表在同一请求内共用一次受保护数据校验及协调锁，避免每个指标扫描全部历史。`CategorySection` 仅按 `statistics` 事件更新，同一分类最多保留一个正在执行的请求；期间收到的多次通知合并为一次后续刷新。运行概览事件不触发统计查询，SQLite WAL 的修改也纳入更新指纹；切换实例或参数后忽略旧响应。
 
 ## 4. 核心入口
