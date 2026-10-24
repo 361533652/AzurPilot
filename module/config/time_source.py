@@ -56,6 +56,13 @@ class NetworkTimeSource:
 
     def __init__(self) -> None:
         """初始化网络时间源管理器。"""
+        self.refresh_interval = 30 * 60
+        self.retry_interval = 10 * 60
+        self.timeout = 1.0
+        self._reset_process_state()
+
+    def _reset_process_state(self) -> None:
+        """丢弃 fork 继承的线程、锁及可能尚未完整发布的时间缓存。"""
         self.offset = 0.0
         self.base_timestamp = 0.0
         self.base_monotonic = 0.0
@@ -63,13 +70,11 @@ class NetworkTimeSource:
         self.synced = False
         self.last_sync_monotonic = 0.0
         self.retry_after_monotonic = 0.0
-        self.refresh_interval = 30 * 60
-        self.retry_interval = 10 * 60
-        self.timeout = 1.0
         self._lock = threading.RLock()
         self._warned = False
         self._refreshing = False
-        self._refresh_thread = None
+        self._refresh_thread: Optional[threading.Thread] = None
+        self._pid = os.getpid()
 
     @property
     def enabled(self) -> bool:
@@ -152,6 +157,9 @@ class NetworkTimeSource:
         Returns:
             bool: 是否已有成功校时缓存，不代表本次后台请求的结果。
         """
+        # 子进程不能等待父进程遗留的锁，也没有父进程的后台线程。
+        if self._pid != os.getpid():
+            self._reset_process_state()
         if not self.enabled:
             return False
         with self._lock:
@@ -163,15 +171,24 @@ class NetworkTimeSource:
             if not force and current < self.retry_after_monotonic:
                 return self.synced
             self._refreshing = True
-            worker = threading.Thread(target=self._refresh_in_background,
-                                      name='AzurPilot-NTP', daemon=True)
-            self._refresh_thread = worker
             try:
+                worker = threading.Thread(target=self._refresh_in_background,
+                                          name='AzurPilot-NTP', daemon=True)
+                self._refresh_thread = worker
                 worker.start()
-            except Exception:
+            except (RuntimeError, OSError) as exc:
                 self._refreshing = False
-                raise
-            return self.synced
+                self._refresh_thread = None
+                self.retry_after_monotonic = time_.monotonic() + self.retry_interval
+                warn = not self._warned
+                self._warned = True
+                failure = str(exc)
+            else:
+                return self.synced
+            synced = self.synced
+        if warn:
+            self._log_warning(f'NTP 后台线程启动失败，保留已有时间并稍后重试: {failure}')
+        return synced
 
     def _refresh_in_background(self) -> None:
         """网络查询在锁外执行，发布结果时短暂持锁，失败保留原有时间缓存。"""
@@ -209,7 +226,7 @@ class NetworkTimeSource:
                 self._refreshing = False
 
     def timestamp(self) -> float:
-        """立即读取时间快照；首次校时未完成时使用手机时间。"""
+        """立即读取时间快照；首次校时未完成时使用本机时间。"""
         self.refresh()
         with self._lock:
             if self.synced:
