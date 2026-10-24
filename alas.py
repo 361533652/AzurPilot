@@ -13,7 +13,6 @@ from cached_property import cached_property
 
 import module.config.server as server_config
 from module.base.decorator import del_cached_property
-from module.base.api_client import ApiClient
 from module.base.runtime_params import (
     WATCHDOG_CHECK_INTERVAL,
     WATCHDOG_TASK_TIMEOUT_DEFAULT,
@@ -2661,8 +2660,6 @@ class AzurLaneAutoScript:
                         title=f"诶呀！{self.config_name}出现了问题喵！",
                         content=f"因为 {task} 任务失败次数过多喵！",
                     )
-                    logger.warning("[AzurPilot] 任务连续失败次数过多，正在上报错误日志...")
-                    ApiClient.submit_bug_log(f"AzurPilot <{self.config_name}> crashed\nTask `{task}` failed {failed} or more times.")
                     exit(1)
 
                 deferred = self._record_task_restart(task, success)
@@ -2748,18 +2745,11 @@ class AzurLaneAutoScript:
                 )
 
                 # 不再因连续失败次数达到上限而退出，改为持续重试
-                # 上报错误日志（首次失败时上报，避免刷屏）
                 if consecutive_global_failures == 1:
                     try:
                         self.save_error_log()
-                        logger.warning("[AzurPilot] 首次全局异常，正在上报错误日志...")
-                        ApiClient.submit_bug_log(
-                            f"AzurPilot <{self.config_name}> 调度器发生异常。\n"
-                            f"调度器将自动重试恢复（永不退出）。\n"
-                            f"{traceback.format_exc()}"
-                        )
-                    except Exception as report_e:
-                        logger.warning(f'[AzurPilot] 错误日志上报失败: {report_e}')
+                    except Exception as save_e:
+                        logger.warning(f'[AzurPilot] 保存错误日志失败: {save_e}')
 
                 # 尝试重启模拟器
                 logger.warning("[AzurPilot] 尝试通过重启模拟器 + 强制执行 RESTART 任务来恢复...")

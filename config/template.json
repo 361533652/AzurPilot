@@ -157,8 +157,7 @@
       "OpsiOther": "upload",
       "MeowfficerBuy": "do_not",
       "MeowfficerTalent": "do_not",
-      "TelemetryReport": true,
-      "BugReport": true
+      "TelemetryReport": true
     },
     "Backup": {
       "Enable": true,
