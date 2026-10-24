@@ -250,7 +250,7 @@ flowchart TD
 | [auto_search_combat.py](../../module/combat/auto_search_combat.py)、[combat.py](../../module/combat/combat.py)、[result.py](../../module/combat/result.py) | 普通战斗执行、严格开关检测与每场心情记录 |
 | [argument.yaml](../../module/config/argument/argument.yaml)、[override.yaml](../../module/config/argument/override.yaml) | 默认关闭的配置定义与不适用任务的隐藏覆盖 |
 | [args.json](../../module/config/argument/args.json)、[config_generated.py](../../module/config/config_generated.py)、[template.json](../../config/template.json) | 配置生成器维护的定义、Python 属性和模板 |
-| [zh-CN.json](../../module/config/i18n/zh-CN.json)、[zh-MIAO.json](../../module/config/i18n/zh-MIAO.json)、[en-US.json](../../module/config/i18n/en-US.json)、[ja-JP.json](../../module/config/i18n/ja-JP.json)、[zh-TW.json](../../module/config/i18n/zh-TW.json) | 五种语言的名称与限制说明 |
+| [zh-CN.json](../../module/config/i18n/zh-CN.json)、[en-US.json](../../module/config/i18n/en-US.json)、[ja-JP.json](../../module/config/i18n/ja-JP.json)、[zh-TW.json](../../module/config/i18n/zh-TW.json) | 四种语言的名称与限制说明 |
 | [test_campaign_restart_recovery.py](../../tests/test_campaign_restart_recovery.py)、[test_campaign_restart_tasks.py](../../tests/test_campaign_restart_tasks.py) | 隔离配置、恢复回放、跨任务编排及四服资源组合测试 |
 | 本文、[combat.md](combat.md)、[entry/alas.md](entry/alas.md) | 战役、战斗与调度的机制及验收边界 |
 
@@ -412,7 +412,7 @@ stateDiagram-v2
 
 1. **复制相近活动**：从结构最接近的 `event_*` 目录复制，逐关修改 `MAP` 网格/权重/刷新表、`Config` 机制开关、`Campaign` 策略函数；活动级共享调整放该目录的 `campaign_base.py`。
 2. **登记 Readme.md**：在 `campaign/Readme.md` 表格加一行（Aired Date | Directory | Event Name | CN/EN/JP/TW），复用旧地图的活动也必须登记（目录名可与首播日期不同）。
-3. **生成配置**：运行 `uv run -m module.config.config_updater`，为 `Campaign.Event` 生成各服务器选项与 i18n 键，随后补齐 `zh-CN`/`zh-MIAO`/`en-US`/`ja-JP`/`zh-TW` 翻译。
+3. **生成配置**：运行 `uv run -m module.config.config_updater`，为 `Campaign.Event` 生成各服务器选项与 i18n 键，随后补齐 `zh-CN`/`en-US`/`ja-JP`/`zh-TW` 翻译。
 4. **资源**：活动专属按钮/PT 图标经 `uv run -m dev_tools.button_extract` 提取进 `assets/{server}/campaign/`。
 5. **特殊 UI**（按需）：新章节侧边栏布局在 `campaign_ui.py` 加 `ASIDE_SWITCH_YYYYMMDD` 与 `campaign_set_chapter_*` 分支；新关卡名别名（如 `vsp`→`sp`）加进 `stage_name.py` 的别名字典；无「威胁：安全」指示器的活动在 `_apply_event_achievement_fallback` 处理。
 

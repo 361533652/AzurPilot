@@ -26,14 +26,13 @@ describe('统计页后端文本翻译', () => {
     for (const text of seen) expect(translateStatText('en-US', text), text).not.toMatch(han)
   })
 
-  it('繁体与日文也覆盖同一批文本，简体与喵语保持原文', () => {
+  it('繁体与日文也覆盖同一批文本，简体保持原文', () => {
     for (const text of seen) {
       expect(translateStatText('zh-TW', text), text).not.toBe('')
       expect(translateStatText('ja-JP', text), text).not.toBe('')
     }
     expect(translateStatText('zh-TW', '委托结算记录')).toBe('委託結算記錄')
     expect(translateStatText('zh-CN', '委托结算记录')).toBe('委托结算记录')
-    expect(translateStatText('zh-MIAO', '委托结算记录')).toBe('委托结算记录')
   })
 
   it('物品名、任务名使用后端对照表，掉落清单逐项翻译', () => {

@@ -34,4 +34,3 @@ export const rotationJaJP: typeof rotationZhCN = {
   'rotation.inProgress': '第 {number} 艦隊から交代中', 'rotation.none': '交代履歴なし',
   'rotation.uncertain': '前回の交代結果が未確認です。ゲーム内の編成を確認して履歴を消去してください。', 'rotation.reset': '交代履歴を消去', 'rotation.saved': '交代ルールを保存しました',
 }
-export const rotationZhMiao: typeof rotationZhCN = {...rotationZhCN, 'rotation.title': '智能换船喵', 'rotation.enable': '启用智能换船喵', 'rotation.saved': '换船规则已保存喵'}

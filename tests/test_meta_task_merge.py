@@ -472,7 +472,7 @@ class MetaConfigurationTests(unittest.TestCase):
         self.assertNotIn('OpsiAshAssist', menu['Opsi']['tasks'])
         self.assertIn('Equipment', args['OpsiAshBeacon'])
         self.assertNotIn('DossierAfterAssist', args['OpsiAshBeacon']['OpsiAshBeacon'])
-        for language in ('zh-CN', 'zh-MIAO', 'zh-TW', 'en-US', 'ja-JP'):
+        for language in ('zh-CN', 'zh-TW', 'en-US', 'ja-JP'):
             data = json.loads(Path(f'module/config/i18n/{language}.json').read_text(encoding='utf-8'))
             self.assertNotIn('DossierAfterAssist', data['OpsiAshBeacon'])
             for group, field in (('OpsiAshAssist', 'Enable'), ('OpsiAshBeacon', 'DossierSkipAssist')):
