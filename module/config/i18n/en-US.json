@@ -254,10 +254,6 @@
       "name": "META Battle",
       "help": ""
     },
-    "OpsiAshAssist": {
-      "name": "META Support",
-      "help": ""
-    },
     "OpsiExplore": {
       "name": "Monthly Exploration",
       "help": ""
@@ -1756,6 +1752,7 @@
       "event_20260625_cn": "Miracle by Midnight",
       "event_20260813_cn": "Depths of the Astrarium",
       "event_20260908_cn": "Tales of the Paranormal",
+      "event_20261022_cn": "Tempesta and the Corridor of Fog",
       "raid_20200624": "Air Raid Drills with Essex Rerun",
       "raid_20210708": "Cross Wave rerun",
       "raid_20220127": "Mystery Investigation",
@@ -1815,7 +1812,9 @@
       "war_archives_20230525_cn": "archives Confluence of Nothingness",
       "war_archives_20230803_cn": "archives Anthem of Remembrance",
       "war_archives_20231026_cn": "archives Tempesta and the Fountain of Youth",
-      "war_archives_20240725_cn": "archives Interlude of Illusions"
+      "war_archives_20240725_cn": "archives Interlude of Illusions",
+      "war_archives_20241024_cn": "archives Tempesta and the Sleeping Sea",
+      "war_archives_20251023_cn": "archives Tempesta and Islas de Libertád"
     },
     "Mode": {
       "name": "Select stage mode",
@@ -1834,6 +1833,10 @@
     "UseAutoSearch": {
       "name": "Use auto-search",
       "help": ""
+    },
+    "ContinueAfterRestart": {
+      "name": "Continue battle after restart",
+      "help": "Available for main and event map tasks, including daily event stages, SP, urgent commissions and three-oil farming; off by default. Requires clearing mode and auto search. After an abnormal restart returns to the original map, enable auto search and account for morale normally in each subsequent battle. Does not resume a pre-restart battle or settlement. Map context exists only in this scheduler process; changed settings or exhausted retries fall back to the existing flow."
     },
     "Use2xBook": {
       "name": "Use high-efficiency combat manual",
@@ -3773,6 +3776,10 @@
       "help": "",
       "1": "1",
       "2": "2"
+    },
+    "RunAt18": {
+      "name": "Run at 18:00",
+      "help": "Disabled by default. When enabled, daily runs move from midnight to 18:00 server time. Runs due before 18:00 are postponed."
     }
   },
   "Exercise": {
@@ -3853,6 +3860,10 @@
     "_info": {
       "name": "META assist",
       "help": "Beacon assist three times a day"
+    },
+    "Enable": {
+      "name": "Enable META assists",
+      "help": "Complete the three daily assists within META fights, sharing equipment settings with your current-season beacons."
     },
     "Tier": {
       "name": "Find beacons with level above X",
@@ -3954,6 +3965,10 @@
     "DossierAutoAttackMode": {
       "name": "Dossier beacon auto combat",
       "help": "Automatically fight after the first battle at the Dossier beacon. Currently only available on CN Server."
+    },
+    "DossierSkipAssist": {
+      "name": "Pause assists while a Dossier is active",
+      "help": "Pause daily META assists while a Dossier is open, being analyzed, or in auto combat. Collect pending Dossier rewards before resuming assists.\nYou must enable this option when using automatic equipment switching."
     },
     "RequestAssist": {
       "name": "Request assist",
@@ -6778,10 +6793,32 @@
       "help": "Store groups, manual corrections, level toggle history and scan coverage per instance."
     }
   },
+  "FleetRotation": {
+    "_info": {
+      "name": "Smart ship rotation",
+      "help": "Normal main and event stages only; disabled by default."
+    },
+    "Enabled": {
+      "name": "Enable ship rotation",
+      "help": "Normal main and event stages only; disabled by default."
+    },
+    "Rules": {
+      "name": "Rotation rules",
+      "help": "Configure slots and sources for each fleet. Slots stay unchanged by default. Reserves rotate in number order."
+    },
+    "State": {
+      "name": "Rotation history",
+      "help": "Stores the last reserve and completed slots. Check the in-game formation before clearing."
+    }
+  },
   "FleetInfo": {
     "_info": {
       "name": "Fleet information",
       "help": "Stores fleet scan results. Existing reliable readings can passively reduce uncertainty in calibrated morale without additional scans or waits."
+    },
+    "UpdateEmotion": {
+      "name": "Update morale during scan",
+      "help": "Choose whether to read morale for this scan. When disabled, existing slot morale references are retained and recovery-phase learning is skipped."
     },
     "Result": {
       "name": "Scan result",
@@ -7117,6 +7154,24 @@
     "Deterministic": {
       "name": "Disable randomness",
       "help": "For debugging. Generally should be off."
+    }
+  },
+  "Equipment": {
+    "_info": {
+      "name": "Automatic equipment changes",
+      "help": "For exercises, META beacons, and META assists. Dossier fleets are excluded."
+    },
+    "Enable": {
+      "name": "Enable",
+      "help": "Apply the before setup before the first battle and restore the after setup when the task ends. Requires a control method that supports equipment code input."
+    },
+    "ClearBeforeApply": {
+      "name": "Clear equipment before applying codes",
+      "help": "Before both setup changes, unequip all selected ships before applying any codes so shared equipment can move between ships."
+    },
+    "Config": {
+      "name": "Equipment code configuration",
+      "help": "YAML: before is the code used before battle; after is the code restored afterward. The entire configuration is checked before changing equipment.\nAn empty before skips that position. If before is set and after is empty, all equipment on that ship is removed afterward. Unused positions or phases may be omitted; blank strings count as empty.\nflagship: flagship; up/down: upper/lower main fleet escort; head/middle/tail: leading/middle/rear vanguard ship."
     }
   },
   "Storage": {

@@ -228,11 +228,13 @@ class Router:
             dict: 统计报表数据。
         """
         from module.api.statistics_service import compact_axis, report
+        from module.statistics.glossary import build_glossary, report_texts
         result = report(self.configs, params.instance, params.category, params.month,
                         params.days, params.period, research_series=params.series,
                         research_scope=params.scope, loot_task=params.task,
                         include_series=params.include_series)
-        return {**result, **compact_axis(result.get('series') or [])}
+        # 标签保持中文（前端按中文名查图标）；物品名、任务名的译名随报表附带，固定文案由前端翻译。
+        return {**result, **compact_axis(result.get('series') or []), 'glossary': build_glossary(report_texts(result))}
 
     def resource_flows(self, params: p.ResourceFlowsParams):
         """查询库存与资源流向；沿用现有实例访问边界。"""

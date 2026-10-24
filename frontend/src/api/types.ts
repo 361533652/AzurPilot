@@ -41,7 +41,7 @@ export interface Schema {
   args: Record<string, Record<string, Record<string, Field>>>
   translations: Record<string, unknown>
 }
-export interface Config { instance: string; revision: string; values: Values }
+export interface Config { instance: string; revision: string; values: Values; options?: Record<string, Value[]> }
 export interface OpsiSimulatorResult {
   cl1Count: number; meowCount: number; crashedProbability: number
   cl1Time: number; meowTime: number; ap: number; coin: number
@@ -78,7 +78,11 @@ export interface StatisticsReport {
   series: StatSeries[]; tables: StatTable[]; notes: string[]
   /** 大世界掉落专用：任务筛选选项（含当前时间窗口内没有记录的任务），count 表示窗口内掉落记录数。 */
   taskOptions?: {key: string; label: string; count: number}[]
+  /** 本次出现的物品名、任务名的译名：{中文名: {语言: 名称}}；固定文案由前端翻译。 */
+  glossary?: StatGlossary
 }
+/** 统计接口附带的名称对照：{中文名: {语言: 名称}}。 */
+export type StatGlossary = Record<string, Partial<Record<string, string>>>
 
 export interface StatisticsReportWire extends Omit<StatisticsReport, 'series'> {
   /** 共用时间轴（微秒整数）。 */
@@ -219,6 +223,8 @@ export interface ResourceFlowReport {
   flows: {resource: string; task: string; operation: string; evidence: ResourceFlowEntry['evidence']; income: number; expense: number; count: number}[]
   entries: ResourceFlowEntry[]
   oilControl: {enable: boolean; target: number}
+  /** 物品名的译名：{中文名: {语言: 名称}}。 */
+  glossary?: StatGlossary
 }
 
 export interface StockExchangeStatus {url: string; instance:string; instanceId:string; bindingKey:string; bound: boolean; boundUsername:string; authenticated:boolean; message: string; lastObservedAt: number; snapshot: {instance: string; actionPoints: number; observedAt: number} | null}

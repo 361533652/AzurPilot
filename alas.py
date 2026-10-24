@@ -1081,7 +1081,14 @@ class AzurLaneAutoScript:
     def run(self, command, skip_first_screenshot=False):
         """任务调用边界同时隔离资源归因，恢复和清油调用各自拥有独立记录。"""
         from module.statistics.resource_flow import task_session
-        with task_session(self.config_name, inflection.camelize(inflection.underscore(command))):
+        from module.campaign.recovery import campaign_recovery_scope
+        recovery = self.__dict__.get('_campaign_recovery')
+        if recovery is not None and inflection.underscore(command) not in (
+                'restart', inflection.underscore(recovery.runner.config.task.command)):
+            logger.info('[战役续接] 已切换到其他任务，丢弃原关卡续接凭据')
+            self._campaign_recovery = None
+        with task_session(self.config_name, inflection.camelize(inflection.underscore(command))), \
+                campaign_recovery_scope(self):
             return self._run(command, skip_first_screenshot)
 
     def _run(self, command, skip_first_screenshot=False):
@@ -1108,6 +1115,11 @@ class AzurLaneAutoScript:
         command = inflection.underscore(command)
         self._storage_statistics_failed = False
         set_task(inflection.camelize(command))
+        # 智能换船只在切换任务后刷新一次；同一任务连续出击复用本次扫描。
+        rotation_context = self.__dict__.setdefault('_fleet_rotation_context', {})
+        if rotation_context.get('task') != inflection.camelize(command):
+            rotation_context.clear()
+            rotation_context['task'] = inflection.camelize(command)
         try:
             # Restart 的职责就是把游戏从“未运行/未出首帧”恢复起来。
             # Android 虚拟屏在没有实际内容提交前不会产生可读帧；若这里先截图，
@@ -1120,18 +1132,40 @@ class AzurLaneAutoScript:
                 self._channel_float_done = False
             # Restart 只重置标志，留待重启后的首个主界面回合处理悬浮球。
             elif not self._channel_float_done:
-                self.handle_channel_float()
+                recovery = self.__dict__.get('_campaign_recovery')
+                if recovery is not None and recovery.ready \
+                        and command == inflection.underscore(recovery.runner.config.task.command):
+                    logger.info('[战役续接] 先接管保留关卡，渠道悬浮球检查留待主界面任务')
+                else:
+                    self.handle_channel_float()
+            recovery = self.__dict__.get('_campaign_recovery')
+            if recovery is not None and command != 'restart':
+                self._campaign_recovery = None
+                if recovery.ready and recovery.matches(self.config):
+                    self._resuming_campaign_recovery = recovery
+                    try:
+                        recovery.resume(self.config, self.device)
+                    finally:
+                        self._resuming_campaign_recovery = None
+                    return True
+                logger.warning('[战役续接] 重启未完成、凭据过期或配置已改变，回退原任务流程')
             self.__getattribute__(command)()
             return True
         except StorageStatisticsError as e:
             logger.error(str(e))
             self._storage_statistics_failed = True
             return False
-        except MindCalculatorScanError as e:
+        except (MindCalculatorScanError, FleetManagementError) as e:
             logger.error_context(
-                title='舰船科技扫描未完成' if command == 'fleet_tech_scan' else '心智单元船坞扫描未完成', reason=str(e), exc=e,
-                impact='本次扫描结束，保留上次完整舰船清单，不重启模拟器。',
-                action='查看错误截图和具体原因，确认船坞布局及控制方式后重新启动扫描。',
+                title=('舰队管理未完成' if isinstance(e, FleetManagementError) else
+                       '舰船科技扫描未完成' if command == 'fleet_tech_scan' else '心智单元船坞扫描未完成'),
+                reason=str(e), exc=e,
+                impact=('本次舰队任务结束，不重启模拟器或重复换船；已操作但未核验的舰队参考记录会失效。'
+                        if isinstance(e, FleetManagementError) else
+                        '本次扫描结束，保留上次完整舰船清单，不重启模拟器。'),
+                action=('查看错误截图和游戏提示，核对当前编队后再启动任务。'
+                        if isinstance(e, FleetManagementError) else
+                        '查看错误截图和具体原因，确认船坞布局及控制方式后重新启动扫描。'),
                 level=50,
             )
             self.save_error_log()
@@ -1511,7 +1545,25 @@ class AzurLaneAutoScript:
         from module.handler.login import LoginHandler
         if self.delay_due_restart():
             return
-        LoginHandler(self.config, device=self.device).app_restart()
+        login = LoginHandler(self.config, device=self.device)
+        recovery = self.__dict__.get('_campaign_recovery')
+        if recovery is not None and (recovery.ready or not recovery.matches(
+                self.config, task=recovery.runner.config.task.command)):
+            logger.info('[战役续接] 重启来源或原任务配置已改变，丢弃续接凭据')
+            self._campaign_recovery = None
+            recovery = None
+        if recovery is not None and recovery.restart_attempts >= recovery.MAX_ATTEMPTS:
+            logger.warning('[战役续接] 关联 Restart 次数已达上限，停止续接并回退原重启流程')
+            self._campaign_recovery = None
+            recovery = None
+        if recovery is not None:
+            recovery.restart_attempts += 1
+            recovery.bind_device(self.device)
+            login.campaign_recovery_check = recovery.runner.campaign.auto_search_recovery_state
+        login.app_restart()
+        if recovery is not None:
+            recovery.ready = True
+            logger.info('[战役续接] 异常 Restart 已完成，等待原任务接管')
         self.delay_next_restart()
 
     def restart_random_delay_minutes(self):
@@ -1782,10 +1834,6 @@ class AzurLaneAutoScript:
         from module.event.maritime_escort import MaritimeEscort
         MaritimeEscort(config=self.config, device=self.device).run()
 
-    def opsi_ash_assist(self):
-        from module.os_ash.meta import AshBeaconAssist
-        AshBeaconAssist(config=self.config, device=self.device).run()
-
     def opsi_ash_beacon(self):
         from module.os_ash.meta import OpsiAshBeacon
         OpsiAshBeacon(config=self.config, device=self.device).run()
@@ -1854,35 +1902,31 @@ class AzurLaneAutoScript:
         from module.campaign.os_run import OSCampaignRun
         OSCampaignRun(config=self.config, device=self.device).opsi_daily_delay()
 
-    def main(self):
+    def _run_campaign(self):
+        """主线与普通活动槽位的战役调用；断点由公共 CampaignRun 保存。"""
         from module.campaign.run import CampaignRun
-        CampaignRun(config=self.config, device=self.device).run(
+        runner = CampaignRun(config=self.config, device=self.device)
+        runner._fleet_rotation_context = self.__dict__.setdefault('_fleet_rotation_context', {})
+        runner.run(
             name=self.config.Campaign_Name, folder=self.config.Campaign_Event, mode=self.config.Campaign_Mode)
+
+    def main(self):
+        self._run_campaign()
 
     def main2(self):
-        from module.campaign.run import CampaignRun
-        CampaignRun(config=self.config, device=self.device).run(
-            name=self.config.Campaign_Name, folder=self.config.Campaign_Event, mode=self.config.Campaign_Mode)
+        self._run_campaign()
 
     def main3(self):
-        from module.campaign.run import CampaignRun
-        CampaignRun(config=self.config, device=self.device).run(
-            name=self.config.Campaign_Name, folder=self.config.Campaign_Event, mode=self.config.Campaign_Mode)
+        self._run_campaign()
 
     def event(self):
-        from module.campaign.run import CampaignRun
-        CampaignRun(config=self.config, device=self.device).run(
-            name=self.config.Campaign_Name, folder=self.config.Campaign_Event, mode=self.config.Campaign_Mode)
+        self._run_campaign()
 
     def event2(self):
-        from module.campaign.run import CampaignRun
-        CampaignRun(config=self.config, device=self.device).run(
-            name=self.config.Campaign_Name, folder=self.config.Campaign_Event, mode=self.config.Campaign_Mode)
+        self._run_campaign()
 
     def event3(self):
-        from module.campaign.run import CampaignRun
-        CampaignRun(config=self.config, device=self.device).run(
-            name=self.config.Campaign_Name, folder=self.config.Campaign_Event, mode=self.config.Campaign_Mode)
+        self._run_campaign()
 
     def raid(self):
         from module.raid.run import RaidRun

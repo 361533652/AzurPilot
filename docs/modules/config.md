@@ -127,6 +127,14 @@ module/config/
 
 ## 6. 工作流程
 
+### 活动候选与旧配置刷新
+
+活动元数据的 `option` 是四服合集，仅供通用契约使用；实例页面应使用 `option_cn/en/jp/tw` 对应的候选。`campaign_event_options()` 通过实例 `Alas.Emulator.PackageName` 调用 `to_server()` 选择地区，开服检测的 `ServerName`、界面语言和进程全局服务器不参与判断；`auto` 沿用运行器的 CN 回退规则。
+
+`refresh_campaign_events()` 复用原有活动迁移规则，由 `ConfigUpdater.config_update()` 和 `ConfigService.read()` 共同调用：已不在当前候选中的活动、突袭、共斗和低耗任务活动回到首个候选，多活动时保留仍有效的选择；作战档案仅替换 `campaign_main`。API 读取只修改内存副本，磁盘内容、修改时间和 revision 均保持原状。
+
+`config.get` 与 `config.patch` 的返回值新增 `options`，按完整字段路径提供当前实例候选，例如 `Event.Campaign.Event`。前端任务页优先使用该映射，不直接展示四服合集。保存显式活动选择时按同批最终包名校验，跨服选项拒绝整批写入；仅切换包名时自动刷新已失效的活动选择。
+
 ### 生成管道（离线，CI 校验）
 
 ```mermaid
@@ -275,6 +283,8 @@ stateDiagram-v2
 内部 `set_record(Emotion_Fleet*Value=...)` 同样原子更新完整时间和恢复状态，兼容 GemsFarming、Ambush11 等换船调用，不追加识别。此入口保留调用方原有读数语义；换船时的局部读数或启发式最低值不自动满足准确初值前提，不属于标准固定舰队的 3 点保证。
 | `Dashboard.*`（Oil/Coin/Gem 等） | 仪表盘资源，由 dashboard.yaml 定义、任务运行时写回 Value/Record |
 | `Storage.Storage` | 生成器给每个任务附加的 `storage` 类型组，WebUI 禁止编辑，运行时当作键值状态区使用 |
+
+META 支援并入 `OpsiAshBeacon`：菜单、参数与模板只保留一个调度任务，内部支援设置为 `OpsiAshBeacon.OpsiAshAssist.Enable/Tier`，共用 `OpsiAshBeacon.Equipment`。`DossierSkipAssist` 默认关闭，启用后先处理所选信标/档案，只有确认档案未开启且没有正在解析的档案时才支援；待领奖也属于已开启状态，必须先领奖，再用新截图确认回到解析入口后恢复支援。原「META支援完成后再开启档案」开关已从配置定义和运行逻辑删除，旧字段随配置加载更新被丢弃，不再阻挡开启档案，也不改变新开关的值。五语标签随配置一并生成并维护。
 
 ## 11. 异常与错误处理
 

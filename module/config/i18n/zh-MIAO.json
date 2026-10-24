@@ -254,10 +254,6 @@
       "name": "META作战挑战喵",
       "help": "迎战META强敌，获取信标数据喵！(ง •̀_•́)ง"
     },
-    "OpsiAshAssist": {
-      "name": "META支援救援喵",
-      "help": "帮助好友和舰队战友打信标，每日三次喵~ (´・ω・`)"
-    },
     "OpsiExplore": {
       "name": "每月开荒喵",
       "help": "每月重置后开荒整个大世界，自动清理海域喵！每隔27分钟一个"
@@ -1756,6 +1752,7 @@
       "event_20260625_cn": "Miracle by Midnight",
       "event_20260813_cn": "Depths of the Astrarium",
       "event_20260908_cn": "Tales of the Paranormal",
+      "event_20261022_cn": "Tempesta and the Corridor of Fog",
       "raid_20200624": "Air Raid Drills with Essex Rerun",
       "raid_20210708": "Cross Wave rerun",
       "raid_20220127": "Mystery Investigation",
@@ -1815,7 +1812,9 @@
       "war_archives_20230525_cn": "archives Confluence of Nothingness",
       "war_archives_20230803_cn": "archives Anthem of Remembrance",
       "war_archives_20231026_cn": "archives Tempesta and the Fountain of Youth",
-      "war_archives_20240725_cn": "archives Interlude of Illusions"
+      "war_archives_20240725_cn": "archives Interlude of Illusions",
+      "war_archives_20241024_cn": "archives Tempesta and the Sleeping Sea",
+      "war_archives_20251023_cn": "archives Tempesta and Islas de Libertád"
     },
     "Mode": {
       "name": "关卡模式喵",
@@ -1834,6 +1833,10 @@
     "UseAutoSearch": {
       "name": "使用自律寻敌喵",
       "help": ""
+    },
+    "ContinueAfterRestart": {
+      "name": "重启后继续战斗喵",
+      "help": "主线图和活动图任务可用，包括活动每日、SP、紧急委托和三油低耗，默认关闭喵。需同时启用周回与自律寻敌。异常重启回到原关卡地图后开启自律，后续每场正常计算心情，不接管旧战斗或旧结算。地图上下文只保留在本次调度进程内；配置改变或恢复达到上限时回退原流程喵。"
     },
     "Use2xBook": {
       "name": "使用高效作战指令书",
@@ -3773,6 +3776,10 @@
       "help": "",
       "1": "1喵",
       "2": "2喵"
+    },
+    "RunAt18": {
+      "name": "18点运行喵",
+      "help": "默认关闭喵。开启后每日调度由服务器时间零点改为18:00，18:00前到期会延后执行喵。"
     }
   },
   "Exercise": {
@@ -3853,6 +3860,10 @@
     "_info": {
       "name": "META支援",
       "help": "每天三次信标支援喵。 (=^･ω･^=)"
+    },
+    "Enable": {
+      "name": "启用META支援",
+      "help": "在META作战中完成每天三次支援，和当期信标共用自动换装配置喵。"
     },
     "Tier": {
       "name": "寻找等级大于 X 的信标",
@@ -3954,6 +3965,10 @@
     "DossierAutoAttackMode": {
       "name": "档案信标自动作战",
       "help": "首次战斗后自动作战，目前仅国服喵。"
+    },
+    "DossierSkipAssist": {
+      "name": "开启档案时不进行支援",
+      "help": "档案已开启、正在解析或自动攻击时暂停每日META支援，待领奖时先领取奖励再恢复支援喵。\n开启自动换装备功能时务必开启此功能喵。"
     },
     "RequestAssist": {
       "name": "呼叫支援",
@@ -6778,10 +6793,32 @@
       "help": "按实例保存群组、人工校正、等级切换历史和扫描范围证据喵。"
     }
   },
+  "FleetRotation": {
+    "_info": {
+      "name": "智能换船喵",
+      "help": "仅联动普通主线和活动图喵；关闭时不自动换船喵。"
+    },
+    "Enabled": {
+      "name": "启用智能换船喵",
+      "help": "仅联动普通主线和活动图喵；关闭时不自动换船喵。"
+    },
+    "Rules": {
+      "name": "轮换规则喵",
+      "help": "按舰队设置slots和sources喵；舰位默认为不变，候补舰队按编号循环喵。"
+    },
+    "State": {
+      "name": "轮换记录喵",
+      "help": "保存上次来源和本轮已完成舰位喵；核对游戏编队后可清空喵。"
+    }
+  },
   "FleetInfo": {
     "_info": {
       "name": "舰队信息喵",
       "help": "保存舰队扫描结果喵；已有可靠读数可被动缩小已校准心情的误差，不追加扫描或等待喵。"
+    },
+    "UpdateEmotion": {
+      "name": "扫描时更新心情喵",
+      "help": "每次扫描前可以选择读取心情喵；关闭时保留已有舰位的心情参考，不参与恢复相位学习喵。"
     },
     "Result": {
       "name": "扫描结果喵",
@@ -7117,6 +7154,24 @@
     "Deterministic": {
       "name": "取消随机性",
       "help": "一般不开喵。 (´・ω・`)"
+    }
+  },
+  "Equipment": {
+    "_info": {
+      "name": "自动换装备喵",
+      "help": "用于演习、余烬信标和信标协助，档案编队不自动换装喵。"
+    },
+    "Enable": {
+      "name": "启用喵",
+      "help": "首次出击前应用战前方案，任务收尾时恢复战后方案，需要支持装备码输入的控制方式喵。"
+    },
+    "ClearBeforeApply": {
+      "name": "应用装备码前清空装备喵",
+      "help": "战前和战后均先清空所有目标舰船，再依次应用装备码，方便在舰船间转移共用装备喵。"
+    },
+    "Config": {
+      "name": "装备码配置喵",
+      "help": "YAML 格式：before 为战前装备码，after 为战后装备码，换装前会校验整份配置喵。\nbefore 为空就跳过该位置；before 非空但 after 为空，战后会卸下该舰船的全部装备。未使用的站位或阶段可以省略，空白字符串视为空值喵。\nflagship：旗舰；up：上僚舰；down：下僚舰；head：先锋领舰；middle：先锋中间；tail：先锋尾舰。"
     }
   },
   "Storage": {

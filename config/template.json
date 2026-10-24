@@ -215,7 +215,7 @@
       "Target": 24000
     },
     "YukikazeTaskManager": {
-      "TaskPriorityAdjustment": "Restart\n> OpsiCrossMonth\n> Commission > Tactical > Research\n> Exercise\n> Dorm > Meowfficer > Guild > Gacha\n> Reward > StorageStatistics\n> ShopFrequent > ShopOnce > Shipyard > Freebies\n> PrivateQuarters\n> OpsiExplore > OpsiExploreCleanup\n> OpsiPreventActionPointOverflow\n> Minigame > Awaken\n> OpsiAshBeacon\n> OpsiDaily > OpsiShop > OpsiVoucher > EventShop\n> OpsiAbyssal > OpsiStronghold > OpsiObscure > OpsiArchive\n> Daily > LimitChallenge > Hard > OpsiAshBeacon > OpsiAshAssist > OpsiMonthBoss\n> Sos > EventSp > EventA > EventB > EventC > EventD\n> RaidDaily > CoalitionSp > WarArchives > MaritimeEscort\n> IslandJuuEatery > IslandJuuCoffee > IslandGrill > IslandTeahouse > IslandRestaurant\n> IslandFarm > IslandRancher > IslandMineForest > IslandDailyGather > IslandManufacture\n> IslandAirDrop > IslandBusiness > IslandDailyOrder > IslandDailyInteract > IslandPearlSell > IslandCargoPreparation\n> Event > Event2 > Event3 > Raid > Hospital > HospitalEvent > Coalition > RaidScuttle > Main > Main2 > Main3\n> OpsiScheduling\n> OpsiMeowfficerFarming\n> GemsFarming\n> Ambush11\n> OpsiHazard1Leveling\n> ThreeOilLowCost\n> OperationHandover"
+      "TaskPriorityAdjustment": "Restart\n> OpsiCrossMonth\n> Commission > Tactical > Research\n> Exercise\n> Dorm > Meowfficer > Guild > Gacha\n> Reward > StorageStatistics\n> ShopFrequent > ShopOnce > Shipyard > Freebies\n> PrivateQuarters\n> OpsiExplore > OpsiExploreCleanup\n> OpsiPreventActionPointOverflow\n> Minigame > Awaken\n> OpsiAshBeacon\n> OpsiDaily > OpsiShop > OpsiVoucher > EventShop\n> OpsiAbyssal > OpsiStronghold > OpsiObscure > OpsiArchive\n> Daily > LimitChallenge > Hard > OpsiAshBeacon > OpsiMonthBoss\n> Sos > EventSp > EventA > EventB > EventC > EventD\n> RaidDaily > CoalitionSp > WarArchives > MaritimeEscort\n> IslandJuuEatery > IslandJuuCoffee > IslandGrill > IslandTeahouse > IslandRestaurant\n> IslandFarm > IslandRancher > IslandMineForest > IslandDailyGather > IslandManufacture\n> IslandAirDrop > IslandBusiness > IslandDailyOrder > IslandDailyInteract > IslandPearlSell > IslandCargoPreparation\n> Event > Event2 > Event3 > Raid > Hospital > HospitalEvent > Coalition > RaidScuttle > Main > Main2 > Main3\n> OpsiScheduling\n> OpsiMeowfficerFarming\n> GemsFarming\n> Ambush11\n> OpsiHazard1Leveling\n> ThreeOilLowCost\n> OperationHandover"
     },
     "Storage": {
       "Storage": {}
@@ -260,6 +260,7 @@
       "UseClearMode": true,
       "UseFleetLock": true,
       "UseAutoSearch": true,
+      "ContinueAfterRestart": false,
       "Use2xBook": false,
       "AmbushEvade": true,
       "UseRecommendFleet": false,
@@ -349,6 +350,7 @@
       "UseClearMode": true,
       "UseFleetLock": true,
       "UseAutoSearch": true,
+      "ContinueAfterRestart": false,
       "Use2xBook": false,
       "AmbushEvade": true,
       "UseRecommendFleet": false,
@@ -438,6 +440,7 @@
       "UseClearMode": true,
       "UseFleetLock": true,
       "UseAutoSearch": true,
+      "ContinueAfterRestart": false,
       "Use2xBook": false,
       "AmbushEvade": true,
       "UseRecommendFleet": false,
@@ -547,6 +550,7 @@
       "UseClearMode": true,
       "UseFleetLock": true,
       "UseAutoSearch": true,
+      "ContinueAfterRestart": false,
       "Use2xBook": false,
       "AmbushEvade": true,
       "UseRecommendFleet": false,
@@ -646,6 +650,7 @@
       "UseClearMode": true,
       "UseFleetLock": true,
       "UseAutoSearch": true,
+      "ContinueAfterRestart": false,
       "Use2xBook": false,
       "AmbushEvade": true,
       "UseRecommendFleet": false,
@@ -745,6 +750,7 @@
       "UseClearMode": false,
       "UseFleetLock": true,
       "UseAutoSearch": false,
+      "ContinueAfterRestart": false,
       "Use2xBook": false,
       "AmbushEvade": true,
       "UseRecommendFleet": false,
@@ -835,6 +841,7 @@
       "UseClearMode": true,
       "UseFleetLock": true,
       "UseAutoSearch": true,
+      "ContinueAfterRestart": false,
       "Use2xBook": false,
       "AmbushEvade": true,
       "UseRecommendFleet": false,
@@ -924,6 +931,7 @@
       "UseClearMode": true,
       "UseFleetLock": true,
       "UseAutoSearch": true,
+      "ContinueAfterRestart": false,
       "Use2xBook": false,
       "AmbushEvade": true,
       "UseRecommendFleet": false,
@@ -1013,6 +1021,7 @@
       "UseClearMode": true,
       "UseFleetLock": true,
       "UseAutoSearch": true,
+      "ContinueAfterRestart": false,
       "Use2xBook": false,
       "AmbushEvade": true,
       "UseRecommendFleet": false,
@@ -1106,6 +1115,7 @@
       "UseClearMode": true,
       "UseFleetLock": true,
       "UseAutoSearch": false,
+      "ContinueAfterRestart": false,
       "Use2xBook": false,
       "AmbushEvade": true,
       "UseRecommendFleet": false,
@@ -1167,6 +1177,7 @@
       "UseClearMode": true,
       "UseFleetLock": true,
       "UseAutoSearch": true,
+      "ContinueAfterRestart": false,
       "Use2xBook": false,
       "AmbushEvade": true,
       "UseRecommendFleet": false,
@@ -1291,6 +1302,7 @@
       "UseClearMode": true,
       "UseFleetLock": true,
       "UseAutoSearch": false,
+      "ContinueAfterRestart": false,
       "Use2xBook": false,
       "AmbushEvade": true,
       "UseRecommendFleet": false,
@@ -1355,6 +1367,7 @@
       "UseClearMode": true,
       "UseFleetLock": true,
       "UseAutoSearch": false,
+      "ContinueAfterRestart": false,
       "Use2xBook": false,
       "AmbushEvade": true,
       "UseRecommendFleet": false,
@@ -1450,11 +1463,12 @@
     },
     "Campaign": {
       "Name": "D3",
-      "Event": "war_archives_20240725_cn",
+      "Event": "war_archives_20251023_cn",
       "Mode": "normal",
       "UseClearMode": true,
       "UseFleetLock": true,
       "UseAutoSearch": true,
+      "ContinueAfterRestart": false,
       "Use2xBook": false,
       "AmbushEvade": true,
       "UseRecommendFleet": false,
@@ -1558,6 +1572,7 @@
       "UseClearMode": true,
       "UseFleetLock": true,
       "UseAutoSearch": true,
+      "ContinueAfterRestart": false,
       "Use2xBook": false,
       "AmbushEvade": true,
       "UseRecommendFleet": false,
@@ -1651,6 +1666,7 @@
       "UseClearMode": true,
       "UseFleetLock": true,
       "UseAutoSearch": true,
+      "ContinueAfterRestart": false,
       "Use2xBook": false,
       "AmbushEvade": true,
       "UseRecommendFleet": false,
@@ -1744,6 +1760,7 @@
       "UseClearMode": true,
       "UseFleetLock": true,
       "UseAutoSearch": true,
+      "ContinueAfterRestart": false,
       "Use2xBook": false,
       "AmbushEvade": true,
       "UseRecommendFleet": false,
@@ -1837,6 +1854,7 @@
       "UseClearMode": true,
       "UseFleetLock": true,
       "UseAutoSearch": true,
+      "ContinueAfterRestart": false,
       "Use2xBook": false,
       "AmbushEvade": true,
       "UseRecommendFleet": false,
@@ -1926,6 +1944,7 @@
       "UseClearMode": true,
       "UseFleetLock": true,
       "UseAutoSearch": true,
+      "ContinueAfterRestart": false,
       "Use2xBook": false,
       "AmbushEvade": true,
       "UseRecommendFleet": false,
@@ -2018,6 +2037,7 @@
       "UseClearMode": true,
       "UseFleetLock": true,
       "UseAutoSearch": false,
+      "ContinueAfterRestart": false,
       "Use2xBook": false,
       "AmbushEvade": true,
       "UseRecommendFleet": false,
@@ -2075,6 +2095,7 @@
       "UseClearMode": true,
       "UseFleetLock": true,
       "UseAutoSearch": false,
+      "ContinueAfterRestart": false,
       "Use2xBook": false,
       "AmbushEvade": true,
       "UseRecommendFleet": false,
@@ -2399,6 +2420,7 @@
       "UseClearMode": true,
       "UseFleetLock": true,
       "UseAutoSearch": true,
+      "ContinueAfterRestart": false,
       "Use2xBook": false,
       "AmbushEvade": true,
       "UseRecommendFleet": false,
@@ -2486,7 +2508,8 @@
     },
     "Hard": {
       "HardStage": "11-4",
-      "HardFleet": 1
+      "HardFleet": 1,
+      "RunAt18": false
     },
     "Storage": {
       "Storage": {}
@@ -2512,6 +2535,11 @@
       "LowHpConfirmWait": 0.1,
       "OpponentRefreshValue": 0,
       "OpponentRefreshRecord": "2020-01-01 00:00:00"
+    },
+    "Equipment": {
+      "Enable": false,
+      "ClearBeforeApply": true,
+      "Config": "flagship:\n  before: null\n  after: null\nup:\n  before: null\n  after: null\ndown:\n  before: null\n  after: null\nhead:\n  before: null\n  after: null\nmiddle:\n  before: null\n  after: null\ntail:\n  before: null\n  after: null"
     },
     "Storage": {
       "Storage": {}
@@ -2750,27 +2778,19 @@
       "AssistRequestLimit": 0,
       "AssistRequestState": null,
       "DossierAutoAttackMode": false,
+      "DossierSkipAssist": false,
       "RequestAssist": true,
       "EnsureFullyCollected": true,
       "AutoCollectShip": true
     },
-    "Storage": {
-      "Storage": {}
-    }
-  },
-  "OpsiAshAssist": {
-    "Scheduler": {
-      "Enable": false,
-      "PushNotification": false,
-      "NextRun": "2020-01-01 00:00:00",
-      "Command": "OpsiAshAssist",
-      "SuccessInterval": 30,
-      "FailureInterval": 30,
-      "ServerUpdate": "00:00",
-      "Sensitive": false
-    },
     "OpsiAshAssist": {
+      "Enable": true,
       "Tier": 15
+    },
+    "Equipment": {
+      "Enable": false,
+      "ClearBeforeApply": true,
+      "Config": "flagship:\n  before: null\n  after: null\nup:\n  before: null\n  after: null\ndown:\n  before: null\n  after: null\nhead:\n  before: null\n  after: null\nmiddle:\n  before: null\n  after: null\ntail:\n  before: null\n  after: null"
     },
     "Storage": {
       "Storage": {}
@@ -3768,8 +3788,14 @@
   },
   "FleetInfo": {
     "FleetInfo": {
+      "UpdateEmotion": true,
       "Result": {},
       "Record": "2020-01-01 00:00:00"
+    },
+    "FleetRotation": {
+      "Enabled": false,
+      "Rules": "{}",
+      "State": {}
     },
     "Storage": {
       "Storage": {}
