@@ -1,6 +1,6 @@
 """启动器信任免密登录的进程内状态与令牌逻辑。
 
-WebUI 若由 alas-launcher 以环境变量 ``ALAS_WEBUI_TRUST_SECRET`` 拉起，
+WebUI 若由 alas-launcher 以环境变量 ``AP_WEBUI_TRUST_SECRET`` 拉起，
 则对携带匹配密钥的回环请求签发短时令牌，允许其在本机窗口预置
 ``localStorage["password"]`` 实现免密进入；其他浏览器不受影响。
 
@@ -16,7 +16,7 @@ import threading
 import time
 
 #: 启动器注入信任密钥的环境变量名（与 alas-launcher 保持一致）
-TRUST_SECRET_ENV = "ALAS_WEBUI_TRUST_SECRET"
+TRUST_SECRET_ENV = "AP_WEBUI_TRUST_SECRET"
 
 _lock = threading.Lock()
 _secret: str | None = None       #: 启动器信任密钥，None 表示未启用
