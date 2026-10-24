@@ -1,15 +1,20 @@
 """
 上游官方仓库自动同步器。
 
-在启动时检查并合并 upstream（官方仓库）的最新代码至当前分支，
-并在无冲突时自动推送至个人的 Fork 仓库 (origin)。
-若检测到代码冲突，将立即阻断启动并输出醒目的排查指引。
+在启动时把 upstream（官方仓库）的最新代码合并进当前分支，并把结果推送到
+个人的 Fork 仓库（origin）。若检测到代码冲突，立即阻断启动并输出排查指引。
+
+本模块只在启动链路最前端运行，刻意不实例化 DeployConfig：配置对象的初始化
+可能触发配置重写，而这里只需要读写 Git 元数据。
+
+关键约定：本地领先 origin 时不得执行覆盖式更新（见 is_local_ahead_of_origin
+与 deploy/installer.py 的配合）。否则一次推送失败就会让刚合并进来的上游提交
+被 `git reset --hard origin/<分支>` 抹掉，白合一轮。
 """
 
-import os
 import subprocess
 import sys
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 # 兼容 Windows 控制台，防止 emoji/特殊符号打印导致 UnicodeEncodeError
 if sys.platform == "win32":
@@ -23,10 +28,23 @@ if sys.platform == "win32":
 
 UPSTREAM_URL = "https://github.com/wess09/AzurPilot.git"
 UPSTREAM_NAME = "upstream"
+ORIGIN_NAME = "origin"
+STASH_MESSAGE = "auto-sync-pre-stash"
 
 
-def run_git(cmd: List[str], check: bool = False, capture_output: bool = True) -> subprocess.CompletedProcess:
-    """运行 Git 命令并统一编码。"""
+def run_git(
+    cmd: List[str], check: bool = False, capture_output: bool = True
+) -> subprocess.CompletedProcess:
+    """运行 Git 命令并统一编码。
+
+    Args:
+        cmd: 完整命令行列表，首元素为 ``git``。
+        check: 是否在非零退出码时抛出 CalledProcessError。
+        capture_output: 是否捕获标准输出与标准错误。
+
+    Returns:
+        subprocess.CompletedProcess: 命令执行结果。
+    """
     return subprocess.run(
         cmd,
         capture_output=capture_output,
@@ -38,44 +56,152 @@ def run_git(cmd: List[str], check: bool = False, capture_output: bool = True) ->
 
 
 def get_current_branch() -> str:
-    """获取当前所在 Git 分支。"""
+    """获取当前所在的 Git 分支名。
+
+    Returns:
+        str: 分支名；处于游离头指针时返回 ``HEAD``。
+    """
     res = run_git(["git", "rev-parse", "--abbrev-ref", "HEAD"])
     branch = res.stdout.strip()
     return branch or "master"
 
 
+def get_remote_names() -> List[str]:
+    """列出已配置的远程仓库名称。
+
+    Returns:
+        List[str]: 远程仓库名列表，命令失败时为空列表。
+    """
+    res = run_git(["git", "remote"])
+    if res.returncode != 0:
+        return []
+    return [name.strip() for name in res.stdout.splitlines() if name.strip()]
+
+
 def ensure_upstream() -> bool:
-    """检查并确保 upstream 远程仓库已配置。"""
-    res = run_git(["git", "remote", "-v"])
-    remotes = res.stdout
-    if UPSTREAM_NAME not in remotes:
-        print(f"[Sync] 未检测到 {UPSTREAM_NAME} 远程源，正在添加 {UPSTREAM_URL} ...")
-        add_res = run_git(["git", "remote", "add", UPSTREAM_NAME, UPSTREAM_URL])
-        return add_res.returncode == 0
-    return True
+    """确保 upstream 远程仓库已配置为官方地址。
+
+    Returns:
+        bool: 已存在或添加成功返回 True。
+    """
+    if UPSTREAM_NAME in get_remote_names():
+        return True
+    print(f"[Sync] 未检测到 {UPSTREAM_NAME} 远程源，正在添加 {UPSTREAM_URL} ...")
+    return run_git(["git", "remote", "add", UPSTREAM_NAME, UPSTREAM_URL]).returncode == 0
 
 
 def check_dirty_worktree() -> bool:
-    """检查跟踪的文件是否有未暂存或未提交的修改。"""
+    """检查已跟踪文件是否存在未提交的改动。
+
+    仅看已跟踪文件：未跟踪文件不会参与合并，也不需要暂存。
+
+    Returns:
+        bool: 存在未提交改动返回 True。
+    """
     res1 = run_git(["git", "diff", "--quiet"])
     res2 = run_git(["git", "diff", "--cached", "--quiet"])
     return res1.returncode != 0 or res2.returncode != 0
 
 
 def get_conflicted_files() -> List[str]:
-    """获取发生合并冲突的文件列表。"""
+    """获取处于合并冲突状态的文件列表。
+
+    Returns:
+        List[str]: 冲突文件相对路径列表。
+    """
     res = run_git(["git", "diff", "--name-only", "--diff-filter=U"])
-    files = [f.strip() for f in res.stdout.splitlines() if f.strip()]
-    return files
+    return [line.strip() for line in res.stdout.splitlines() if line.strip()]
+
+
+def has_origin_remote() -> bool:
+    """判断是否配置了 origin 远程仓库。
+
+    Returns:
+        bool: 存在 origin 返回 True。
+    """
+    return ORIGIN_NAME in get_remote_names()
+
+
+def is_local_ahead_of_origin(branch: Optional[str] = None) -> bool:
+    """判断本地分支是否存在尚未推送到 origin 的提交。
+
+    调用方用它决定能否执行覆盖式的 `git reset --hard origin/<分支>`：
+    本地领先时该重置会丢弃尚未推送的提交（包括刚合并进来的上游更新），
+    因此必须跳过。
+
+    Returns:
+        bool: 本地领先 origin 返回 True；未配置 origin 时返回 False，
+              让上层继续执行能够自动补齐远程仓库的初始化流程。
+    """
+    if not has_origin_remote():
+        return False
+    branch = branch or get_current_branch()
+    remote_ref = f"{ORIGIN_NAME}/{branch}"
+    if run_git(["git", "rev-parse", "--verify", "--quiet", remote_ref]).returncode != 0:
+        # origin 上还没有这个分支：本地提交全部算领先，推送时会新建分支。
+        return (
+            run_git(["git", "rev-parse", "--verify", "--quiet", "HEAD"]).returncode == 0
+        )
+    res = run_git(["git", "log", f"{remote_ref}..HEAD", "--oneline"])
+    return bool(res.stdout.strip())
+
+
+def push_to_origin(branch: Optional[str] = None) -> bool:
+    """把当前分支推送到 origin，无需推送时视为成功。
+
+    Args:
+        branch: 目标分支名，缺省使用当前分支。
+
+    Returns:
+        bool: 已推送、无需推送或推送成功返回 True；推送失败返回 False。
+    """
+    if not has_origin_remote():
+        print(f"⚠️ [Sync] 未配置 {ORIGIN_NAME} 远程源，跳过推送（更新保留在本地）。")
+        return False
+
+    branch = branch or get_current_branch()
+    if not is_local_ahead_of_origin(branch):
+        print(f"✅ [Sync] {ORIGIN_NAME}/{branch} 已是最新，无需推送。")
+        return True
+
+    print(f"📤 [Sync] 本地领先 {ORIGIN_NAME}/{branch}，正在推送...")
+    push_res = run_git(["git", "push", ORIGIN_NAME, branch])
+    if push_res.returncode == 0:
+        print(f"✨ [Sync] 个人 Fork 仓库已同步更新至最新！")
+        return True
+    detail = (push_res.stderr or push_res.stdout or "").strip().splitlines()
+    if detail:
+        print(f"⚠️ [Sync] 推送至 {ORIGIN_NAME} 失败：{detail[-1]}")
+    print(
+        f"⚠️ [Sync] 推送未完成（网络波动或权限问题），"
+        f"更新已保留在本地，下次启动会自动重试推送。"
+    )
+    return False
+
+
+def _print_conflict_report(conflicts: List[str]) -> None:
+    """打印醒目的冲突阻断报告。
+
+    Args:
+        conflicts: 冲突文件列表。
+    """
+    print("\n" + "!" * 64)
+    print("🚨 【AzurPilot 启动拦截】检测到与官方上游仓库存在代码冲突！")
+    print("!" * 64)
+    print("⚠️ 合并已被暂停，冲突文件列表如下：")
+    for path in conflicts:
+        print(f"   ❌ {path}")
+    print("\n👉 已为您安全阻断启动，保护本地代码环境！")
+    print("👉 请直接前往 DSH 会话告诉小肥鱼，小肥鱼将为您精准排查并双向兼容合并喵~♡")
+    print("!" * 64 + "\n")
 
 
 def sync_with_upstream() -> bool:
-    """
-    执行上游同步与冲突检测。
-    
+    """执行上游同步、冲突检测与 Fork 推送。
+
     Returns:
         bool: True 表示同步完成或无需同步且环境安全；
-              False 表示发生冲突已阻断。
+              False 表示发生冲突已阻断启动。
     """
     print("=" * 60)
     print("🌊 [AzurPilot] 启动前检查：正在同步官方上游代码...")
@@ -88,80 +214,71 @@ def sync_with_upstream() -> bool:
     branch = get_current_branch()
     print(f"📌 [Sync] 当前分支: {branch}")
 
-    # 1. 检查工作区脏状态（仅检查已跟踪文件的改动）
-    is_dirty = check_dirty_worktree()
-    if is_dirty:
+    has_stash = False
+    merge_conflicted = False
+    if check_dirty_worktree():
         print("⚠️ [Sync] 检测到工作区有未提交的代码改动，正在自动创建临时暂存...")
-        stash_res = run_git(["git", "stash", "push", "-m", "auto-sync-pre-stash"])
+        stash_res = run_git(["git", "stash", "push", "-m", STASH_MESSAGE])
         has_stash = "Saved working directory" in stash_res.stdout
-    else:
-        has_stash = False
 
     try:
-        # 2. 拉取 upstream 最新 commit
         print(f"📥 [Sync] 正在拉取官方上游最新状态 (git fetch {UPSTREAM_NAME})...")
         fetch_res = run_git(["git", "fetch", UPSTREAM_NAME])
         if fetch_res.returncode != 0:
-            print("⚠️ [Sync] 无法连接到上游 GitHub 仓库（可能网络波动），跳过本次同步并继续启动。")
-            return True
-
-        # 检查上游是否存在同名分支
-        branch_check = run_git(["git", "rev-parse", "--verify", f"{UPSTREAM_NAME}/{branch}"])
-        if branch_check.returncode != 0:
-            print(f"ℹ️ [Sync] 上游不存在对应分支 {UPSTREAM_NAME}/{branch}，跳过合并。")
-            return True
-
-        # 3. 检查是否有新提交需要合并
-        log_res = run_git(["git", "log", f"HEAD..{UPSTREAM_NAME}/{branch}", "--oneline"])
-        new_commits = log_res.stdout.strip()
-        if not new_commits:
-            print(f"✅ [Sync] 当前分支已包含官方 {UPSTREAM_NAME}/{branch} 的所有最新代码，无需合并。")
-            return True
-
-        print(f"🚀 [Sync] 发现官方最新更新，正在合并至本地...")
-        # 4. 执行 merge
-        merge_res = run_git(
-            ["git", "merge", f"{UPSTREAM_NAME}/{branch}", "--no-edit", "-m", f"merge: 同步官方 {UPSTREAM_NAME}/{branch} 更新"]
-        )
-
-        # 5. 检查冲突
-        conflicts = get_conflicted_files()
-        if merge_res.returncode != 0 or conflicts:
-            print("\n" + "!" * 64)
-            print("🚨 【AzurPilot 启动拦截】检测到与官方上游仓库存在代码冲突！")
-            print("!" * 64)
-            print("⚠️ 合并已被暂停，冲突文件列表如下：")
-            for f in conflicts:
-                print(f"   ❌ {f}")
-            print("\n👉 已为您安全阻断启动，保护本地代码环境！")
-            print("👉 请直接前往 DSH 会话告诉小肥鱼，小肥鱼将为您精准排查并双向兼容合并喵~♡")
-            print("!" * 64 + "\n")
-            return False
-
-        print(f"🎉 [Sync] 成功合并官方更新！")
-
-        # 6. 成功合并后推送到个人 Fork (origin)
-        print(f"📤 [Sync] 正在将最新代码推送至个人 Fork (origin/{branch})...")
-        push_res = run_git(["git", "push", "origin", branch])
-        if push_res.returncode == 0:
-            print(f"✨ [Sync] 个人 Fork 仓库已同步更新至最新！")
+            print("⚠️ [Sync] 无法连接到上游仓库（可能网络波动），本次跳过合并。")
         else:
-            print(f"⚠️ [Sync] 推送至 origin 失败（网络波动或权限问题），本地合并仍已生效。")
+            print(f"📥 [Sync] 正在拉取个人 Fork 最新状态 (git fetch {ORIGIN_NAME})...")
+            if has_origin_remote():
+                run_git(["git", "fetch", ORIGIN_NAME])
 
+            upstream_ref = f"{UPSTREAM_NAME}/{branch}"
+            if run_git(["git", "rev-parse", "--verify", "--quiet", upstream_ref]).returncode != 0:
+                print(f"ℹ️ [Sync] 上游不存在对应分支 {upstream_ref}，跳过合并。")
+            else:
+                new_commits = run_git(
+                    ["git", "log", f"HEAD..{upstream_ref}", "--oneline"]
+                ).stdout.strip()
+                if not new_commits:
+                    print(
+                        f"✅ [Sync] 当前分支已包含官方 {upstream_ref} 的所有最新代码，无需合并。"
+                    )
+                else:
+                    print("🚀 [Sync] 发现官方最新更新，正在合并至本地...")
+                    merge_res = run_git(
+                        [
+                            "git",
+                            "merge",
+                            upstream_ref,
+                            "--no-edit",
+                            "-m",
+                            f"merge: 同步官方 {upstream_ref} 更新",
+                        ]
+                    )
+                    conflicts = get_conflicted_files()
+                    if merge_res.returncode != 0 or conflicts:
+                        merge_conflicted = True
+                        _print_conflict_report(conflicts)
+                        return False
+                    print("🎉 [Sync] 成功合并官方更新！")
+
+        # 合并与否都要尝试推送：上一次推送失败时，合并结果仍留在本地，
+        # 这里负责在下次启动把它补推到 Fork。
+        push_to_origin(branch)
         return True
 
     finally:
-        # 如果之前暂存了未提交的修改，恢复它
-        if has_stash:
+        # 冲突未解决时不能 pop：工作区正处于合并中间态，恢复了也无法编译。
+        # 暂存条目会完整保留，排错时可用 `git stash list` 找回。
+        if has_stash and not merge_conflicted:
             print("🔄 [Sync] 正在恢复之前未提交的修改 (git stash pop)...")
-            pop_res = run_git(["git", "stash", "pop"])
-            pop_conflicts = get_conflicted_files()
-            if pop_conflicts:
+            run_git(["git", "stash", "pop"])
+            if get_conflicted_files():
                 print("⚠️ [Sync] 恢复工作区修改时产生局部冲突，请查看相应文件！")
+        elif has_stash and merge_conflicted:
+            print(
+                "📦 [Sync] 未提交的改动已保留在 git stash 中（合并冲突未解决，暂不恢复）。"
+            )
 
 
 if __name__ == "__main__":
-    success = sync_with_upstream()
-    if not success:
-        sys.exit(1)
-    sys.exit(0)
+    sys.exit(0 if sync_with_upstream() else 1)
