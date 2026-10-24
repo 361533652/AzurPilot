@@ -1115,6 +1115,11 @@ class AzurLaneAutoScript:
         command = inflection.underscore(command)
         self._storage_statistics_failed = False
         set_task(inflection.camelize(command))
+        # 智能换船只在切换任务后刷新一次；同一任务连续出击复用本次扫描。
+        rotation_context = self.__dict__.setdefault('_fleet_rotation_context', {})
+        if rotation_context.get('task') != inflection.camelize(command):
+            rotation_context.clear()
+            rotation_context['task'] = inflection.camelize(command)
         try:
             # Restart 的职责就是把游戏从“未运行/未出首帧”恢复起来。
             # Android 虚拟屏在没有实际内容提交前不会产生可读帧；若这里先截图，
@@ -1904,7 +1909,9 @@ class AzurLaneAutoScript:
     def _run_campaign(self):
         """主线与普通活动槽位的战役调用；断点由公共 CampaignRun 保存。"""
         from module.campaign.run import CampaignRun
-        CampaignRun(config=self.config, device=self.device).run(
+        runner = CampaignRun(config=self.config, device=self.device)
+        runner._fleet_rotation_context = self.__dict__.setdefault('_fleet_rotation_context', {})
+        runner.run(
             name=self.config.Campaign_Name, folder=self.config.Campaign_Event, mode=self.config.Campaign_Mode)
 
     def main(self):

@@ -60,6 +60,7 @@ export function FleetInfoPage() {
       <label className="checkbox-label"><input type="checkbox" checked={updateEmotion} disabled={!loaded || scanning || busy || !!reason} onChange={event => setUpdateEmotion(event.target.checked)}/>{ui('fleet.updateEmotion')}</label>
       <span>{t('Task.FleetScan.name')}</span><button type="button" className={`toggle ${scanning ? 'on' : ''}`} role="switch" aria-checked={scanning} aria-label={t('Task.FleetScan.name')} disabled={!loaded || busy || !!reason} title={reason || undefined} onClick={toggleScan}><span/></button>
     </>}/>
+    <p className="muted">{ui('rotation.duplicates')}</p>
     {reason && <p className="muted" role="status">{reason}</p>}
     {error && <ErrorBox message={error}/>}
     {loaded ? <FleetInfo value={value}/> : !error && <Loading/>}

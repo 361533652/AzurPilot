@@ -59,21 +59,49 @@ def active_fleets(config):
             if type(getattr(config, f'Fleet_Fleet{role}')) is int and 1 <= getattr(config, f'Fleet_Fleet{role}') <= 6}
 
 
-def begin_round(rule, previous):
-    """上轮3、4、5、6依次循环；未完成的一轮保持原来源和已完成舰位。"""
+def rank_sources(rule, readings, needed=0):
+    """候补按整队最低实测心情降序，同值按编号升序；必须具备对应舰位。"""
+    available = []
+    for source in rule['sources']:
+        ships = readings.get(source, {})
+        minimum = minimum_morale(ships)
+        if minimum is not None and minimum >= needed and all(slot in ships for slot in rule['slots']):
+            available.append((source, minimum))
+    return [source for source, _ in sorted(available, key=lambda item: (-item[1], item[0]))]
+
+
+def recorded_morale(result, fleet):
+    """读取舰船信息中的实际舰位；旧版无舰位数据不能按数组顺序猜位置。"""
+    readings = {}
+    if not isinstance(result, dict):
+        return readings
+    for category in ('main', 'vanguard'):
+        for ship in result.get(category, {}).get(str(fleet), []):
+            slot = ship.get('slot')
+            if type(slot) is int and ship.get('occupied', True):
+                if slot in readings:
+                    return {}
+                readings[slot] = ship.get('emotion')
+    return readings
+
+
+def begin_round(rule, previous, ranked_sources=None):
+    """实测优先级决定本轮来源；未完成的一轮保持来源和已完成舰位。"""
     previous = deepcopy(previous) if isinstance(previous, dict) else {}
     if previous.get('pending'):
         raise ValueError('上次换船结果未确认，请核对游戏编队后清空轮换记录')
     if previous.get('source') is not None:
+        if previous.get('policy') != 'same_slot_morale_v1':
+            raise ValueError('旧版轮换记录不能按新舰位策略续接，请核对编队后清空记录')
         if previous.get('rule') != rule:
             raise ValueError('未完成轮换期间规则发生变化，请先核对编队并清空轮换记录')
         return previous
-    sources = rule['sources']
+    sources = rule['sources'] if ranked_sources is None else ranked_sources
     if not rule['slots'] or not sources:
         return None
     last = previous.get('last_source')
-    index = (sources.index(last) + 1) % len(sources) if last in sources else 0
-    return dict(last_source=last, source=sources[index], done=[], pending=None, rule=deepcopy(rule))
+    return dict(last_source=last, source=sources[0], done=[], pending=None, rule=deepcopy(rule),
+                policy='same_slot_morale_v1')
 
 
 def minimum_morale(ships):

@@ -8,7 +8,7 @@ from module.exception import FleetManagementError, GameStuckError, GameTooManyCl
 from module.logger import logger
 from module.retire.fleet_management import FleetManagement
 from module.runtime.fleet_rotation import (ROTATION_PATH, active_fleets, begin_round, calibration_changes,
-                                         minimum_morale, parse_rules, supported)
+                                         minimum_morale, parse_rules, rank_sources, recorded_morale, supported)
 
 
 def _required(emotion, role, battle):
@@ -53,13 +53,27 @@ def preflight_rotation(runner, battle, mode):
             raise FleetManagementError(f'第{target}舰队的轮换尚未完成，来源队不能使用旧心情出击')
     selected = {role: actual for role, actual in active.items()
                 if rules.get(str(actual), {}).get('slots') and rules[str(actual)].get('sources')}
-    if not selected:
-        return False
     manager = None
     emotion = campaign.emotion
     emotion.update()
     visited = False
+    context = runner.__dict__.setdefault('_fleet_rotation_context', {})
+    task = config.task.command
+    if context.get('task') != task:
+        context.clear()
+        context['task'] = task
+    fresh = not context.get('scanned', False)
     try:
+        fresh_readings = {}
+        if fresh:
+            manager = FleetManagement(config=config, device=runner.device)
+            visited = True
+            manager.run(update_emotion=True)
+            result = config.cross_get('FleetInfo.FleetInfo.Result', {})
+            fresh_readings = {fleet: recorded_morale(result, fleet) for fleet in range(1, 7)}
+            config.cross_set_many(calibration_changes(config.data,
+                {fleet: values for fleet, values in fresh_readings.items() if values}, now()))
+            context['scanned'] = True
         for role, fleet in selected.items():
             # 前一个角色可能刚从本角色的实际舰队换走舰船，不能继续使用旧快照。
             emotion.update()
@@ -70,27 +84,35 @@ def preflight_rotation(runner, battle, mode):
             tracker, needed = _required(emotion, role, battle)
             if needed is None:
                 continue
-            tracked_value = tracker.lower if tracker.state is not None else tracker.value
-            known_low = type(tracked_value) is int and tracked_value < needed
             continuing = bool(previous.get('source') or previous.get('pending'))
-            if not continuing and emotion.is_calculate and tracker.state is not None and tracker.lower >= needed:
+            if not fresh and not continuing and emotion.is_calculate and tracker.state is not None and tracker.lower >= needed:
                 continue
-            try:
-                progress = begin_round(rule, previous)
-            except ValueError as exc:
-                raise FleetManagementError(str(exc)) from exc
             visited = True
             if manager is None:
                 manager = FleetManagement(config=config, device=runner.device)
-            if not continuing and not known_low:
-                readings = manager.read_fleet_morale(fleet)
+            if continuing:
+                try:
+                    progress = begin_round(rule, previous)
+                except ValueError as exc:
+                    raise FleetManagementError(str(exc)) from exc
+            else:
+                readings = fresh_readings[fleet] if fresh else manager.read_fleet_morale(fleet)
                 minimum = minimum_morale(readings)
                 if minimum is None:
-                    logger.warning('心情参考未读全，保留原任务心情，继续原出击检查')
+                    logger.warning('目标队实际心情未读全，不执行换船，沿用原出击检查')
                     continue
                 config.cross_set_many(calibration_changes(config.data, {fleet: readings}, now()))
                 if minimum >= needed:
                     continue
+                candidates = {source: fresh_readings[source] if fresh else manager.read_fleet_morale(source)
+                              for source in rule['sources']}
+                config.cross_set_many(calibration_changes(config.data, candidates, now()))
+                order = rank_sources(rule, candidates, needed)
+                progress = begin_round(rule, previous, order)
+                if progress is None:
+                    logger.warning('候补队没有满足心情及对应舰位的舰船，保留当前编队并沿用原心情检查')
+                    continue
+                logger.attr('候补队心情优先级', order)
             source = progress['source']
             states[str(fleet)] = progress
             config.cross_set(ROTATION_PATH + '.State', states)
@@ -102,10 +124,7 @@ def preflight_rotation(runner, battle, mode):
                 if config.cross_get(ROTATION_PATH + '.Enabled', False) is not True:
                     paused = True
                     break
-                source_slot = manager.highest_morale_slot(source, fleet, slot)
-                if config.cross_get(ROTATION_PATH + '.Enabled', False) is not True:
-                    paused = True
-                    break
+                source_slot = slot
                 # 先记下即将执行的互换。进程中断后不能猜测已交换还是尚未交换。
                 progress['pending'] = dict(slot=slot, source_slot=source_slot)
                 config.cross_set(ROTATION_PATH + '.State', states)
@@ -114,7 +133,8 @@ def preflight_rotation(runner, battle, mode):
                 progress['pending'] = None
                 config.cross_set(ROTATION_PATH + '.State', states)
             # 如果最后读取失败，已完成舰位仍保留；重试仅补核对，不再换一遍。
-            readings = {number: manager.read_fleet_morale(number) for number in (fleet, source)}
+            readings = {fleet: manager.read_fleet_morale(fleet, first_slot=1),
+                        source: manager.read_fleet_morale(source)}
             changes = calibration_changes(config.data, readings, now())
             config.cross_set_many(changes)
             if any(minimum_morale(values) is None for values in readings.values()):
@@ -122,6 +142,10 @@ def preflight_rotation(runner, battle, mode):
             if not paused:
                 states[str(fleet)] = dict(last_source=source, completed_at=now().isoformat(timespec='seconds'))
             config.cross_set(ROTATION_PATH + '.State', states)
+            fresh = False
+            book = emotion.map_is_2x_book
+            emotion = Emotion(config)
+            emotion.map_is_2x_book = book
             # 本轮到此结束，心情仍低则交给原有延迟逻辑，不连续轮换下一来源。
         if visited:
             config.update()

@@ -88,6 +88,7 @@ export function FleetRotation() {
       <button className="button primary" disabled={disabled || !dirty} onClick={() => void save()}>{ui('rotation.save')}</button>
     </>}/>
     <p className="muted">{ui('rotation.help')}</p>
+    <p className="muted">{ui('rotation.duplicates')}</p>
     {error && <ErrorBox message={error}/>}
     {!rules ? !error && <Loading/> : <div className="fleet-grid">{numbers.map(fleet => <section className="panel" key={fleet} aria-label={ui('fleet.title', {number: fleet})}>
       <div className="panel-heading"><h2>{ui('fleet.title', {number: fleet})}</h2></div>

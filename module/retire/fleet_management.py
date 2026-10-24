@@ -1,4 +1,4 @@
-"""按舰队和舰位交换卡面，OCR仅用于舰队参考信息和可选心情更新。"""
+"""按舰队和舰位交换卡面；姓名记录与卡面定位分开，心情读取供策略复核。"""
 
 from copy import deepcopy
 
@@ -14,7 +14,7 @@ from module.retire.assets import DOCK_CHECK, DOCK_EMPTY, DOCK_SEARCH_ACTIVE, DOC
 from module.retire.dock import Dock
 from module.retire.fleet_emotion import learn_fleet_emotion, screenshot_window
 from module.runtime.fleet_formation import (CATEGORY_SLOTS, SLOT_CENTERS, SUBMARINE_SLOT_CENTERS, TYPE_BUTTON_AREAS,
-    FormationCardMerger, FormationDetailScanner, FormationDockScanner, MoraleDockScanner, PortraitMatcher, VisualDockScanner,
+    FormationCardMerger, FormationDetailScanner, FormationDockScanner, PortraitMatcher, VisualDockScanner,
     choose_portrait, combine_references, detail_occupied, detail_portraits, menu_area, selected_count_changed,
     bottom_fleet_index, fleet_type_selected, selected_menu_fleet, selector_closed, slot_swap_plan, preserve_emotions,
     validate_position, validate_swap)
@@ -48,6 +48,7 @@ class FleetManagement(Dock):
     def _normalize_result(result):
         return {str(fleet): [dict(name=str(ship.get('name', '')), level=int(ship.get('level', 0)),
                                  emotion=ship.get('emotion'),
+                                 **{key: ship[key] for key in ('review', 'raw_name') if key in ship},
                                  **({'slot': ship['slot']} if 'slot' in ship else {})) for ship in ships]
                 for fleet, ships in result.items()}
 
@@ -330,12 +331,16 @@ class FleetManagement(Dock):
 
     def _scan_category(self, scanner, max_rows=3):
         slots = []
-        for _, slots in self._dock_pages(scanner, max_rows=max_rows):
-            pass
+        images = {}
+        for cards, slots in self._dock_pages(scanner, max_rows=max_rows):
+            for card in cards:
+                images[id(card)] = VisualDockScanner.portrait(self.device.image, card).copy()
         result = {}
+        self._reference_portraits = {}
         for card, _ in slots:
             if card.fleet > 0:
                 result.setdefault(card.fleet, []).append(card.ship)
+                self._reference_portraits.setdefault(str(card.fleet), []).append(images[id(card)])
         return self._normalize_result(result)
 
     def run(self, update_emotion=None):
@@ -350,7 +355,7 @@ class FleetManagement(Dock):
             update_emotion = self.config.cross_get('FleetInfo.FleetInfo.UpdateEmotion', True)
         scanner = FormationDockScanner(update_emotion=update_emotion)
         details = FormationDetailScanner()
-        dock, windows = {}, {}
+        dock, windows, dock_portraits = {}, {}, {}
         if not self.device.has_cached_image:
             self.device.screenshot()
         self.ui_ensure(page_fleet)
@@ -367,16 +372,19 @@ class FleetManagement(Dock):
                     self._prepare_dock()
                     dock[category] = self._scan_category(scanner, max_rows=3 if fleet_type == 'surface' else 2)
                     windows[category] = self._scan_window
+                    dock_portraits[category] = getattr(self, '_reference_portraits', {})
                 finally:
                     self.dock_reset()
                     self._close_picker()
             formations = {'surface': {}, 'submarine': {}}
+            detail_images = {'surface': {}, 'submarine': {}}
             for fleet_type, count in (('surface', 6), ('submarine', 2)):
                 for fleet in range(1, count + 1):
                     self._scan_fleet_enter(fleet, fleet_type)
                     image, _, _ = self._capture_formation(fleet, fleet_type, navigate=False)
                     formations[fleet_type][fleet] = details.scan(image, fleet_type)
-            result = combine_references(dock, formations)
+                    detail_images[fleet_type][fleet] = image
+            result = combine_references(dock, formations, dock_portraits, detail_images)
             if update_emotion:
                 learn_fleet_emotion(self.config, result, windows, set(scanner.matcher.names))
             else:
@@ -433,56 +441,47 @@ class FleetManagement(Dock):
             raise FleetManagementError('最高心情候选卡面未能对应唯一来源舰位，尚未执行互换')
         return scores[0][1]
 
-    def read_fleet_morale(self, fleet):
-        """用固定舰位卡面对应选船页心情，名称OCR不会影响最低值或舰位。
+    def read_fleet_morale(self, fleet, *, first_slot=4):
+        """先扫描目标队前后排，再采集详情，将名称和实测心情写回固定舰位。
 
         Pages:
             in: Any
             out: page_fleet
         """
-        _, portraits, occupied = self._capture_formation(fleet)
-        readings = {}
-        scanner = MoraleDockScanner()
-        for slots in ((1, 2, 3), (4, 5, 6)):
-            positions = [slot for slot in slots if occupied[slot]]
-            if not positions:
-                continue
-            matchers = {slot: PortraitMatcher(portraits[slot]) for slot in positions}
-            candidates = {slot: [] for slot in positions}
+        if first_slot not in (1, 4):
+            raise ValueError('心情刷新入口只能为舰位1或4')
+        scanner = FormationDockScanner(update_emotion=True)
+        dock, portraits = {}, {}
+        entries = [('vanguard', 4), ('main', 1)]
+        if first_slot == 1:
+            entries.reverse()
+        reset_first = self.dock_filter.reset_first
+        try:
+            self.dock_filter.reset_first = False
             self.fleet_enter(fleet)
-            self._open_slot(positions[0])
-            try:
-                self._prepare_dock(sort='mood')
-                for cards, _ in self._dock_pages(scanner):
-                    for card in cards:
-                        for slot, matcher in matchers.items():
-                            score = matcher.score(scanner.portrait(self.device.image, card))
-                            if score >= 12:
-                                absolute = card.y + self._dock_offset
-                                old = next((item for item in candidates[slot]
-                                            if item[0].col == card.col and abs(item[1] - absolute) <= 12), None)
-                                if old is None:
-                                    candidates[slot].append((card, absolute, score))
-                for slot in positions:
-                    try:
-                        card, _ = choose_portrait(candidates[slot], fleet)
-                        readings[slot] = card.ship.get('emotion')
-                    except ValueError:
-                        readings[slot] = None
-            finally:
-                self.dock_reset()
-                self._close_picker()
+            for category, slot in entries:
+                self._open_slot(slot)
+                try:
+                    self._prepare_dock()
+                    dock[category] = self._scan_category(scanner)
+                    portraits[category] = self._reference_portraits
+                finally:
+                    self.dock_reset()
+                    self._close_picker()
+            image, _, _ = self._capture_formation(fleet, navigate=False)
+            positions = FormationDetailScanner().scan(image)
+            refreshed = combine_references(dock, {'surface': {fleet: positions}}, portraits,
+                                           {'surface': {fleet: image}})
+        finally:
+            self.dock_filter.reset_first = reset_first
         result = deepcopy(self.config.cross_get(self.RESULT_PATH, {}))
         if not isinstance(result, dict):
             result = {}
         for category in ('main', 'vanguard'):
-            old = {ship.get('slot'): ship for ship in result.get(category, {}).get(str(fleet), [])
-                   if isinstance(ship, dict)}
-            result.setdefault(category, {})[str(fleet)] = [dict(old.get(slot, dict(name='', level=0)),
-                slot=slot, emotion=readings.get(slot), occupied=True) for slot in CATEGORY_SLOTS[category]
-                if occupied[slot]]
+            result.setdefault(category, {})[str(fleet)] = refreshed[category].get(str(fleet), [])
         self._save_result(result)
-        return readings
+        return {ship['slot']: ship.get('emotion') for category in ('main', 'vanguard')
+                for ship in result[category][str(fleet)]}
 
     def _verify_plan(self, captures, expected, original):
         for fleet, positions in expected.items():
@@ -560,19 +559,21 @@ class FleetManagement(Dock):
             self._open_slot(slot, fleet_type)
             self._prepare_dock()
             try:
-                candidate, absolute_y = choose_portrait(self._visual_candidates(scanner, matcher, max_rows), source_fleet)
+                choose_portrait(self._visual_candidates(scanner, matcher, max_rows), source_fleet)
             except ValueError as exc:
                 raise FleetManagementError(str(exc)) from exc
             # 回到顶部后重新取得当前位置，不能使用上一轮滚动前的点击坐标。
             found = None
             for cards, _ in self._dock_pages(scanner, max_rows=max_rows):
-                found = next((card for card in cards if card.col == candidate.col and
-                              abs(card.y + self._dock_offset - absolute_y) <= 12 and
-                              matcher.score(scanner.portrait(self.device.image, card)) >= 12), None)
+                matches = [card for card in cards if card.fleet == source_fleet and
+                           matcher.score(scanner.portrait(self.device.image, card)) >= 12]
+                if len(matches) > 1:
+                    raise FleetManagementError('来源队存在重复卡面，无法区分同名舰船，尚未点击')
+                found = matches[0] if matches else None
                 if found is not None:
                     break
             if found is None:
-                raise FleetManagementError('源舰位卡面的物理候选位置已经变化，尚未点击')
+                raise FleetManagementError('未能重新确认来源队的唯一卡面，尚未点击')
             baseline = self.device.image.copy()
             area = (found.x + 20, found.y + 40, found.x + 115, found.y + 145)
             clicked = True
@@ -598,7 +599,7 @@ class FleetManagement(Dock):
                         for number in expected:
                             result.get(category, {}).pop(str(number), None)
                     self._save_result(result)
-            if self.appear(DOCK_CHECK):
+            if self.appear(DOCK_CHECK, offset=(20, 20)):
                 try:
                     self.dock_reset()
                     self._close_picker()

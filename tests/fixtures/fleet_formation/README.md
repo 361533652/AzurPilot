@@ -27,6 +27,9 @@
   每行高60、宽50，保留原生像素，按行放入1280×720画布；测试重建底部编号用于箭头
   切队。公共数字模板`assets/ship/formation_index_1.png`至`formation_index_6.png`
   从上述水面原图裁剪，不包含中文或自定义舰队名。
+- `rotation_dock.png`、`rotation_detail.png`：来自本次60e94ec1、cc5eac72截图，保留
+  原生卡面、名称及底部控件，遮除舰队自定义名等无关信息。用于验证新编队中的杜威、
+  艾尔温、唐斯改等Lua标准名、最新舰位和心情，不代表实机自动互换验收。
 
 共享箭头模板位于`assets/ship/formation_selector_arrow.png`，从已提供的关闭菜单画面
 提取白色图形。它只判断菜单是否收起，不用于识别舰队编号。

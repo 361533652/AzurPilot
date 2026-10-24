@@ -1,4 +1,4 @@
-"""编队的固定舰位、卡面定位与参考信息识别；换船不依赖文字 OCR。"""
+"""编队的固定舰位、卡面定位及Lua姓名与心情确认。"""
 
 from copy import deepcopy
 from functools import lru_cache
@@ -240,11 +240,13 @@ class FormationDetailScanner:
         for slot in range(1, count + 1):
             occupied = detail_occupied(image, slot)
             raw = names[slot - 1] or ''
-            name, status = self.matcher.resolve(raw)
+            name, status = self.matcher.approximate(raw)
             level = levels[slot - 1]
-            ships[slot] = dict(name=name if occupied else '', level=level if occupied and
+            confirmed = status in ('exact', 'prefix', 'similar')
+            ships[slot] = dict(name=name if occupied and confirmed else '', level=level if occupied and
                                type(level) is int and 1 <= level <= 125 else 0, emotion=None,
-                               slot=slot, occupied=occupied, review=occupied and status not in ('exact', 'prefix'))
+                               slot=slot, occupied=occupied, review=occupied and not confirmed,
+                               raw_name=raw if occupied and (not confirmed or raw != name) else '')
         return ships
 
 
@@ -276,7 +278,7 @@ class VisualDockScanner:
 
 
 class MoraleDockScanner(VisualDockScanner):
-    """只增加心情参考，自动换船不加载舰名或等级OCR。"""
+    """只增加心情参考，不加载舰名或等级OCR。"""
 
     def __init__(self):
         super().__init__()
@@ -337,10 +339,13 @@ class FormationDockScanner:
                 if not glyphs and float(pixels[y + 35:y + 150, x:x + 138].std()) < 20:
                     continue
                 fleet = fleet_status(crop(pixels, (x, y + 117, x + 35, y + 162)), self.fleets)
-                name, status = self.matcher.resolve(names[col] or '')
-                ship = dict(name=name, level=level, emotion=emotions[col], review=status not in
-                            ('exact', 'prefix') or not level, source='编队选船参考')
-                cards.append(Card(x, y, col, ship, int(status in ('exact', 'prefix')) + int(bool(level)),
+                raw = names[col] or ''
+                name, status = self.matcher.approximate(raw)
+                confirmed = status in ('exact', 'prefix', 'similar')
+                ship = dict(name=name if confirmed else '', level=level, emotion=emotions[col],
+                            review=not confirmed or not level, raw_name=raw if not confirmed or raw != name else '',
+                            source='编队选船参考')
+                cards.append(Card(x, y, col, ship, int(confirmed) + int(bool(level)),
                                   bool(level), fleet))
         return cards
 
@@ -368,22 +373,43 @@ class FormationCardMerger(ScanMerger):
         return super().add(image, cards)
 
 
-def combine_references(dock, formations):
-    """舰位来自详情的固定列，OCR读数只补充参考值，不决定舰位或删除记录。"""
+def combine_references(dock, formations, dock_portraits=None, detail_images=None):
+    """固定详情列确定舰位，以同队同排卡面把第一轮名称、等级和心情放回对应舰位。"""
     result = {'main': {}, 'vanguard': {}, 'submarine': {}}
     for fleet_type, teams in formations.items():
         categories = ('main', 'vanguard') if fleet_type == 'surface' else ('submarine',)
         for fleet, positions in teams.items():
             for category in categories:
                 ships = []
+                pool = dock.get(category, {}).get(str(fleet), [])
+                portraits = (dock_portraits or {}).get(category, {}).get(str(fleet), [])
+                image = (detail_images or {}).get(fleet_type, {}).get(fleet)
+                used = set()
                 for slot in CATEGORY_SLOTS[category]:
                     ship = deepcopy(positions[slot])
                     if not ship['occupied']:
                         continue
-                    matches = [item for item in dock.get(category, {}).get(str(fleet), [])
+                    matches = [item for item in pool
                                if item.get('name') == ship['name'] and ship['name']]
+                    if image is not None and len(portraits) == len(pool) and portraits:
+                        # 有卡面时不能再用误读的同名文本分配心情，歧义必须保留未知。
+                        matches = []
+                        matcher = PortraitMatcher(detail_portraits(image, fleet_type)[slot])
+                        ranked = sorted(((matcher.score(portrait), index) for index, portrait in enumerate(portraits)
+                                         if index not in used), reverse=True)
+                        if (ranked and ranked[0][0] >= 12 and
+                                (len(ranked) == 1 or ranked[1][0] < ranked[0][0] * .75)):
+                            index = ranked[0][1]
+                            used.add(index)
+                            matches = [pool[index]]
                     if len(matches) == 1:
-                        ship['emotion'] = matches[0].get('emotion')
+                        reference = matches[0]
+                        ship['emotion'] = reference.get('emotion')
+                        if reference.get('name'):
+                            ship['name'] = reference['name']
+                            ship['review'] = reference.get('review', False)
+                        if reference.get('level'):
+                            ship['level'] = reference['level']
                     ships.append(ship)
                 if ships:
                     result[category][str(fleet)] = ships

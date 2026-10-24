@@ -135,29 +135,50 @@ class VisualTargetTests(unittest.TestCase):
         tool._prepare_dock.assert_called_once_with(sort='mood')
         tool._open_slot.assert_called_once_with(5)
 
-    def test_morale_uses_actual_portrait_positions_including_unchanged_slots_without_name_ocr(self):
-        tool = runner()
-        tool.config.cross_get.return_value = '旧版未结构化参考记录'
-        tool._capture_formation = Mock(return_value=(None, detail_portraits(frame('detail_surface')),
-                                                     dict.fromkeys(range(1, 7), True)))
-        reads = iter(([None, 119, 150, 119, 119, 150, 150], [150] * 7,
-                      [None, 119, 119, 119, 148, 138, 150], [150, 2, 150, 148, 119, 150, 150]))
+    def test_refresh_reuses_dock_names_by_portrait_and_updates_every_actual_slot(self):
+        expected_names = ['拉斐尔', '瑞凤', '独角兽.改', '阿尔弗雷多·奥里亚尼', '花月', '文琴佐·焦贝蒂']
+        layouts = {'main': [(0, 2, 1), (0, 6, 2), (0, 5, 3)],
+                   'vanguard': [(1, 1, 4), (0, 6, 5), (1, 0, 6)]}
+        pools, portraits = {}, {}
+        scanner = VisualDockScanner()
+        for category, slots in layouts.items():
+            image = frame(f'{category}_top')
+            cards = scanner.scan(image)
+            rows = sorted({card.y for card in cards})
+            pools[category], portraits[category] = [], []
+            for row, col, slot in slots:
+                card = next(card for card in cards if card.y == rows[row] and card.col == col)
+                pools[category].append(dict(name=expected_names[slot - 1], level=125 if slot <= 3 else 105,
+                                           emotion=2 if slot == 4 else 150, review=False))
+                portraits[category].append(scanner.portrait(image, card))
+        for first in (4, 1):
+            with self.subTest(first_slot=first):
+                tool = runner()
+                tool.config.cross_get.return_value = '旧版未结构化参考记录'
+                detail = frame('detail_surface')
+                tool._capture_formation = Mock(return_value=(detail, detail_portraits(detail), {}))
 
-        def pages(scanner, **kwargs):
-            name = 'main_top' if tool._open_slot.call_args.args[0] == 1 else 'vanguard_top'
-            tool.device.image = frame(name)
-            tool._dock_offset = 0
-            yield scanner.scan(tool.device.image), []
+                def scan_category(scanner):
+                    category = 'main' if tool._open_slot.call_args.args[0] == 1 else 'vanguard'
+                    tool._reference_portraits = {'1': portraits[category]}
+                    return {'1': pools[category]}
 
-        tool._dock_pages = pages
-        with (patch('module.runtime.fleet_formation.FleetNameScanner', side_effect=AssertionError('禁止舰名OCR')),
-              patch('module.runtime.fleet_formation.LevelScanner', side_effect=AssertionError('禁止等级OCR')),
-              patch('module.runtime.fleet_formation.reference_read', side_effect=lambda *args: next(reads))):
-            readings = tool.read_fleet_morale(1)
-        self.assertEqual(readings, {1: 150, 2: 150, 3: 150, 4: 2, 5: 150, 6: 150})
-        saved = tool._save_result.call_args.args[0]
-        self.assertEqual(saved['vanguard']['1'][0]['slot'], 4)
-        self.assertEqual(saved['vanguard']['1'][0]['emotion'], 2)
+                tool._scan_category = scan_category
+                positions = {slot: dict(name='详情误读', slot=slot, occupied=True,
+                                       level=0, emotion=None, review=True) for slot in range(1, 7)}
+                with (patch('module.retire.fleet_management.FormationDockScanner'),
+                      patch('module.retire.fleet_management.FormationDetailScanner') as details):
+                    details.return_value.scan.return_value = positions
+                    readings = tool.read_fleet_morale(1, first_slot=first)
+                self.assertEqual(readings, {1: 150, 2: 150, 3: 150, 4: 2, 5: 150, 6: 150})
+                saved = tool._save_result.call_args.args[0]
+                ships = saved['main']['1'] + saved['vanguard']['1']
+                self.assertEqual([ship['name'] for ship in ships], expected_names)
+                self.assertEqual([ship['slot'] for ship in ships], [1, 2, 3, 4, 5, 6])
+                self.assertEqual([call.args[0] for call in tool._open_slot.call_args_list], [first, 5 - first])
+                tool._capture_formation.assert_called_once_with(1, navigate=False)
+                import json
+                json.dumps(saved, ensure_ascii=False)
 
     def test_native_cross_fleet_popup_is_confirmed_after_selection_submit(self):
         from module.handler.assets import POPUP_CANCEL, POPUP_CONFIRM
@@ -269,11 +290,13 @@ class VisualTargetTests(unittest.TestCase):
 
         tool._dock_pages = pages
         tool._save_swap_reference = Mock()
+        tool._save_swap_reference.side_effect = lambda *args: setattr(tool.device, 'image', frame('scan_surface'))
+        tool.device.stuck_record_add = Mock()
+        tool.appear = ModuleBase.appear.__get__(tool)
         tool.run = Mock(side_effect=GameStuckError('模拟交换后参考刷新未完成'))
         with patch('module.runtime.fleet_formation.FleetNameScanner', side_effect=AssertionError('舰名不可用')), \
                 patch('module.runtime.fleet_formation.LevelScanner', side_effect=AssertionError('等级不可用')), \
-                patch('module.runtime.fleet_formation.FleetEmotionScanner', side_effect=AssertionError('心情不可用')), \
-                patch('module.runtime.fleet_formation.fleet_status', return_value=-1):
+                patch('module.runtime.fleet_formation.FleetEmotionScanner', side_effect=AssertionError('心情不可用')):
             result = tool.swap_slots(1, 4, 4, 5, update_emotion=True)
         self.assertTrue(result['changed'])
         self.assertFalse(result['reference_updated'])
@@ -283,6 +306,8 @@ class VisualTargetTests(unittest.TestCase):
         tool._confirm_replacement.assert_called_once()
         tool._commit_formation.assert_called_once()
         tool._save_swap_reference.assert_called_once_with(expected, 'surface')
+        tool.dock_reset.assert_not_called()
+        tool._close_picker.assert_not_called()
         self.assertTrue(tool.dock_filter.reset_first)
 
     def test_reference_move_preserves_unrelated_fleets_and_does_not_guess_names(self):
@@ -709,6 +734,34 @@ class ReferenceScanTests(unittest.TestCase):
         self.assertEqual(list(sub), [1, 2, 3])
         self.assertEqual(sub[1]['name'], '伊404')
         self.assertEqual(sub[2]['name'], 'U-2501')
+
+    def test_latest_frames_confirm_lua_names_and_same_slot_portraits(self):
+        dock = frame('rotation_dock')
+        cards = FormationDockScanner().scan(dock)
+        self.assertEqual({card.ship['name'] for card in cards if card.fleet == 4},
+                         {'杜威', '艾尔温', '唐斯.改'})
+        self.assertEqual(min(card.ship['emotion'] for card in cards if card.fleet == 3), 138)
+        ships = FormationDetailScanner().scan(frame('rotation_detail'))
+        self.assertEqual([ships[slot]['name'] for slot in range(1, 7)],
+                         ['拉斐尔', '瑞凤', '独角兽.改', '杜威', '艾尔温', '文琴佐·焦贝蒂'])
+        self.assertEqual([ships[slot]['level'] for slot in range(1, 7)], [125, 125, 125, 100, 99, 105])
+        portraits = detail_portraits(frame('rotation_detail'))
+        for slot, column in ((4, 3), (5, 1)):
+            matcher = PortraitMatcher(portraits[slot])
+            candidates = [(card, card.y, matcher.score(VisualDockScanner.portrait(dock, card))) for card in cards]
+            chosen, _ = choose_portrait(candidates, 4)
+            self.assertEqual((chosen.fleet, chosen.col), (4, column))
+
+    def test_ambiguous_portraits_do_not_assign_morale_using_a_matching_name(self):
+        image = frame('detail_surface')
+        portrait = detail_portraits(image)[5]
+        positions = {slot: dict(slot=slot, name='花月', emotion=None, level=105,
+                                occupied=slot == 5, review=False) for slot in range(1, 7)}
+        dock = {'vanguard': {'1': [dict(name='花月', level=105, emotion=150),
+                                   dict(name='', level=105, emotion=2)]}}
+        result = combine_references(dock, {'surface': {1: positions}},
+                                    {'vanguard': {'1': [portrait, portrait]}}, {'surface': {1: image}})
+        self.assertIsNone(result['vanguard']['1'][0]['emotion'])
 
     def test_scan_starts_fleet_one_slot_four_and_never_requires_name_confirmation(self):
         tool = runner()
