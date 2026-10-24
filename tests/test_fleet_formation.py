@@ -11,7 +11,7 @@ from PIL import Image
 from module.base.base import ModuleBase
 from module.equipment.assets import FLEET_DETAIL, FLEET_DETAIL_CHECK, FLEET_NEXT, FLEET_PREV
 from module.exception import FleetManagementError, GameStuckError, GameTooManyClickError, RequestHumanTakeover
-from module.retire.assets import DOCK_CHECK
+from module.retire.assets import DOCK_CHECK, DOCK_EMPTY
 from module.retire.fleet_management import FleetManagement, PICKER_CONFIRM
 from module.runtime.fleet_formation import (SLOT_CENTERS, SUBMARINE_SLOT_CENTERS, FormationCardMerger,
     FormationDetailScanner, FormationDockScanner, PortraitMatcher, VisualDockScanner, choose_portrait,
@@ -85,6 +85,14 @@ class GeometryTests(unittest.TestCase):
                 for kind in ('surface', 'submarine'):
                     self.assertEqual(fleet_type_selected(image, kind), kind == selected)
 
+    def test_latest_closed_selector_ignores_the_changing_diagonal_background(self):
+        image = frame('swap_surface6')
+        self.assertTrue(fleet_type_selected(image))
+        self.assertEqual(bottom_fleet_index(image), 6)
+        self.assertTrue(selector_closed(image))
+        self.assertIsNone(selected_menu_fleet(image))
+        self.assertFalse(selector_closed(frame('menu_surface')))
+
     def test_slot_plans_change_only_two_positions_and_support_submarines(self):
         occupied = {1: positions([True] * 3, [True] * 3), 4: positions([True] * 3, [True] * 3)}
         expected = slot_swap_plan(occupied, 1, 4, 4, 5)
@@ -118,6 +126,34 @@ class GeometryTests(unittest.TestCase):
 
 
 class VisualTargetTests(unittest.TestCase):
+    def test_unknown_morale_retries_its_category_once_and_preserves_confirmed_values(self):
+        image = frame('detail_surface')
+        faces = detail_portraits(image)
+        for value in (150, None):
+            with self.subTest(second_read=value):
+                tool = runner()
+                result = {'main': {'1': [dict(slot=1, emotion=150)]}, 'submarine': {},
+                          'vanguard': {'1': [dict(slot=4, name='已确认', emotion=150),
+                                             dict(slot=5, name='花月', emotion=None)]}}
+                positions = {slot: dict(slot=slot, name='', level=105, emotion=None,
+                                       occupied=slot in (4, 5)) for slot in range(1, 7)}
+                tool._scan_category = Mock(return_value={'1': [dict(name='', level=105, emotion=2),
+                                                               dict(name='花月', level=105, emotion=value)]})
+                tool._reference_portraits = {'1': [faces[4], faces[5]]}
+                tool._scan_window = (20, 30)
+                windows = {'vanguard': (10, 15)}
+                scanner = object()
+                tool._retry_unknown_morale(scanner, result, {}, {'surface': {1: positions}}, {},
+                                           {'surface': {1: image}}, windows)
+                self.assertEqual(result['vanguard']['1'][0]['emotion'], 150)
+                self.assertEqual(result['vanguard']['1'][1]['emotion'], value)
+                self.assertEqual(windows['vanguard'], (10, 30))
+                tool.fleet_enter.assert_called_once_with(1, 'surface')
+                tool._open_slot.assert_called_once_with(4, 'surface')
+                tool._scan_category.assert_called_once_with(scanner, max_rows=3)
+                tool.dock_reset.assert_called_once()
+                tool._close_picker.assert_called_once()
+
     def test_game_morale_sort_selects_first_eligible_source_without_name_or_level_ocr(self):
         tool = runner()
         native = frame('vanguard_top')
@@ -151,17 +187,23 @@ class VisualTargetTests(unittest.TestCase):
                 pools[category].append(dict(name=expected_names[slot - 1], level=125 if slot <= 3 else 105,
                                            emotion=2 if slot == 4 else 150, review=False))
                 portraits[category].append(scanner.portrait(image, card))
-        for first in (4, 1):
-            with self.subTest(first_slot=first):
+        for first, retry in ((4, False), (1, False), (4, True)):
+            with self.subTest(first_slot=first, retry=retry):
                 tool = runner()
                 tool.config.cross_get.return_value = '旧版未结构化参考记录'
                 detail = frame('detail_surface')
                 tool._capture_formation = Mock(return_value=(detail, detail_portraits(detail), {}))
 
-                def scan_category(scanner):
+                seen = {}
+
+                def scan_category(scanner, **kwargs):
                     category = 'main' if tool._open_slot.call_args.args[0] == 1 else 'vanguard'
                     tool._reference_portraits = {'1': portraits[category]}
-                    return {'1': pools[category]}
+                    seen[category] = seen.get(category, 0) + 1
+                    ships = [dict(ship) for ship in pools[category]]
+                    if retry and category == 'vanguard' and seen[category] == 1:
+                        ships[0]['emotion'] = None
+                    return {'1': ships}
 
                 tool._scan_category = scan_category
                 positions = {slot: dict(name='详情误读', slot=slot, occupied=True,
@@ -175,7 +217,8 @@ class VisualTargetTests(unittest.TestCase):
                 ships = saved['main']['1'] + saved['vanguard']['1']
                 self.assertEqual([ship['name'] for ship in ships], expected_names)
                 self.assertEqual([ship['slot'] for ship in ships], [1, 2, 3, 4, 5, 6])
-                self.assertEqual([call.args[0] for call in tool._open_slot.call_args_list], [first, 5 - first])
+                self.assertEqual([call.args[0] for call in tool._open_slot.call_args_list],
+                                 [first, 5 - first] + ([4] if retry else []))
                 tool._capture_formation.assert_called_once_with(1, navigate=False)
                 import json
                 json.dumps(saved, ensure_ascii=False)
@@ -453,6 +496,53 @@ class ScanNavigationTests(unittest.TestCase):
         tool.device.image = frame('scan_dock')
         self.assertTrue(tool.appear(DOCK_CHECK, offset=(20, 20)))
 
+    def test_general_navigation_opens_selector_from_the_reported_stuck_frame(self):
+        tool = self.native_runner()
+        tool.device.image = frame('swap_surface6')
+
+        class MenuOpened(Exception):
+            pass
+
+        def click(button):
+            self.assertEqual(button.name, 'surface舰队选择')
+            raise MenuOpened
+
+        tool.device.click.side_effect = click
+        with patch('module.retire.fleet_management.Timer') as timer:
+            timer.return_value.reached.return_value = True
+            with self.assertRaises(MenuOpened):
+                FleetManagement.fleet_enter(tool, 3)
+        tool.device.click.assert_called_once()
+
+    def test_dock_card_colors_do_not_end_scrolling_as_an_empty_dock(self):
+        tool = self.native_runner()
+        bottom = frame('vanguard_bottom')
+        x1, y1, x2, y2 = DOCK_EMPTY.area
+        # 模拟卡面颜色恰好接近“空船坞”提示，字形仍不相同。
+        bottom[y1:y2, x1:x2] = DOCK_EMPTY.color
+        tool.device.image = bottom
+        self.assertTrue(tool.appear(DOCK_EMPTY))
+        self.assertFalse(tool.appear(DOCK_EMPTY, offset=(20, 20)))
+        appear = tool.appear
+        # 卡片夹具遮除了标题；保留真实的空船坞提示识别。
+        tool.appear = lambda button, **kwargs: button is DOCK_CHECK or appear(button, **kwargs)
+        stage = 0
+
+        def images(**kwargs):
+            for _ in range(20):
+                tool.device.image = frame('vanguard_top') if stage == 0 else bottom
+                yield tool.device.image
+
+        def drag(*args):
+            nonlocal stage
+            stage = 1
+
+        tool.loop = images
+        with patch('module.retire.mind_scan.MindCalculatorScan._drag_rows', side_effect=drag):
+            pages = list(tool._dock_pages(VisualDockScanner()))
+        self.assertEqual(len(pages), 2)
+        self.assertEqual(len(pages[-1][1]), 21)
+
     def test_scan_clicks_slots_four_one_then_submarine_once_and_its_slot_one(self):
         from module.device.device import Device
 
@@ -545,7 +635,7 @@ class DetailNavigationTests(unittest.TestCase):
         formations = {kind: frame(f'scan_{kind}') for kind in ('surface', 'submarine')}
         details = {kind: frame(f'detail_{kind}') for kind in ('surface', 'submarine')}
         state = SimpleNamespace(kind=kind, fleet=fleet, detail=detail, pending=None,
-                                delay=0, clock=100., events=[])
+                                delay=0, clock=100., events=[], event_times=[], step=.25, animation_frames=2)
 
         def image():
             result = formations[state.kind].copy()
@@ -561,7 +651,7 @@ class DetailNavigationTests(unittest.TestCase):
 
         def screenshot():
             self.assertLess(tool.device.screenshot.call_count, 250, '页面切换没有推进')
-            state.clock += .25
+            state.clock += state.step
             if state.delay:
                 state.delay -= 1
             elif state.pending:
@@ -572,6 +662,7 @@ class DetailNavigationTests(unittest.TestCase):
         def click(button):
             self.assertIsNone(state.pending, '动画期间重复点击了切换按钮')
             state.events.append((button.name, state.kind, state.fleet))
+            state.event_times.append((button.name, state.clock))
             if button is FLEET_DETAIL and not state.detail:
                 state.pending = state.kind, state.fleet, True
             elif button is BACK_ARROW and state.detail:
@@ -586,7 +677,7 @@ class DetailNavigationTests(unittest.TestCase):
                 state.pending = target, 1, False
             else:
                 self.fail(f'页面切换使用了错误按钮：{button.name}')
-            state.delay = 2
+            state.delay = state.animation_frames
 
         tool.device.image = image()
         tool.device.screenshot = Mock(side_effect=screenshot)
@@ -602,6 +693,19 @@ class DetailNavigationTests(unittest.TestCase):
                     self.assertEqual(bottom_fleet_index(image(), kind), fleet)
             blank = np.zeros_like(tool.device.image)
             self.assertIsNone(bottom_fleet_index(blank, kind))
+
+    def test_fast_fleet_number_update_still_waits_half_a_second_before_detail(self):
+        for kind in ('surface', 'submarine'):
+            with self.subTest(kind=kind):
+                tool, state, _ = self.native_tool(kind)
+                state.step, state.animation_frames = .05, 0
+                with patch('module.base.timer.time', side_effect=lambda: state.clock):
+                    tool._scan_fleet_enter(2, kind)
+                    tool._capture_formation(2, kind, navigate=False)
+                times = dict(state.event_times)
+                self.assertGreaterEqual(times['FLEET_DETAIL'] - times['FLEET_NEXT'], .5)
+                self.assertEqual([(name, fleet) for name, _, fleet in state.events],
+                                 [('FLEET_NEXT', 1), ('FLEET_DETAIL', 2), ('BACK_ARROW', 2)])
 
     def test_capture_uses_back_and_keeps_native_fixed_portraits(self):
         for kind in ('surface', 'submarine'):

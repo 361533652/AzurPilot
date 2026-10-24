@@ -190,19 +190,25 @@ class FleetManagement(Dock):
         validate_position(fleet, 1, fleet_type)
         type_requested = False
         click = Timer(2)
+        settle = Timer(.5)
         for _ in self.loop(timeout=75):
             if self._formation_visible():
                 if fleet_type_selected(self.device.image, fleet_type):
                     current = bottom_fleet_index(self.device.image, fleet_type)
                     if current == fleet:
-                        logger.attr('详情采集舰队', f'{fleet_type}-{fleet}')
-                        return
+                        if settle.reached():
+                            logger.attr('详情采集舰队', f'{fleet_type}-{fleet}')
+                            return
+                        continue
                     if current is not None and click.reached():
                         self.device.click(FLEET_NEXT if current < fleet else FLEET_PREV)
                         click.reset()
+                        # 队号可能先于动画更新，继续截图且至少等0.5秒再交给详情入口。
+                        settle.reset()
                 elif not type_requested:
                     self.device.click(fleet_menu_button(fleet_type))
                     type_requested = True
+                    settle.reset()
         raise FleetManagementError(f'未能从底部编号确认{fleet_type}第{fleet}舰队')
 
     def _capture_formation(self, fleet, fleet_type='surface', *, navigate=True):
@@ -257,7 +263,7 @@ class FleetManagement(Dock):
         """
         from module.retire.mind_scan import MindCalculatorScan
         self._scan_window = None
-        if self.appear(DOCK_EMPTY):
+        if self.appear(DOCK_EMPTY, offset=(20, 20)):
             return
         scroll = Scroll(PICKER_SCROLL.area, color=PICKER_SCROLL.color, name=PICKER_SCROLL.name)
         # 原生滑块顶端有圆角留白；先向轨道外拖动一次，再以顶部像素确认，
@@ -281,7 +287,7 @@ class FleetManagement(Dock):
         deadline = Timer(25).start()
         windows_valid, retries = True, 0
         for _ in self.loop(skip_first=False):
-            if self.appear(DOCK_EMPTY):
+            if self.appear(DOCK_EMPTY, offset=(20, 20)):
                 return
             if deadline.reached():
                 raise FleetManagementError('卡片画面或滚动位移未就绪')
@@ -343,6 +349,43 @@ class FleetManagement(Dock):
                 self._reference_portraits.setdefault(str(card.fleet), []).append(images[id(card)])
         return self._normalize_result(result)
 
+    def _retry_unknown_morale(self, scanner, result, dock, formations, portraits, images, windows=None):
+        """未知心情所在排只补扫一遍；仍需卡面唯一对应，不覆盖已确认的读数。
+
+        Pages:
+            in: page_fleet，详情采集已完成
+            out: page_fleet
+        """
+        pending = {category: next((int(fleet) for fleet, ships in teams.items()
+                                  if any(ship.get('emotion') is None for ship in ships)), None)
+                   for category, teams in result.items()}
+        pending = {category: fleet for category, fleet in pending.items() if fleet is not None}
+        if not pending:
+            return
+        for category, fleet in pending.items():
+            logger.attr('补读未知心情', category)
+            kind = 'submarine' if category == 'submarine' else 'surface'
+            self.fleet_enter(fleet, kind)
+            self._open_slot(4 if category == 'vanguard' else 1, kind)
+            try:
+                self._prepare_dock()
+                dock[category] = self._scan_category(scanner, max_rows=2 if kind == 'submarine' else 3)
+                portraits[category] = self._reference_portraits
+                if windows is not None:
+                    previous = windows.get(category)
+                    windows[category] = (previous[0], self._scan_window[1]) if previous and self._scan_window else None
+            finally:
+                self.dock_reset()
+                self._close_picker()
+        reread = combine_references(dock, formations, portraits, images)
+        for category in pending:
+            for fleet, ships in result[category].items():
+                values = {ship['slot']: ship.get('emotion') for ship in reread[category].get(fleet, [])}
+                for ship in ships:
+                    value = values.get(ship['slot'])
+                    if ship.get('emotion') is None and type(value) is int and 0 <= value <= 150:
+                        ship['emotion'] = value
+
     def run(self, update_emotion=None):
         """从第一舰队舰位4扫描，详情固定列记录舰位，文字只作参考。
 
@@ -386,6 +429,7 @@ class FleetManagement(Dock):
                     detail_images[fleet_type][fleet] = image
             result = combine_references(dock, formations, dock_portraits, detail_images)
             if update_emotion:
+                self._retry_unknown_morale(scanner, result, dock, formations, dock_portraits, detail_images, windows)
                 learn_fleet_emotion(self.config, result, windows, set(scanner.matcher.names))
             else:
                 preserve_emotions(result, self.config.cross_get(self.RESULT_PATH, {}))
@@ -472,6 +516,8 @@ class FleetManagement(Dock):
             positions = FormationDetailScanner().scan(image)
             refreshed = combine_references(dock, {'surface': {fleet: positions}}, portraits,
                                            {'surface': {fleet: image}})
+            self._retry_unknown_morale(scanner, refreshed, dock, {'surface': {fleet: positions}}, portraits,
+                                       {'surface': {fleet: image}})
         finally:
             self.dock_filter.reset_first = reset_first
         result = deepcopy(self.config.cross_get(self.RESULT_PATH, {}))
