@@ -3788,8 +3788,14 @@
   },
   "FleetInfo": {
     "FleetInfo": {
+      "UpdateEmotion": true,
       "Result": {},
       "Record": "2020-01-01 00:00:00"
+    },
+    "FleetRotation": {
+      "Enabled": false,
+      "Rules": "{}",
+      "State": {}
     },
     "Storage": {
       "Storage": {}
