@@ -1,6 +1,6 @@
 # 其他游戏功能模块
 
-> 无法各自成篇的中小型游戏功能任务合集：演习、建造、每日任务、困难模式、SOS、作战档案、突袭、活动四件套、私人休息室、船坞、免费福利、小游戏、觉醒、作战委托、META 奖励与装备管理。
+> 无法各自成篇的中小型游戏功能任务合集：演习、建造、每日任务、困难模式、SOS、作战档案、突袭、活动四件套、宿舍计划、船坞、免费福利、小游戏、觉醒、作战委托、META 奖励与装备管理。
 
 ## 1. 模块概述
 
@@ -23,7 +23,7 @@
 ### 不负责
 
 - 通用战役/地图执行框架（`CampaignRun`、`module/map`，见[战役执行](../campaign.md)）
-- 商店通用购买框架（`module/shop`，见商店系统；私人休息室商店仅复用其 clerk）
+- 商店通用购买框架（`module/shop`，见商店系统；宿舍计划商店仅复用其 clerk）
 - 退役/强化、大世界、科研、委托、商店等已有独立文档的玩法
 - 截图/点击（设备层）与弹窗处理（处理器层）
 
@@ -43,7 +43,7 @@ module/
 ├── eventstory/       # 活动剧情：eventstory.py 单文件
 ├── event_hospital/   # 医院活动：hospital.py 线索调查，hospital_event.py 突袭战斗，clue.py 线索识别，combat/ui.py
 ├── coalition/        # 联动活动：coalition.py 主循环，coalition_scuttle.py 沉船，coalition_sp.py，combat/ui.py
-├── private_quarters/ # 私人休息室：private_quarters.py 主任务，interact/shop/clerk/status/ui.py
+├── private_quarters/ # 宿舍计划：private_quarters.py 主任务，interact/shop/clerk/status/ui.py
 ├── shipyard/         # 船坞蓝图：shipyard_reward.py 主任务，ui.py 船坞界面，ui_globals.py 系列定义
 ├── freebies/         # 免费福利：freebies.py 总调度 + battle_pass/data_key/mail_white/supply_pack 四个子模块
 ├── minigame/         # 小游戏：minigame.py 代币与循环，new_year_challenge.py 具体游戏
@@ -152,9 +152,9 @@ module/
 
 `Coalition(CoalitionCombat, CampaignEvent)` 主循环：`Coalition_Mode`（含 tc1/tc2/tc3 与 easy/normal/hard 的双向兼容转换）与 `Coalition_Fleet` 决定目标，`coalition_ensure_mode()` 切换 story/battle，按 PT 与金币停止条件刷战斗；无油图标的活动先到战役菜单检查停止条件。`CoalitionSP` 只跑一次 SP 后延迟到次日。正常多队整关扣一次基础心情，单队每轮扣基础心情，各内部战斗独立记录非 S 额外消耗。`CoalitionScuttleRun`（沉船）整关只扣一次基础心情并豁免额外消耗，通过确认按钮集合处理 `SCUTTLE_CONFIRM`，复用公共战斗循环；SP 只有明确 S 且没有战败才按成功收尾。
 
-### 私人休息室（module/private_quarters）
+### 宿舍计划（module/private_quarters）
 
-`PrivateQuarters(PQInteract, PQShop)`：进入宿舍菜单 → 私人休息室；按配置购买每周玫瑰（金币）与蛋糕（钻石，商店复用 `module/shop` 的 `ShopClerk` 框架），再检查每日互动剩余次数（OCR），进入目标舰娘房间执行对话与触摸互动。可选舰娘及所在场景以 `PQInteract.available_targets` 为准；服务器差异以 `PrivateQuarters.not_supported_filter` 为准，TW 服无商店。
+`PrivateQuarters(PQInteract, PQShop)`：进入宿舍菜单 → 宿舍计划；按配置购买每周玫瑰（金币）与蛋糕（钻石，商店复用 `module/shop` 的 `ShopClerk` 框架），再检查每日互动剩余次数（OCR），进入目标舰娘房间执行对话与触摸互动。可选舰娘及所在场景以 `PQInteract.available_targets` 为准；服务器差异以 `PrivateQuarters.not_supported_filter` 为准，TW 服无商店。
 
 进房及对话处理后，`pq_goto_room()` 调用 `_pq_target_appear()`，以三种头顶气泡模板在 `(100, 100)` 偏移范围内确认舰娘就绪。每次检测最多向上微调一次视角，在 `Timer(1.5, count=3)` 窗口内持续截图；超时后退出房间，最多尝试三次。确认就绪才执行最多三次互动，精力耗尽导致互动按钮不出现时按现有超时退出；点击等待及互动阶段超时由 `RunParams.UiWait` 控制。
 

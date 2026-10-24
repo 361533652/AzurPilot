@@ -269,7 +269,6 @@ class GeneratedConfig:
     DropRecord_MeowfficerBuy = 'do_not'  # do_not, save
     DropRecord_MeowfficerTalent = 'do_not'  # do_not, save, upload, save_and_upload
     DropRecord_TelemetryReport = True
-    DropRecord_BugReport = True
 
     # 配置组 `Backup`
     Backup_Enable = True
@@ -1188,7 +1187,13 @@ class GeneratedConfig:
     FleetTech_MaxLevel = 125
     FleetTech_Record = {}
 
+    # 配置组 `FleetRotation`
+    FleetRotation_Enabled = False
+    FleetRotation_Rules = '{}'
+    FleetRotation_State = {}
+
     # 配置组 `FleetInfo`
+    FleetInfo_UpdateEmotion = True
     FleetInfo_Result = {}
     FleetInfo_Record = datetime.datetime(2020, 1, 1, 0, 0)
 

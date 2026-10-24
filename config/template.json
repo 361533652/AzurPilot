@@ -157,8 +157,7 @@
       "OpsiOther": "upload",
       "MeowfficerBuy": "do_not",
       "MeowfficerTalent": "do_not",
-      "TelemetryReport": true,
-      "BugReport": true
+      "TelemetryReport": true
     },
     "Backup": {
       "Enable": true,
@@ -2727,7 +2726,7 @@
       "Command": "PrivateQuarters",
       "SuccessInterval": 30,
       "FailureInterval": 30,
-      "ServerUpdate": "00:00",
+      "ServerUpdate": "03:00",
       "Sensitive": false
     },
     "PrivateQuarters": {
@@ -3788,8 +3787,14 @@
   },
   "FleetInfo": {
     "FleetInfo": {
+      "UpdateEmotion": true,
       "Result": {},
       "Record": "2020-01-01 00:00:00"
+    },
+    "FleetRotation": {
+      "Enabled": false,
+      "Rules": "{}",
+      "State": {}
     },
     "Storage": {
       "Storage": {}

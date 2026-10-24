@@ -118,8 +118,8 @@ const messages = {
 type Key = keyof typeof messages
 type Dictionary = {[K in Key as `fleetTech.${K}`]: string}
 const dictionary = (index: number) => Object.fromEntries(Object.entries(messages).map(([key, values]) => [`fleetTech.${key}`, values[index]!])) as Dictionary
-export const fleetTechZhCN = dictionary(0), fleetTechZhTW = dictionary(1), fleetTechEnUS = dictionary(2), fleetTechJaJP = dictionary(3), fleetTechZhMiao = dictionary(4)
+export const fleetTechZhCN = dictionary(0), fleetTechZhTW = dictionary(1), fleetTechEnUS = dictionary(2), fleetTechJaJP = dictionary(3)
 export function translateFleetTech(language: Language, key: string) {
-  const index = {'zh-CN': 0, 'zh-TW': 1, 'en-US': 2, 'ja-JP': 3, 'zh-MIAO': 4}[language]
+  const index = {'zh-CN': 0, 'zh-TW': 1, 'en-US': 2, 'ja-JP': 3}[language]
   return (messages as Record<string, readonly string[]>)[key]?.[index] ?? key
 }

@@ -575,7 +575,6 @@ DropRecord:
     value: do_not
     option: [do_not, save, upload, save_and_upload]
   TelemetryReport: true
-  BugReport: true
 Backup:
   Enable: true
   KeepDays:
@@ -2506,7 +2505,17 @@ FleetTech:
     value: {}
     display: hide
 
+FleetRotation:
+  Enabled: false
+  Rules:
+    type: textarea
+    value: '{}'
+  State:
+    type: storage
+    value: {}
+
 FleetInfo:
+  UpdateEmotion: true
   Result:
     type: stored
     value: {}

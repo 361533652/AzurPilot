@@ -26,7 +26,6 @@ class TestSchedulerRecovery(unittest.TestCase):
         self.logger = self.enterContext(patch('alas.logger'))
         self.notify = self.enterContext(patch('alas.handle_notify'))
         self.webui = self.enterContext(patch('alas.notify_webui'))
-        self.report = self.enterContext(patch('alas.ApiClient.submit_bug_log'))
         self.sleep = self.enterContext(patch('alas.time.sleep'))
         self.enterContext(patch('alas.del_cached_property'))
         self.enterContext(patch('module.config.utils.is_oobe_needed', return_value=False))
@@ -165,7 +164,6 @@ class TestSchedulerRecovery(unittest.TestCase):
                 if strict and sensitive:
                     with self.assertRaises(SystemExit):
                         self.run_tasks(script, ['OpsiCrossMonth'])
-                    self.report.assert_called_once()
                 else:
                     self.run_tasks(script, ['OpsiCrossMonth'])
                 self.assertEqual(script.failure_record['OpsiCrossMonth'], 1)
@@ -236,7 +234,7 @@ class TestSchedulerRecovery(unittest.TestCase):
         self.run_tasks(script, [RuntimeError('故障一'), 'Restart', RuntimeError('故障二'), 'Restart', RuntimeError('故障三')])
 
         self.assertEqual(self.sleep.call_args_list, [call(20), call(40), call(80)])
-        self.report.assert_called_once()
+        script.save_error_log.assert_called_once()
 
     def test_ordinary_task_success_resets_global_backoff(self):
         script = self.make_script()
