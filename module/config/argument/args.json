@@ -14616,7 +14616,7 @@
       },
       "ServerUpdate": {
         "type": "input",
-        "value": "00:00",
+        "value": "03:00",
         "display": "hide"
       },
       "Sensitive": {

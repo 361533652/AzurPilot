@@ -533,7 +533,7 @@ PrivateQuarters:
   Scheduler:
     SuccessInterval: 30
     FailureInterval: 30
-    ServerUpdate: 00:00
+    ServerUpdate: 03:00
 
 # ==================== Daily ====================
 
