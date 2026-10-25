@@ -1,6 +1,7 @@
 """舰位互换的无OCR操作链、图像定位和参考扫描回归；不连接模拟器。"""
 
 from pathlib import Path
+from copy import deepcopy
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
@@ -151,7 +152,7 @@ class VisualTargetTests(unittest.TestCase):
                 tool.fleet_enter.assert_called_once_with(1, 'surface')
                 tool._open_slot.assert_called_once_with(4, 'surface')
                 tool._scan_category.assert_called_once_with(scanner, max_rows=3)
-                tool.dock_reset.assert_called_once()
+                tool.dock_reset.assert_not_called()
                 tool._close_picker.assert_called_once()
 
     def test_game_morale_sort_selects_first_eligible_source_without_name_or_level_ocr(self):
@@ -470,6 +471,128 @@ class VisualTargetTests(unittest.TestCase):
                     self.assertIn(menu_area(4), [call.args[0].button for call in tool.device.click.call_args_list])
 
 
+class DirectRotationTests(unittest.TestCase):
+    def direct_tool(self):
+        tool = runner()
+        tool.device.image = frame('swap_surface6')
+        tool.device.stuck_record_add = Mock()
+        tool.appear = ModuleBase.appear.__get__(tool)
+        pictures = {category: frame(f'direct_{category}') for category in ('main', 'vanguard')}
+        layout = {'main': [('拉斐尔', 1, 1, 0, 3, 125, 150), ('突击者', 6, 1, 1, 1, 100, 12)],
+                  'vanguard': [('杜威', 1, 4, 1, 5, 100, 150), ('Z20', 6, 4, 1, 6, 100, 12)]}
+        owners, references, records = {}, {}, {'main': {}, 'vanguard': {}}
+        scanner = VisualDockScanner()
+        for category, entries in layout.items():
+            cards = scanner.scan(pictures[category])
+            rows = sorted({card.y for card in cards})
+            for name, fleet, slot, row, column, level, morale in entries:
+                card = next(card for card in cards if card.y == rows[row] and card.col == column)
+                owners[name] = fleet
+                ship = dict(name=name, slot=slot, level=level, emotion=morale, occupied=True)
+                records[category].setdefault(str(fleet), []).append(ship)
+                references[name] = (ship, scanner.portrait(pictures[category], card))
+        tool._rotation_result = deepcopy(records)
+        tool.config.cross_get.return_value = records
+        state = SimpleNamespace(slot=None)
+
+        def open_slot(slot, *args):
+            state.slot = slot
+            tool.device.image = pictures['main' if slot <= 3 else 'vanguard'].copy()
+
+        def scan_category(scanner, **kwargs):
+            category = 'main' if state.slot <= 3 else 'vanguard'
+            pool, portraits = {}, {}
+            for name, *_ in layout[category]:
+                ship, face = references[name]
+                fleet = str(owners[name])
+                pool.setdefault(fleet, []).append(dict(ship))
+                portraits.setdefault(fleet, []).append(face)
+            tool._reference_portraits = portraits
+            return pool
+
+        def confirm(*args):
+            names = [entry[0] for entry in layout['main' if state.slot <= 3 else 'vanguard']]
+            owners[names[0]], owners[names[1]] = owners[names[1]], owners[names[0]]
+            tool.device.image = frame('swap_surface6')
+
+        def pages(scanner, **kwargs):
+            yield scanner.scan(tool.device.image), []
+
+        tool._open_slot.side_effect = open_slot
+        tool._close_picker.side_effect = lambda: setattr(tool.device, 'image', frame('swap_surface6'))
+        tool._scan_category = Mock(side_effect=scan_category)
+        tool._save_result.side_effect = lambda value: setattr(tool, '_rotation_result', deepcopy(value))
+        tool._confirm_replacement.side_effect = confirm
+        tool._dock_pages = Mock(side_effect=pages)
+        tool._capture_formation = Mock(side_effect=AssertionError('智能换船不重复采集详情'))
+        return tool
+
+    def test_fleet_six_scans_four_then_one_and_swaps_one_then_four_without_source_navigation(self):
+        tool = self.direct_tool()
+        readings = tool.prepare_rotation(6)
+        self.assertEqual(readings[6], {1: 12, 4: 12})
+        self.assertEqual(tool._rotation_picker, (6, 1))
+        first = tool.rotate_slot(1, 1, 6)
+        self.assertEqual(first[6], {1: 150, 4: 12})
+        final = tool.rotate_slot(1, 4, 6)
+        tool.finish_rotation()
+        self.assertEqual(final[6], {1: 150, 4: 150})
+        self.assertEqual(final[1], {1: 12, 4: 12})
+        self.assertEqual([call.args[0] for call in tool._open_slot.call_args_list], [4, 1, 1, 4, 4])
+        self.assertEqual(tool._scan_category.call_count, 4)
+        self.assertEqual(tool._dock_pages.call_count, 1)
+        self.assertEqual([call.args[0].name for call in tool.device.click.call_args_list], ['源舰位卡面'] * 2)
+        tool._prepare_dock.assert_called_once()
+        tool.dock_reset.assert_not_called()
+        tool.fleet_enter.assert_not_called()
+        tool._capture_formation.assert_not_called()
+        tool._commit_formation.assert_not_called()
+        self.assertIsNone(tool._rotation_picker)
+
+    def test_duplicate_source_faces_stop_before_click_and_leave_recovery_to_rescan(self):
+        tool = self.direct_tool()
+        tool.prepare_rotation(6)
+        dock, pictures = tool._rotation_pool['main']
+        dock['1'].append(dict(dock['1'][0]))
+        pictures['1'].append(pictures['1'][0].copy())
+        with self.assertRaisesRegex(FleetManagementError, '唯一候选'):
+            tool.rotate_slot(1, 1, 6)
+        tool.device.click.assert_not_called()
+
+    def test_empty_destination_keeps_the_existing_append_and_compaction_validation(self):
+        tool = self.direct_tool()
+        tool.prepare_rotation(6)
+        tool._rotation_result['main']['6'] = []
+
+        class ExistingValidation(Exception):
+            pass
+
+        tool.swap_slots = Mock(side_effect=ExistingValidation)
+        with self.assertRaises(ExistingValidation):
+            tool.rotate_slot(1, 1, 6)
+        tool.swap_slots.assert_called_once_with(1, 1, 6, 1)
+        tool.device.click.assert_not_called()
+
+    def test_unknown_morale_retries_once_without_resetting_sort(self):
+        tool = self.direct_tool()
+        original = tool._scan_category.side_effect
+        calls = []
+
+        def scan(scanner, **kwargs):
+            result = original(scanner, **kwargs)
+            calls.append(tool._rotation_picker[1])
+            if calls == [4]:
+                result['6'][0]['emotion'] = None
+            return result
+
+        tool._scan_category.side_effect = scan
+        readings = tool.prepare_rotation(6)
+        self.assertEqual(readings[6], {1: 12, 4: 12})
+        self.assertEqual(calls, [4, 4, 1])
+        tool._prepare_dock.assert_called_once()
+        tool.dock_reset.assert_not_called()
+
+
 class CommitFormationTests(unittest.TestCase):
     def commit_tool(self, theme=page_main, current='fleet'):
         tool = runner()
@@ -660,7 +783,8 @@ class ScanNavigationTests(unittest.TestCase):
         tool.fleet_enter.assert_not_called()
         self.assertEqual(tool._scan_category.call_count, 3)
         self.assertEqual(tool._capture_formation.call_count, 8)
-        self.assertEqual(tool.dock_reset.call_count, 3)
+        tool.dock_reset.assert_not_called()
+        tool._prepare_dock.assert_called_once()
         tool._save_result.assert_called_once()
         self.assertTrue(tool.dock_filter.reset_first)
 
@@ -915,6 +1039,15 @@ class ReferenceScanTests(unittest.TestCase):
             candidates = [(card, card.y, matcher.score(VisualDockScanner.portrait(dock, card))) for card in cards]
             chosen, _ = choose_portrait(candidates, 4)
             self.assertEqual((chosen.fleet, chosen.col), (4, column))
+
+    def test_direct_picker_frames_confirm_raphael_dewey_and_morale_twelve(self):
+        for category, names in (('main', {'拉斐尔': (1, 125, 150), '突击者': (6, 100, 12)}),
+                                ('vanguard', {'杜威': (1, 100, 150), 'Z20': (6, 100, 12)})):
+            with self.subTest(category=category):
+                cards = FormationDockScanner().scan(frame(f'direct_{category}'))
+                actual = {card.ship['name']: (card.fleet, card.ship['level'], card.ship['emotion']) for card in cards}
+                for name, values in names.items():
+                    self.assertEqual(actual[name], values)
 
     def test_ambiguous_portraits_do_not_assign_morale_using_a_matching_name(self):
         image = frame('detail_surface')

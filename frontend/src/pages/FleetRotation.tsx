@@ -7,7 +7,7 @@ import {ErrorBox, Loading, PageTitle} from '../components/ui'
 
 type Rule = {slots: number[]; sources: number[]}
 type Rules = Record<string, Rule>
-type Progress = Record<string, {last_source?: number; source?: number; done?: number[]; pending?: unknown}>
+type Progress = Record<string, {last_source?: number; source?: number; done?: number[]; pending?: unknown; rescan?: boolean}>
 const numbers = [1, 2, 3, 4, 5, 6]
 const rotationProgress = (value: unknown): Progress => value && typeof value === 'object' && !Array.isArray(value) ? value as Progress : {}
 
@@ -99,7 +99,7 @@ export function FleetRotation() {
       <div className="fleet-column"><h3>{ui('rotation.sources')}</h3><div style={{display: 'flex', flexWrap: 'wrap', gap: 10}}>{numbers.filter(number => number !== fleet).map(number => <label className="checkbox-label" key={number}>
         <input type="checkbox" aria-label={ui('rotation.source', {number})} checked={rules[fleet]!.sources.includes(number)} disabled={disabled} onChange={() => change(fleet, 'sources', number)}/>{number}
       </label>)}</div></div>
-      <div className="fleet-column"><p>{progress[fleet]?.pending && !running ? ui('rotation.uncertain') : progress[fleet]?.source ? ui('rotation.inProgress', {number: progress[fleet]!.source!}) : progress[fleet]?.last_source ? ui('rotation.last', {number: progress[fleet]!.last_source!}) : ui('rotation.none')}</p></div>
+      <div className="fleet-column"><p>{(progress[fleet]?.pending || progress[fleet]?.rescan) && !running ? ui('rotation.uncertain') : progress[fleet]?.source ? ui('rotation.inProgress', {number: progress[fleet]!.source!}) : progress[fleet]?.last_source ? ui('rotation.last', {number: progress[fleet]!.last_source!}) : ui('rotation.none')}</p></div>
     </section>)}</div>}
     <button className="button" disabled={disabled || running || !rules} onClick={() => void save(enabled, true)}>{ui('rotation.reset')}</button>
   </>

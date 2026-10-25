@@ -121,10 +121,12 @@ class FleetEmotionTests(unittest.TestCase):
                      'dock_reset', '_save_result', 'fleet_enter', '_open_slot', '_close_picker'):
             setattr(runner, name, Mock())
         runner._prepare_dock = Mock(side_effect=RuntimeError('筛选失败'))
+        runner._formation_visible = Mock(return_value=False)
         with self.assertRaises(RuntimeError):
             runner.run(update_emotion=False)
         self.assertTrue(runner.dock_filter.reset_first)
-        runner.dock_reset.assert_called_once()
+        runner.dock_reset.assert_not_called()
+        runner._close_picker.assert_called_once()
         runner._save_result.assert_not_called()
 
     def test_real_config_save_and_api_read_preserve_null_and_zero(self):
