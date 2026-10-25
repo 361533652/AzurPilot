@@ -3866,8 +3866,7 @@
   "DockScan": {
     "Dock": {
       "MinLevel": 1,
-      "MaxLevel": 125,
-      "Result": {}
+      "MaxLevel": 125
     },
     "Storage": {
       "Storage": {}
@@ -3875,11 +3874,8 @@
   },
   "MindCalculatorScan": {
     "MindCalculator": {
-      "Analysis": {},
       "MinLevel": 95,
-      "MaxLevel": 125,
-      "Result": {},
-      "FleetTechRecord": {}
+      "MaxLevel": 125
     },
     "Storage": {
       "Storage": {}
@@ -3888,8 +3884,7 @@
   "FleetTechScan": {
     "FleetTech": {
       "MinLevel": 95,
-      "MaxLevel": 125,
-      "Record": {}
+      "MaxLevel": 125
     },
     "Storage": {
       "Storage": {}

@@ -442,4 +442,4 @@ ws.send_json({'v':1,'type':'request','id':'2','method':'events.subscribe',
 
 `dock.report` 只读返回实例共享快照、来源、版本、时间、待核对数和扫描配置；`scan_range` 是已保存快照的实际覆盖范围，`min_level/max_level` 是下一次扫描配置。`dock.configure` 严格校验 `1 ≤ min_level ≤ max_level ≤ 125` 后仅保存配置，不操作设备。`tasks.run(DockScan)` 才显式启动共享扫描。
 
-`mind.report/save` 和 `fleetTech.report/patch` 从同一底账派生，人工编辑保存在各自分析设置中，不互相修改或复制原始快照。旧 `fleetTech.syncMind` 在有共享底账时返回当前报告，不再单独同步。沿用登录、实例隔离、演示只读与版本冲突规则。见 [船坞数据分析](fleet-analysis.md)。
+`mind.report/save` 和 `fleetTech.report/patch` 从同一底账派生，人工编辑保存在各自分析设置中，不互相修改或复制原始快照。扫描批次、逐卡副本与人工设置均保存在 `config/fleet/<实例名>.sqlite3`，报告默认不读取旧任务 JSON 数据。`dock.importLegacy` 仅在用户显式操作后读取当前实例本地 JSON，将旧船坞、心智和科技数据一次性归档并转换为 SQLite；已有数据库值优先，成功提交后清理配置中的旧舰船数据字段，不接受上传或任意文件路径。科技重载合并累计扫描证据与人工设置，人工值优先。旧 `fleetTech.syncMind` 始终只读返回报告，不再复制数据。沿用登录、实例隔离、演示只读与版本冲突规则。见 [船坞数据分析](fleet-analysis.md)。

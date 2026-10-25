@@ -20464,11 +20464,6 @@
         "type": "input",
         "value": 125,
         "validate": "^[1-9][0-9]?$|^1[01][0-9]$|^12[0-5]$"
-      },
-      "Result": {
-        "type": "stored",
-        "value": {},
-        "display": "hide"
       }
     },
     "Storage": {
@@ -20482,11 +20477,6 @@
   },
   "MindCalculatorScan": {
     "MindCalculator": {
-      "Analysis": {
-        "type": "stored",
-        "value": {},
-        "display": "hide"
-      },
       "MinLevel": {
         "type": "input",
         "value": 95,
@@ -20496,16 +20486,6 @@
         "type": "input",
         "value": 125,
         "validate": "^[1-9][0-9]?$|^1[01][0-9]$|^12[0-5]$"
-      },
-      "Result": {
-        "type": "stored",
-        "value": {},
-        "display": "hide"
-      },
-      "FleetTechRecord": {
-        "type": "stored",
-        "value": {},
-        "display": "hide"
       }
     },
     "Storage": {
@@ -20528,11 +20508,6 @@
         "type": "input",
         "value": 125,
         "validate": "^[1-9][0-9]?$|^1[01][0-9]$|^12[0-5]$"
-      },
-      "Record": {
-        "type": "stored",
-        "value": {},
-        "display": "hide"
       }
     },
     "Storage": {
