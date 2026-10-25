@@ -1189,6 +1189,7 @@ class GeneratedConfig:
 
     # 配置组 `FleetRotation`
     FleetRotation_Enabled = False
+    FleetRotation_SelectedOnly = False
     FleetRotation_Rules = '{}'
     FleetRotation_State = {}
 

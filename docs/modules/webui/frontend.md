@@ -16,10 +16,12 @@
 舰队信息的[桌面截图](images/fleet-management-desktop.png)与[手机截图](images/fleet-management-mobile.png)
 来自隔离服务及合成记录，只验证舰位、未知心情和扫描选项展示，不代表实际账号操作。
 
-「舰队管理」另有 `/i/:instance/task/FleetRotation` 智能换船页面，属于独立配置页，
+「舰队管理」另有 `/i/:instance/task/FleetRotation`「智能换船-心情控制」页面，属于独立配置页，
 不注册游戏任务，也不显示调度状态或启动任务按钮。顶部启用开关默认关闭；六支水面
 舰队的36个舰位默认均为“不变”，可逐位改为“换船”，并为每支目标队多选候补队。
-规则保存到 `FleetInfo.FleetRotation.Enabled/Rules`，不调用 `tasks.run`。页面显示已保存
+新增默认关闭的“仅计算更换舰船心情”：开启时忽略固定低心情，关闭时全队最低心情决定等待；
+两种模式都单独计算培养舰位，按任务的保持经验加成、防绿脸等要求换船，不添加另一条心情线。
+规则保存到 `FleetInfo.FleetRotation.Enabled/SelectedOnly/Rules`，不调用 `tasks.run`。页面显示已保存
 的上次来源与本轮进度，任务运行时只刷新进度，不覆盖尚未保存的规则编辑。
 清空记录按钮仅在任务停止时可用，不允许直接改写内部进度。当前效果见
 [桌面截图](images/fleet-rotation-desktop.png)与[手机截图](images/fleet-rotation-mobile.png)，

@@ -1,6 +1,40 @@
 import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 
+test('智能换船-心情控制独立保存仅计算培养舰船开关', async ({page}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('azurpilot.language', 'zh-CN')
+    localStorage.setItem('azurpilot.theme', 'light')
+  })
+  const requests: string[] = []
+  await page.routeWebSocket('**/api/v1/ws', socket => {
+    const server = socket.connectToServer()
+    socket.onMessage(message => {requests.push(JSON.parse(String(message)).method); server.send(message)})
+    server.onMessage(message => socket.send(message))
+  })
+  await page.goto('/#/i/demo-main/task/FleetRotation')
+  await expect(page.getByRole('heading', {name: '智能换船-心情控制', exact: true})).toBeVisible()
+  const selected = page.getByRole('checkbox', {name: '仅计算更换舰船心情', exact: true})
+  await expect(selected).not.toBeChecked()
+  await expect(page.getByRole('spinbutton')).toHaveCount(0)
+  await selected.check()
+  await page.getByRole('button', {name: '保存规则', exact: true}).click()
+  await expect(page.getByText('换船规则已保存', {exact: true})).toBeVisible()
+  await page.reload()
+  await expect(selected).toBeChecked()
+  await page.screenshot({path: 'test-results/rotation-morale-desktop.png', fullPage: true, animations: 'disabled'})
+  await page.setViewportSize({width: 390, height: 844})
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await selected.uncheck()
+  await page.getByRole('button', {name: '保存规则', exact: true}).click()
+  await expect(page.getByText('换船规则已保存', {exact: true})).toBeVisible()
+  await page.reload()
+  await expect(selected).not.toBeChecked()
+  await page.screenshot({path: 'test-results/rotation-morale-mobile.png', fullPage: true, animations: 'disabled'})
+  expect(requests).not.toContain('tasks.run')
+  expect(requests).not.toContain('scheduler.start')
+})
+
 test('自动换装备页面默认关闭并可独立保存舰种码与开关', async ({page}) => {
   await page.addInitScript(() => {
     localStorage.setItem('azurpilot.language', 'zh-CN')

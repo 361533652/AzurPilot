@@ -6791,12 +6791,16 @@
   },
   "FleetRotation": {
     "_info": {
-      "name": "Smart ship rotation",
+      "name": "Smart rotation - morale control",
       "help": "Normal main and event stages only; disabled by default."
     },
     "Enabled": {
-      "name": "Enable ship rotation",
+      "name": "Enable smart rotation - morale control",
       "help": "Normal main and event stages only; disabled by default."
+    },
+    "SelectedOnly": {
+      "name": "Calculate morale for rotating ships only",
+      "help": "Off by default. When enabled, only selected slots control morale waiting and rotation; warnings from fixed ships may be confirmed. When disabled, wait for the whole fleet minimum. Both modes track training ships and retain task morale controls for rotation."
     },
     "Rules": {
       "name": "Rotation rules",

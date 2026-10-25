@@ -20075,6 +20075,10 @@
         "type": "checkbox",
         "value": false
       },
+      "SelectedOnly": {
+        "type": "checkbox",
+        "value": false
+      },
       "Rules": {
         "type": "textarea",
         "value": "{}"

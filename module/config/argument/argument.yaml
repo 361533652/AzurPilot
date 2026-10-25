@@ -2507,6 +2507,7 @@ FleetTech:
 
 FleetRotation:
   Enabled: false
+  SelectedOnly: false
   Rules:
     type: textarea
     value: '{}'

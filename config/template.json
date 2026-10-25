@@ -3793,6 +3793,7 @@
     },
     "FleetRotation": {
       "Enabled": false,
+      "SelectedOnly": false,
       "Rules": "{}",
       "State": {}
     },
