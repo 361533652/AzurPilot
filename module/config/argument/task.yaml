@@ -475,6 +475,7 @@ FleetManagement:
     FleetInfo:
       - FleetInfo
       - FleetRotation
+      - FleetEquipment
 
 # ==================== Run Params ====================
 

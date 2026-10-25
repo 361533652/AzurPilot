@@ -4,11 +4,13 @@ from copy import deepcopy
 
 from module.combat.emotion import Emotion
 from module.config.time_source import now
+from module.equipment.fleet_rotation import FleetRotationEquipment
 from module.exception import FleetManagementError, GameStuckError, GameTooManyClickError, RequestHumanTakeover
 from module.logger import logger
 from module.retire.fleet_management import FleetManagement
 from module.runtime.fleet_rotation import (ROTATION_PATH, active_fleets, begin_round, calibration_changes,
                                          minimum_morale, parse_rules, rank_sources, recorded_morale, supported)
+from module.runtime.fleet_equipment import EQUIPMENT_PATH
 
 
 def _required(emotion, role, battle):
@@ -46,11 +48,13 @@ def preflight_rotation(runner, battle, mode):
     states = deepcopy(config.cross_get(ROTATION_PATH + '.State', {}))
     if not isinstance(states, dict):
         states = {}
-    # 其他任务也可能使用本轮的来源队；它的舰船已改变，不能拿旧心情继续出击。
+    recovering = set()
     for target, progress in states.items():
-        if (isinstance(progress, dict) and progress.get('source') in active.values()
-                and int(target) not in active.values()):
-            raise FleetManagementError(f'第{target}舰队的轮换尚未完成，来源队不能使用旧心情出击')
+        if isinstance(progress, dict) and (progress.get('pending') or progress.get('rescan') or
+                (progress.get('source') and (not progress.get('paused') or
+                 progress.get('rule') != rules.get(target) or progress.get('policy') != 'same_slot_morale_v1'))):
+            recovering.add(int(target))
+            states[target] = {'rescan': True}
     selected = {role: actual for role, actual in active.items()
                 if rules.get(str(actual), {}).get('slots') and rules[str(actual)].get('sources')}
     manager = None
@@ -62,11 +66,23 @@ def preflight_rotation(runner, battle, mode):
     if context.get('task') != task:
         context.clear()
         context['task'] = task
+    if recovering:
+        logger.info('自动清理上轮未完成记录，按实际编队重新扫描，不重复已恢复心情的舰位')
+        config.cross_set(ROTATION_PATH + '.State', states)
+        context['scanned'] = False
+        context.pop('portraits', None)
     fresh = not context.get('scanned', False)
+    current_fleet = None
+    equipment_enabled = config.cross_get(EQUIPMENT_PATH + '.Enabled', False) is True
+    equipment_used = False
     try:
         fresh_readings = {}
-        if fresh:
+        if equipment_enabled and config.cross_get(EQUIPMENT_PATH + '.State', {}):
             manager = FleetManagement(config=config, device=runner.device)
+            FleetRotationEquipment(manager).recover_page()
+        if fresh:
+            if manager is None:
+                manager = FleetManagement(config=config, device=runner.device)
             visited = True
             manager.run(update_emotion=True)
             result = config.cross_get('FleetInfo.FleetInfo.Result', {})
@@ -74,7 +90,18 @@ def preflight_rotation(runner, battle, mode):
             config.cross_set_many(calibration_changes(config.data,
                 {fleet: values for fleet, values in fresh_readings.items() if values}, now()))
             context['scanned'] = True
+            context['portraits'] = manager.__dict__.get('_slot_portraits', {})
+            for fleet in recovering:
+                states.pop(str(fleet), None)
+            config.cross_set(ROTATION_PATH + '.State', states)
+        if equipment_enabled and config.cross_get(EQUIPMENT_PATH + '.State', {}):
+            if manager is None:
+                manager = FleetManagement(config=config, device=runner.device)
+            visited = True
+            FleetRotationEquipment(manager).apply_pending()
+            equipment_used = True
         for role, fleet in selected.items():
+            current_fleet = fleet
             # 前一个角色可能刚从本角色的实际舰队换走舰船，不能继续使用旧快照。
             emotion.update()
             rule = rules[str(fleet)]
@@ -87,36 +114,50 @@ def preflight_rotation(runner, battle, mode):
             continuing = bool(previous.get('source') or previous.get('pending'))
             if not fresh and not continuing and emotion.is_calculate and tracker.state is not None and tracker.lower >= needed:
                 continue
+            if fresh and not continuing and minimum_morale(fresh_readings[fleet]) is not None:
+                if minimum_morale(fresh_readings[fleet]) >= needed:
+                    continue
             visited = True
             if manager is None:
                 manager = FleetManagement(config=config, device=runner.device)
+                manager._slot_portraits = context.get('portraits', {})
+            snapshots = manager.prepare_rotation(fleet)
+            readings = snapshots[fleet]
+            minimum = minimum_morale(readings)
+            if minimum is None:
+                logger.warning('目标队实际心情未读全，不执行换船，沿用原出击检查')
+                manager.finish_rotation()
+                continue
+            config.cross_set_many(calibration_changes(config.data, snapshots, now()))
+            if not continuing and minimum >= needed:
+                manager.finish_rotation()
+                continue
+            if fleet in recovering:
+                # 出错前可能已经换入；重新实测后只处理仍不足的已勾选舰位。
+                rule = dict(rule, slots=[slot for slot in rule['slots'] if readings.get(slot, 150) < needed])
             if continuing:
                 try:
                     progress = begin_round(rule, previous)
                 except ValueError as exc:
                     raise FleetManagementError(str(exc)) from exc
             else:
-                readings = fresh_readings[fleet] if fresh else manager.read_fleet_morale(fleet)
-                minimum = minimum_morale(readings)
-                if minimum is None:
-                    logger.warning('目标队实际心情未读全，不执行换船，沿用原出击检查')
-                    continue
-                config.cross_set_many(calibration_changes(config.data, {fleet: readings}, now()))
-                if minimum >= needed:
-                    continue
-                candidates = {source: fresh_readings[source] if fresh else manager.read_fleet_morale(source)
-                              for source in rule['sources']}
-                config.cross_set_many(calibration_changes(config.data, candidates, now()))
-                order = rank_sources(rule, candidates, needed)
+                order = rank_sources(rule, snapshots, needed)
                 progress = begin_round(rule, previous, order)
                 if progress is None:
                     logger.warning('候补队没有满足心情及对应舰位的舰船，保留当前编队并沿用原心情检查')
+                    manager.finish_rotation()
                     continue
                 logger.attr('候补队心情优先级', order)
             source = progress['source']
             states[str(fleet)] = progress
             config.cross_set(ROTATION_PATH + '.State', states)
             logger.hr(f'智能换船：第{fleet}舰队使用候补第{source}舰队', level=1)
+            equipment = None
+            remaining = [slot for slot in rule['slots'] if slot not in progress['done']]
+            if equipment_enabled and remaining:
+                equipment = FleetRotationEquipment(manager)
+                equipment.clear_outgoing(fleet, remaining)
+                equipment_used = True
             paused = False
             for slot in rule['slots']:
                 if slot in progress['done']:
@@ -128,26 +169,35 @@ def preflight_rotation(runner, battle, mode):
                 # 先记下即将执行的互换。进程中断后不能猜测已交换还是尚未交换。
                 progress['pending'] = dict(slot=slot, source_slot=source_slot)
                 config.cross_set(ROTATION_PATH + '.State', states)
-                manager.swap_slots(source, source_slot, fleet, slot)
+                snapshots = manager.rotate_slot(source, slot, fleet)
+                config.cross_set_many(calibration_changes(config.data,
+                    {number: snapshots[number] for number in (fleet, source)}, now()))
                 progress['done'].append(slot)
                 progress['pending'] = None
                 config.cross_set(ROTATION_PATH + '.State', states)
-            # 如果最后读取失败，已完成舰位仍保留；重试仅补核对，不再换一遍。
-            readings = {fleet: manager.read_fleet_morale(fleet, first_slot=1),
-                        source: manager.read_fleet_morale(source)}
-            changes = calibration_changes(config.data, readings, now())
-            config.cross_set_many(changes)
+            # 最后一个舰位已刷新当前排，直接使用累计快照，不再重扫前后排或详情。
+            readings = {number: snapshots[number] for number in (fleet, source)}
             if any(minimum_morale(values) is None for values in readings.values()):
-                raise FleetManagementError('互换已经完成，最低心情尚未读全；下次仅重试核对')
+                raise FleetManagementError('互换后心情未读全，下次自动重新扫描实际编队')
+            if equipment is not None:
+                # 即使中途关闭换船，也先补回已经卸装的当前舰位，避免空装出击。
+                equipment.apply_pending()
             if not paused:
                 states[str(fleet)] = dict(last_source=source, completed_at=now().isoformat(timespec='seconds'))
+            else:
+                progress['paused'] = True
             config.cross_set(ROTATION_PATH + '.State', states)
+            manager.finish_rotation()
+            context['portraits'] = manager.__dict__.get('_slot_portraits', {})
             fresh = False
             book = emotion.map_is_2x_book
             emotion = Emotion(config)
             emotion.map_is_2x_book = book
             # 本轮到此结束，心情仍低则交给原有延迟逻辑，不连续轮换下一来源。
         if visited:
+            manager.finish_rotation()
+            if equipment_used:
+                manager._commit_formation()
             config.update()
             runner.config.update()
             campaign.emotion = Emotion(config)
@@ -161,6 +211,9 @@ def preflight_rotation(runner, battle, mode):
                    for number in (int(target), progress['source'])}
         if changed:
             config.cross_set_many(calibration_changes(config.data, changed, now()))
-        if isinstance(exc, FleetManagementError):
-            raise
-        raise FleetManagementError(f'智能换船未确认完成，保留轮换记录以避免重复交换：{exc}') from exc
+        if current_fleet is not None:
+            states[str(current_fleet)] = {'rescan': True}
+        config.cross_set(ROTATION_PATH + '.State', states)
+        context['scanned'] = False
+        context.pop('portraits', None)
+        raise FleetManagementError(f'智能换船本次未完成，下次自动清理并重扫实际编队：{exc}') from exc
