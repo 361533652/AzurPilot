@@ -61,7 +61,8 @@ def preflight_rotation(runner, battle, mode):
             recovering.add(int(target))
             states[target] = {'rescan': True}
     selected = {role: actual for role, actual in active.items()
-                if rules.get(str(actual), {}).get('slots') and rules[str(actual)].get('sources')}
+                if rules.get(str(actual), {}).get('slots') and rules[str(actual)].get('sources')
+                and _required(campaign.emotion, role, battle)[1] is not None}
     manager = None
     emotion = campaign.emotion
     emotion.update()

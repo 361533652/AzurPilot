@@ -312,6 +312,19 @@ class RotationIntegrationTests(unittest.TestCase):
         self.assertEqual(['1'], self.config.Emotion_RecoveryWait)
         self.assertGreater(self.config.Scheduler_NextRun - datetime.now(), timedelta(minutes=70))
 
+    def test_zero_battle_training_role_does_not_block_selected_only_popup(self):
+        self.config.cross_set_many({ROTATION_PATH + '.SelectedOnly': True,
+                                    ROTATION_PATH + '.Rules': json.dumps({'1': RULE, '2': RULE}),
+                                    'Main.Fleet.FleetOrder': 'fleet1_mob_fleet2_boss'})
+        self.live[2][1] = 0
+        preflight_rotation(self.runner, 1, 'normal')
+        self.assertEqual({2: 2}, self.campaign.emotion.selected)
+        self.campaign.emotion.check_reduce(1)
+        handler = self.popup_handler(self.campaign.emotion)
+        self.assertTrue(InfoHandler.handle_combat_low_emotion(handler))
+        handler.handle_popup_cancel.assert_not_called()
+        self.manager.rotate_slot.assert_not_called()
+
     def test_disabling_selected_only_restores_original_task_check_and_mode_change_rescans(self):
         self.morale_policy()
         self.config.cross_set(ROTATION_PATH + '.SelectedOnly', False)
