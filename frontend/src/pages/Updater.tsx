@@ -28,14 +28,14 @@ export function Updater() {
   const local = data?.localHead, upstream = data?.upstreamHead
   useEffect(() => {setOffset(0)}, [local, upstream])
   useEffect(() => {
-    if (connection !== 'ready' || local === undefined || data?.managedByAndroid) return
+    if (connection !== 'ready' || local === undefined || (data?.managedByAndroid || data?.managedByLauncher)) return
     let active = true
     setLoading(true); setError('')
     void api.request('updater.commits', {offset, limit: 50}).then(value => {
       if (active) setHistory(value)
     }).catch(error => {if (active) setError(error.message)}).finally(() => {if (active) setLoading(false)})
     return () => {active = false}
-  }, [connection, data?.managedByAndroid, local, upstream, offset, retry])
+  }, [connection, data?.managedByAndroid, data?.managedByLauncher, local, upstream, offset, retry])
   async function act(method: 'updater.fetch' | 'updater.apply' | 'updater.cancel') {
     setBusy(true); setError('')
     try {await api.request(method, {}); refresh()}
@@ -49,9 +49,10 @@ export function Updater() {
   const disabled = busy || connection !== 'ready' || !data || data.busy
   const statusLabel = !local || !upstream ? ui('updater.noVersion') : data?.state === 'failed' ? ui('updater.state.failed') : data?.available && !data.busy ? ui('updater.state.available') : states[data?.state ?? ''] ? ui(states[data?.state ?? '']) : data?.state
   return <>
-    <PageTitle title={ui('nav.updater')} actions={data?.managedByAndroid ? undefined : <><button className="button" disabled={disabled} onClick={() => void act('updater.fetch')}><RefreshCw size={16} className={data?.state === 'fetch' || data?.state === 'checking' ? 'spin' : ''}/>{ui('updater.fetch')}</button><button className="button primary" disabled={disabled || !data?.canApply} onClick={requestUpdate}><Download size={16}/>{ui('updater.update')}</button>{data?.canCancel && <button className="button" disabled={busy || connection !== 'ready'} onClick={() => void act('updater.cancel')}><X size={16}/>{ui('updater.cancel')}</button>}</>}/>
+    <PageTitle title={ui('nav.updater')} actions={data?.managedByAndroid || data?.managedByLauncher ? undefined : <><button className="button" disabled={disabled} onClick={() => void act('updater.fetch')}><RefreshCw size={16} className={data?.state === 'fetch' || data?.state === 'checking' ? 'spin' : ''}/>{ui('updater.fetch')}</button><button className="button primary" disabled={disabled || !data?.canApply} onClick={requestUpdate}><Download size={16}/>{ui('updater.update')}</button>{data?.canCancel && <button className="button" disabled={busy || connection !== 'ready'} onClick={() => void act('updater.cancel')}><X size={16}/>{ui('updater.cancel')}</button>}</>}/>
     {(error || statusError || data?.error) && <ErrorBox message={error || statusError || data?.error || ''} retry={() => {refresh(); setRetry(value => value + 1)}}/>}
     {!data ? <Loading/> : <>
+      {data.managedByLauncher && <section className="panel"><p>{ui('updater.launcherManaged')}</p></section>}
       {data.managedByAndroid && <section className="panel"><p>{ui('updater.androidManaged')}</p></section>}
       <div className="head-grid">{[
         {label: ui('updater.localHead'), sha: local, isLocal: true},
@@ -69,7 +70,7 @@ export function Updater() {
       </div>)}</div>
       {data.shaMismatch ? <p className="mismatch-note" role="alert"><TriangleAlert size={15}/><span>{ui('updater.shaMismatch.banner')}</span></p>
         : data.ahead > 0 && <p className="muted">{ui('updater.aheadCommits', {count: data.ahead})}</p>}
-      {!data.managedByAndroid && <section className="panel commit-panel"><div className="panel-heading"><div><GitCommitHorizontal size={18}/><h2>{ui('updater.commits')}</h2><span className="count-badge">{history?.total ?? '—'}</span></div>
+      {!data.managedByAndroid && !data.managedByLauncher && <section className="panel commit-panel"><div className="panel-heading"><div><GitCommitHorizontal size={18}/><h2>{ui('updater.commits')}</h2><span className="count-badge">{history?.total ?? '—'}</span></div>
         <div className="branch-summary"><GitBranch size={16}/><span>{data.branch}</span></div>
       </div>
         {loading ? <Loading/> : history?.entries.length ? <div className="commit-list">{history.entries.map(commit => <article className="commit-row" key={commit.sha}>
