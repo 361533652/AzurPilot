@@ -109,6 +109,11 @@ class Updater(DeployConfig, GitManager):
             当 n=1 时返回 (sha1, author, isotime, message) 元组；
             当 n>1 时返回包含上述元组的列表；若无提交则返回包含 None 的元组。
         """
+        from module.runtime.prebuilt import is_prebuilt, build_manifest
+        if is_prebuilt():
+            sha = build_manifest().get('azurpilot_commit')
+            item = (sha[:8] if sha and short_sha1 else sha, None, None, 'CI runtime components')
+            return item if n == 1 else [item]
         ph = "h" if short_sha1 else "H"
 
         log = self.execute_output(
@@ -288,7 +293,7 @@ class Updater(DeployConfig, GitManager):
     def check_update(self):
         """触发更新检查线程。"""
         # Android 运行时没有 .git，源码、前端和兼容清单由宿主整包切换。
-        if os.environ.get('AZURPILOT_ANDROID') == '1':
+        if os.environ.get('AZURPILOT_ANDROID') == '1' or os.environ.get('AZURPILOT_PREBUILT') == '1':
             self.state = 0
             return
         if self.state in (0, "failed", "finish"):
@@ -354,6 +359,9 @@ class Updater(DeployConfig, GitManager):
         Returns:
             更新成功或跳过返回 True，执行失败返回 False。
         """
+        if os.environ.get('AZURPILOT_PREBUILT') == '1':
+            logger.info('此版本的组件由桌面启动器管理，请停止服务后重新启动以获取更新')
+            return False
         if not hasattr(self, "_update_lock"):
             self._update_lock = threading.Lock()
         with self._update_lock:

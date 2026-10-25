@@ -17,6 +17,7 @@ export interface UpdateStatus {
   /** 本地与更新源历史互不包含（例如镜像重写历史导致 SHA 分离），更新前需弹窗确认。 */
   shaMismatch?: boolean
   managedByAndroid?: boolean
+  managedByLauncher?: boolean
 }
 interface Commit { sha: string; author: string; date: string; message: string }
 export interface CommitHistory { entries: Commit[]; total: number; hasMore: boolean; localHead: string | null; upstreamHead: string | null }
