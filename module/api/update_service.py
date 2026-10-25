@@ -144,13 +144,6 @@ class UpdateService:
             dict: 包含当前分支、本地/上游提交哈希、超前/落后提交数、是否可更新以及
                 是否正忙等状态字典。
         """
-        from module.runtime.prebuilt import is_prebuilt, build_manifest
-        if is_prebuilt():
-            commit = build_manifest(self.root).get('azurpilot_commit')
-            return {'state': 'idle', 'localHead': commit, 'upstreamHead': commit,
-                    'branch': 'master', 'ahead': 0, 'behind': 0, 'available': False,
-                    'busy': False, 'error': '', 'canApply': False, 'canCancel': False,
-                    'shaMismatch': False, 'managedByAndroid': False, 'managedByLauncher': True}
         if self.android:
             manifest = self.android_manifest()
             commit = manifest.get('azurpilot_commit')
@@ -196,10 +189,6 @@ class UpdateService:
         Returns:
             dict: 包含提交条目列表、历史总数、是否还有更多以及两端 HEAD 哈希的字典。
         """
-        from module.runtime.prebuilt import is_prebuilt, build_manifest
-        if is_prebuilt():
-            commit = build_manifest(self.root).get('azurpilot_commit')
-            return {'entries': [], 'total': 0, 'hasMore': False, 'localHead': commit, 'upstreamHead': commit}
         if self.android:
             local = self.android_manifest().get('azurpilot_commit')
             return {'entries': [], 'total': 0, 'hasMore': False,
@@ -233,9 +222,6 @@ class UpdateService:
             ApiError: Android 环境不支持更新、更新器正忙 (UPDATE_BUSY)、
                 当前状态不可更新 (UPDATE_UNAVAILABLE) 或无法启动线程 (UPDATE_FAILED)。
         """
-        from module.runtime.prebuilt import is_prebuilt
-        if is_prebuilt():
-            raise ApiError('UPDATE_MANAGED_BY_LAUNCHER', '请停止服务并重新启动桌面启动器以更新组件')
         if self.android:
             raise ApiError('UPDATE_MANAGED_BY_ANDROID', 'Android 版由宿主在启动时执行整包更新')
         with self.lock:
@@ -293,9 +279,6 @@ class UpdateService:
         Raises:
             ApiError: Android 环境不支持更新或当前阶段无法取消 (UPDATE_UNAVAILABLE)。
         """
-        from module.runtime.prebuilt import is_prebuilt
-        if is_prebuilt():
-            raise ApiError('UPDATE_MANAGED_BY_LAUNCHER', '组件部署由桌面启动器管理')
         if self.android:
             raise ApiError('UPDATE_MANAGED_BY_ANDROID', 'Android 版由宿主在启动时执行整包更新')
         if self.updater.state not in ('start', 'wait'):

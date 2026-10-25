@@ -235,8 +235,6 @@ def ensure_frontend(root=None):
     fingerprint = source_fingerprint(directory)
     if (directory / 'dist/index.html').is_file() and marker.is_file() and marker.read_text().strip() == fingerprint:
         return
-    if os.environ.get('AZURPILOT_PREBUILT') == '1':
-        raise RuntimeError('预构建前端缺失或与源码不匹配，请通过桌面启动器重新部署')
     if os.environ.get('AZURPILOT_ANDROID') == '1':
         # 安卓永不本地编译：宿主按提交发布预构建 dist，缺失即报错，
         # 更新服务在应用前会先探测 dist 可用性，正常流程不会走到这里。
