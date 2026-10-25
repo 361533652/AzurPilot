@@ -151,6 +151,7 @@
     "page": "tool",
     "tasks": [
       "FleetScan",
+      "DockScan",
       "MindCalculatorScan",
       "FleetTechScan",
       "Daemon",

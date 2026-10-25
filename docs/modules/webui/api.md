@@ -436,3 +436,10 @@ ws.send_json({'v':1,'type':'request','id':'2','method':'events.subscribe',
 游戏历史后台每 250 毫秒检查文件修改状态，新记录立即转发；待传月份完整签名并连续补传，无 15 秒节流、1024 点或 3 秒配额。断网时指数退避，日志、身份、哈希链及跨实例隔离语义保留。同步完整性只涵盖已采集、保存且认证通过的记录。
 
 玩家数据校验仅阻断交易请求与同步，不阻断配置管理、实例创建/复制/导入/删除或普通调度资源事务。`stock.rebuild` 默认预览 `{instance,scope,affectedInstances,rebuilt:false}`；确认实际范围后用 `confirm=true` 和同一 `scope` 重建。单实例身份和历史错误只重建当前账户，共享密钥、登记或绑定损坏时范围为所有本地账户；范围变化返回 `STOCK_REBUILD_SCOPE_CHANGED`，不得自动扩大。先备份原件，再清理本地交易身份、绑定、会话与历史，保留配置及普通运行数据。重建不释放或转移远端永久绑定，新身份重新开户须使用新用户名。入参与结果见 [前端 API](../../../frontend/API.md#原生证券交易终端)。
+
+
+## 船坞共享扫描与数据分析
+
+`dock.report` 只读返回实例共享快照、来源、版本、时间、待核对数和扫描配置；`scan_range` 是已保存快照的实际覆盖范围，`min_level/max_level` 是下一次扫描配置。`dock.configure` 严格校验 `1 ≤ min_level ≤ max_level ≤ 125` 后仅保存配置，不操作设备。`tasks.run(DockScan)` 才显式启动共享扫描。
+
+`mind.report/save` 和 `fleetTech.report/patch` 从同一底账派生，人工编辑保存在各自分析设置中，不互相修改或复制原始快照。旧 `fleetTech.syncMind` 在有共享底账时返回当前报告，不再单独同步。沿用登录、实例隔离、演示只读与版本冲突规则。见 [船坞数据分析](fleet-analysis.md)。

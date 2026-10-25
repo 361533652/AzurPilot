@@ -15,6 +15,8 @@ export interface Parameters {
   "config.export": { instance: string }
   "config.patch": { instance: string; revision?: string | null; changes: Array<{ path: string; value: unknown }> }
   "overview.get": { instance: string }
+  "dock.report": { instance: string }
+  "dock.configure": { instance: string; min_level: number; max_level: number }
   "mind.catalog": { instance: string }
   "fleetTech.catalog": { instance: string }
   "fleetTech.report": { instance: string }

@@ -124,6 +124,12 @@ def _partial_update_schema(schema):
         field.pop('default', None)
 
 
+class DockConfigureParams(InstanceParams):
+    """共享扫描范围；跨字段校验由服务在事务内执行。"""
+    min_level: int = Field(ge=1, le=125, strict=True)
+    max_level: int = Field(ge=1, le=125, strict=True)
+
+
 class FleetTechChange(Params):
     """只修改明确提供的人工字段；恢复自动记录使用独立标记。"""
     model_config = ConfigDict(extra='forbid', strict=True, json_schema_extra=_partial_update_schema)

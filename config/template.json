@@ -3863,8 +3863,19 @@
       "Storage": {}
     }
   },
+  "DockScan": {
+    "Dock": {
+      "MinLevel": 1,
+      "MaxLevel": 125,
+      "Result": {}
+    },
+    "Storage": {
+      "Storage": {}
+    }
+  },
   "MindCalculatorScan": {
     "MindCalculator": {
+      "Analysis": {},
       "MinLevel": 95,
       "MaxLevel": 125,
       "Result": {},

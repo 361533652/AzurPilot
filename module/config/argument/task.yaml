@@ -497,6 +497,8 @@ Tool:
   page: tool
   tasks:
     FleetScan: []
+    DockScan:
+      - Dock
     MindCalculatorScan:
       - MindCalculator
     FleetTechScan:

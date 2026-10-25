@@ -52,6 +52,7 @@ export function createMockState({ empty = false } = {}) {
   const instances = new Map()
   const mindShips = new Map()
   const fleetRecords = new Map()
+  const dockRanges = new Map()
   function fleetPython(action, params) {
     const fields = get(params.instance).values.FleetTechScan.FleetTech
     const output = mindPython(`tech.${action}`, {...params, ships: mindShips.get(params.instance) ?? [],
@@ -550,6 +551,14 @@ export function createMockState({ empty = false } = {}) {
         return snapshot(name)
       }
       case 'overview.get': return overview(name)
+      case 'dock.configure': {
+        if (params.min_level > params.max_level) fail('INVALID_PARAMS', '最低等级不能大于最高等级')
+        if (get(name).status === 'running') fail('INSTANCE_RUNNING', '实例运行中')
+        dockRanges.set(name, {min_level: params.min_level, max_level: params.max_level})
+        return dispatch('dock.report', {instance: name})
+      }
+      case 'dock.report': return {instance: name, revision: 'mock-dock', updated_at: null,
+        ...dockRanges.get(name) ?? {min_level: 1, max_level: 125}, ships: [], complete: false, review_count: 0, source: 'empty'}
       case 'mind.catalog': return mindPython('catalog', params)
       case 'fleetTech.catalog': return fleetPython('catalog', params)
       case 'fleetTech.report': return fleetPython('report', params)
@@ -574,7 +583,7 @@ export function createMockState({ empty = false } = {}) {
       case 'stock.request': return stock.request(name,params)
       case 'scheduler.start': case 'tasks.run':
         if (get(name).status === 'running') fail('INSTANCE_RUNNING', '实例已在运行')
-        if (method === 'tasks.run' && !['FleetScan', 'StorageStatistics'].includes(params.task) && !Object.values(menu).some(group => group.page === 'tool' && group.tasks.includes(params.task))) fail('INVALID_PARAMS', '该任务不支持单独运行')
+        if (method === 'tasks.run' && !['FleetScan', 'StorageStatistics', 'DockScan'].includes(params.task) && !Object.values(menu).some(group => group.page === 'tool' && group.tasks.includes(params.task))) fail('INVALID_PARAMS', '该任务不支持单独运行')
         get(name).status = 'running'; get(name).currentTask = params.task ?? 'Commission'; log(name, '模拟调度器已启动。')
         return overview(name)
       case 'scheduler.stop':

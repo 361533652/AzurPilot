@@ -147,7 +147,15 @@ export interface LauncherStatus {
   autostart: {supported: boolean; enabled: boolean | null}; commands: LauncherCommand[]
 }
 
+export interface DockReport {
+  scan_range?: {min_level: number; max_level: number}
+  instance: string; revision: string; updated_at: string | null; min_level: number; max_level: number
+  ships: MindShip[]; complete: boolean; review_count: number; source: string
+}
+
 export interface Results {
+  'dock.report': DockReport
+  'dock.configure': DockReport
   'launcher.status': LauncherStatus
   'launcher.autostart.set': {commandId: string; status: 'pending'}
   'launcher.command.get': LauncherCommand

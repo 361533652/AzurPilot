@@ -345,6 +345,60 @@
         "type": "object"
       }
     },
+    "dock.report": {
+      "mutates": false,
+      "params": {
+        "additionalProperties": false,
+        "description": "单实例操作通用入参模型。",
+        "properties": {
+          "instance": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Instance",
+            "type": "string"
+          }
+        },
+        "required": [
+          "instance"
+        ],
+        "title": "InstanceParams",
+        "type": "object"
+      }
+    },
+    "dock.configure": {
+      "mutates": true,
+      "params": {
+        "additionalProperties": false,
+        "description": "共享扫描范围；跨字段校验由服务在事务内执行。",
+        "properties": {
+          "instance": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Instance",
+            "type": "string"
+          },
+          "min_level": {
+            "maximum": 125,
+            "minimum": 1,
+            "title": "Min Level",
+            "type": "integer"
+          },
+          "max_level": {
+            "maximum": 125,
+            "minimum": 1,
+            "title": "Max Level",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "instance",
+          "min_level",
+          "max_level"
+        ],
+        "title": "DockConfigureParams",
+        "type": "object"
+      }
+    },
     "mind.catalog": {
       "mutates": false,
       "params": {

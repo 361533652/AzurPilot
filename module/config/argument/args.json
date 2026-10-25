@@ -20453,8 +20453,40 @@
       }
     }
   },
+  "DockScan": {
+    "Dock": {
+      "MinLevel": {
+        "type": "input",
+        "value": 1,
+        "validate": "^[1-9][0-9]?$|^1[01][0-9]$|^12[0-5]$"
+      },
+      "MaxLevel": {
+        "type": "input",
+        "value": 125,
+        "validate": "^[1-9][0-9]?$|^1[01][0-9]$|^12[0-5]$"
+      },
+      "Result": {
+        "type": "stored",
+        "value": {},
+        "display": "hide"
+      }
+    },
+    "Storage": {
+      "Storage": {
+        "type": "storage",
+        "value": {},
+        "valuetype": "ignore",
+        "display": "disabled"
+      }
+    }
+  },
   "MindCalculatorScan": {
     "MindCalculator": {
+      "Analysis": {
+        "type": "stored",
+        "value": {},
+        "display": "hide"
+      },
       "MinLevel": {
         "type": "input",
         "value": 95,

@@ -398,6 +398,10 @@
       "name": "Fleet Scan",
       "help": "Scan ships assigned to fleets"
     },
+    "DockScan": {
+      "name": "Dock data scan",
+      "help": "Read dock cards into shared data for mental-chip and fleet-technology analysis; does not upgrade or swap ships."
+    },
     "MindCalculatorScan": {
       "name": "Cognitive chip dock scan",
       "help": "Scan a CN dock at 1280×720 and review results in the cognitive chip calculator. Keeps old data until completion; resets dock filters."
@@ -6749,10 +6753,32 @@
       "help": "When multiple boosted products are detected, the first one in filter order is prioritized for replacement; the replacement slot is the last non-empty slot searched from Product5→1"
     }
   },
+  "Dock": {
+    "_info": {
+      "name": "Shared dock data",
+      "help": "Read dock cards into shared data for mental-chip and fleet-technology analysis; does not upgrade or swap ships."
+    },
+    "MinLevel": {
+      "name": "Minimum scan level",
+      "help": "Read dock cards into shared data for mental-chip and fleet-technology analysis; does not upgrade or swap ships."
+    },
+    "MaxLevel": {
+      "name": "Maximum scan level",
+      "help": "Read dock cards into shared data for mental-chip and fleet-technology analysis; does not upgrade or swap ships."
+    },
+    "Result": {
+      "name": "Shared scan result",
+      "help": "Read dock cards into shared data for mental-chip and fleet-technology analysis; does not upgrade or swap ships."
+    }
+  },
   "MindCalculator": {
     "_info": {
       "name": "Cognitive chip calculator",
       "help": "Calculate Cognitive Chips I and coins to reach level 120."
+    },
+    "Analysis": {
+      "name": "Mental-chip analysis settings",
+      "help": "Read dock cards into shared data for mental-chip and fleet-technology analysis; does not upgrade or swap ships."
     },
     "MinLevel": {
       "name": "Minimum scan level",

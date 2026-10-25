@@ -72,6 +72,8 @@ class Router:
             'config.export': Method(p.InstanceParams, lambda x: configs.export(x.instance)),
             'config.patch': Method(p.PatchParams, lambda x: configs.patch(x.instance, x.revision, x.changes), True),
             'overview.get': Method(p.InstanceParams, lambda x: runtime.overview(x.instance)),
+            'dock.report': Method(p.InstanceParams, lambda x: self.dock.report(x.instance)),
+            'dock.configure': Method(p.DockConfigureParams, lambda x: self.dock.configure(x.instance, x.min_level, x.max_level), True),
             'mind.catalog': Method(p.InstanceParams, lambda x: self.mind.catalog(x.instance)),
             'fleetTech.catalog': Method(p.InstanceParams, lambda x: self.fleet_tech.catalog(x.instance)),
             'fleetTech.report': Method(p.InstanceParams, lambda x: self.fleet_tech.report(x.instance)),
@@ -134,6 +136,11 @@ class Router:
                                                     lambda x: {'removed': background.gallery_remove(x.id)}, True),
             'background.gallery.open': Method(p.Params, lambda _: background.gallery_open(), True),
         }
+
+    @property
+    def dock(self):
+        from module.api.dock_service import DockService
+        return DockService(self.configs)
 
     @property
     def fleet_tech(self):
