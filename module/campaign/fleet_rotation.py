@@ -4,11 +4,13 @@ from copy import deepcopy
 
 from module.combat.emotion import Emotion
 from module.config.time_source import now
+from module.equipment.fleet_rotation import FleetRotationEquipment
 from module.exception import FleetManagementError, GameStuckError, GameTooManyClickError, RequestHumanTakeover
 from module.logger import logger
 from module.retire.fleet_management import FleetManagement
 from module.runtime.fleet_rotation import (ROTATION_PATH, active_fleets, begin_round, calibration_changes,
                                          minimum_morale, parse_rules, rank_sources, recorded_morale, supported)
+from module.runtime.fleet_equipment import EQUIPMENT_PATH
 
 
 def _required(emotion, role, battle):
@@ -71,10 +73,16 @@ def preflight_rotation(runner, battle, mode):
         context.pop('portraits', None)
     fresh = not context.get('scanned', False)
     current_fleet = None
+    equipment_enabled = config.cross_get(EQUIPMENT_PATH + '.Enabled', False) is True
+    equipment_used = False
     try:
         fresh_readings = {}
-        if fresh:
+        if equipment_enabled and config.cross_get(EQUIPMENT_PATH + '.State', {}):
             manager = FleetManagement(config=config, device=runner.device)
+            FleetRotationEquipment(manager).recover_page()
+        if fresh:
+            if manager is None:
+                manager = FleetManagement(config=config, device=runner.device)
             visited = True
             manager.run(update_emotion=True)
             result = config.cross_get('FleetInfo.FleetInfo.Result', {})
@@ -86,6 +94,12 @@ def preflight_rotation(runner, battle, mode):
             for fleet in recovering:
                 states.pop(str(fleet), None)
             config.cross_set(ROTATION_PATH + '.State', states)
+        if equipment_enabled and config.cross_get(EQUIPMENT_PATH + '.State', {}):
+            if manager is None:
+                manager = FleetManagement(config=config, device=runner.device)
+            visited = True
+            FleetRotationEquipment(manager).apply_pending()
+            equipment_used = True
         for role, fleet in selected.items():
             current_fleet = fleet
             # 前一个角色可能刚从本角色的实际舰队换走舰船，不能继续使用旧快照。
@@ -138,6 +152,12 @@ def preflight_rotation(runner, battle, mode):
             states[str(fleet)] = progress
             config.cross_set(ROTATION_PATH + '.State', states)
             logger.hr(f'智能换船：第{fleet}舰队使用候补第{source}舰队', level=1)
+            equipment = None
+            remaining = [slot for slot in rule['slots'] if slot not in progress['done']]
+            if equipment_enabled and remaining:
+                equipment = FleetRotationEquipment(manager)
+                equipment.clear_outgoing(fleet, remaining)
+                equipment_used = True
             paused = False
             for slot in rule['slots']:
                 if slot in progress['done']:
@@ -159,6 +179,9 @@ def preflight_rotation(runner, battle, mode):
             readings = {number: snapshots[number] for number in (fleet, source)}
             if any(minimum_morale(values) is None for values in readings.values()):
                 raise FleetManagementError('互换后心情未读全，下次自动重新扫描实际编队')
+            if equipment is not None:
+                # 即使中途关闭换船，也先补回已经卸装的当前舰位，避免空装出击。
+                equipment.apply_pending()
             if not paused:
                 states[str(fleet)] = dict(last_source=source, completed_at=now().isoformat(timespec='seconds'))
             else:
@@ -173,6 +196,8 @@ def preflight_rotation(runner, battle, mode):
             # 本轮到此结束，心情仍低则交给原有延迟逻辑，不连续轮换下一来源。
         if visited:
             manager.finish_rotation()
+            if equipment_used:
+                manager._commit_formation()
             config.update()
             runner.config.update()
             campaign.emotion = Emotion(config)

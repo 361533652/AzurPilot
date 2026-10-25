@@ -6807,6 +6807,24 @@
       "help": "Stores the last reserve and completed slots. Check the in-game formation before clearing."
     }
   },
+  "FleetEquipment": {
+    "_info": {
+      "name": "Automatic equipment",
+      "help": "Unequip outgoing ships and apply incoming ship codes by actual type. Off by default."
+    },
+    "Enabled": {
+      "name": "Enable automatic equipment",
+      "help": "When off, keep the original smart rotation behavior."
+    },
+    "Codes": {
+      "name": "Equipment codes by type",
+      "help": "Empty codes skip that type and keep the incoming ship current equipment."
+    },
+    "State": {
+      "name": "Pending equipment",
+      "help": "Pending target slots are processed before resuming a task when enabled."
+    }
+  },
   "FleetInfo": {
     "_info": {
       "name": "Fleet information",

@@ -1192,6 +1192,11 @@ class GeneratedConfig:
     FleetRotation_Rules = '{}'
     FleetRotation_State = {}
 
+    # 配置组 `FleetEquipment`
+    FleetEquipment_Enabled = False
+    FleetEquipment_Codes = '{}'
+    FleetEquipment_State = {}
+
     # 配置组 `FleetInfo`
     FleetInfo_UpdateEmotion = True
     FleetInfo_Result = {}

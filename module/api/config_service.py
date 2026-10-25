@@ -459,6 +459,12 @@ class ConfigService:
                 parse_rules(value)
             except ValueError as exc:
                 raise ApiError('INVALID_PARAMS', str(exc)) from exc
+        if path == 'FleetInfo.FleetEquipment.Codes':
+            from module.runtime.fleet_equipment import parse_codes
+            try:
+                parse_codes(value)
+            except ValueError as exc:
+                raise ApiError('INVALID_PARAMS', str(exc)) from exc
         rule = field.get('validate')
         if rule == 'datetime' or kind == 'datetime':
             try:

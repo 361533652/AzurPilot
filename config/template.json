@@ -3796,6 +3796,11 @@
       "Rules": "{}",
       "State": {}
     },
+    "FleetEquipment": {
+      "Enabled": false,
+      "Codes": "{}",
+      "State": {}
+    },
     "Storage": {
       "Storage": {}
     }

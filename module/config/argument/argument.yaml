@@ -2514,6 +2514,16 @@ FleetRotation:
     type: storage
     value: {}
 
+FleetEquipment:
+  Enabled: false
+  Codes:
+    type: textarea
+    value: '{}'
+  State:
+    type: stored
+    value: {}
+    display: hide
+
 FleetInfo:
   UpdateEmotion: true
   Result:

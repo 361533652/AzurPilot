@@ -20084,6 +20084,21 @@
         "value": {}
       }
     },
+    "FleetEquipment": {
+      "Enabled": {
+        "type": "checkbox",
+        "value": false
+      },
+      "Codes": {
+        "type": "textarea",
+        "value": "{}"
+      },
+      "State": {
+        "type": "stored",
+        "value": {},
+        "display": "hide"
+      }
+    },
     "Storage": {
       "Storage": {
         "type": "storage",

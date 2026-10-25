@@ -17,6 +17,7 @@ from module.config.config import AzurLaneConfig
 from module.exception import CampaignEnd, FleetManagementError, GameStuckError, ScriptEnd
 from module.runtime.fleet_rotation import (ROTATION_PATH, begin_round, calibration_changes,
                                          minimum_morale, parse_rules, rank_sources, recorded_morale, supported)
+from module.runtime.fleet_equipment import EQUIPMENT_PATH
 from tests.test_api import fixture
 
 
@@ -137,6 +138,85 @@ class RotationIntegrationTests(unittest.TestCase):
 
     def state(self):
         return self.service.read_json(self.path)['FleetInfo']['FleetRotation']['State']
+
+    def test_equipment_disabled_preserves_original_rotation_even_with_old_equipment_jobs(self):
+        job = {'1:4': {'fleet': 1, 'slot': 4}}
+        self.config.cross_set(EQUIPMENT_PATH + '.State', job)
+        with patch('module.campaign.fleet_rotation.FleetRotationEquipment') as equipment:
+            preflight_rotation(self.runner, 5, 'normal')
+        equipment.assert_not_called()
+        self.assertEqual(self.manager.rotate_slot.call_count, 3)
+        self.manager._commit_formation.assert_not_called()
+        self.assertEqual(self.config.cross_get(EQUIPMENT_PATH + '.State'), job)
+
+    def test_equipment_order_is_scan_clear_all_swap_all_equip_then_home(self):
+        self.config.cross_set(EQUIPMENT_PATH + '.Enabled', True)
+        events = []
+        self.manager.prepare_rotation.side_effect = lambda fleet: events.append('scan') or self.snapshots()
+        self.manager.rotate_slot.side_effect = lambda source, slot, fleet: events.append(('swap', slot)) or self.rotate(source, slot, fleet)
+        self.manager._commit_formation.side_effect = lambda: events.append('home')
+        equipment = Mock()
+        equipment.clear_outgoing.side_effect = lambda fleet, slots: events.append(('clear', fleet, slots))
+        equipment.apply_pending.side_effect = lambda: events.append('equip')
+        with patch('module.campaign.fleet_rotation.FleetRotationEquipment', return_value=equipment):
+            preflight_rotation(self.runner, 5, 'normal')
+        self.assertEqual(events, ['scan', ('clear', 1, [4, 5, 6]), ('swap', 4), ('swap', 5), ('swap', 6),
+                                  'equip', 'home'])
+
+    def test_equipment_pending_is_completed_even_when_actual_morale_is_already_full(self):
+        self.live[1] = dict.fromkeys(range(1, 7), 150)
+        self.config.cross_set_many({EQUIPMENT_PATH + '.Enabled': True,
+                                    EQUIPMENT_PATH + '.State': {'1:4': {'fleet': 1, 'slot': 4}}})
+        equipment = Mock()
+        equipment.apply_pending.side_effect = lambda: self.config.cross_set(EQUIPMENT_PATH + '.State', {})
+        with patch('module.campaign.fleet_rotation.FleetRotationEquipment', return_value=equipment):
+            preflight_rotation(self.runner, 5, 'normal')
+        equipment.recover_page.assert_called_once()
+        equipment.apply_pending.assert_called_once()
+        equipment.clear_outgoing.assert_not_called()
+        self.manager.rotate_slot.assert_not_called()
+        self.manager._commit_formation.assert_called_once()
+
+    def test_equipment_failure_keeps_its_jobs_and_next_run_does_not_swap_healthy_ships(self):
+        self.config.cross_set(EQUIPMENT_PATH + '.Enabled', True)
+        job = {'1:4': {'fleet': 1, 'slot': 4}}
+        equipment = Mock()
+        equipment.clear_outgoing.side_effect = lambda *args: self.config.cross_set(EQUIPMENT_PATH + '.State', job)
+        equipment.apply_pending.side_effect = FleetManagementError('装备失败')
+        with patch('module.campaign.fleet_rotation.FleetRotationEquipment', return_value=equipment):
+            with self.assertRaises(FleetManagementError):
+                preflight_rotation(self.runner, 5, 'normal')
+            self.assertEqual(self.config.cross_get(EQUIPMENT_PATH + '.State'), job)
+            self.assertTrue(self.state()['1']['rescan'])
+            self.manager.rotate_slot.reset_mock()
+            equipment.clear_outgoing.reset_mock()
+            equipment.apply_pending.side_effect = lambda: self.config.cross_set(EQUIPMENT_PATH + '.State', {})
+            preflight_rotation(self.runner, 5, 'normal')
+        self.manager.rotate_slot.assert_not_called()
+        equipment.clear_outgoing.assert_not_called()
+        self.assertEqual(self.config.cross_get(EQUIPMENT_PATH + '.State'), {})
+
+    def test_equipment_is_not_touched_when_actual_morale_is_sufficient(self):
+        self.config.cross_set(EQUIPMENT_PATH + '.Enabled', True)
+        self.live[1] = dict.fromkeys(range(1, 7), 150)
+        with patch('module.campaign.fleet_rotation.FleetRotationEquipment') as equipment:
+            preflight_rotation(self.runner, 5, 'normal')
+        equipment.assert_not_called()
+
+    def test_pausing_rotation_still_finishes_equipment_for_previously_cleared_slots(self):
+        self.config.cross_set(EQUIPMENT_PATH + '.Enabled', True)
+        equipment = Mock()
+        def pause(source, slot, fleet):
+            result = self.rotate(source, slot, fleet)
+            self.config.cross_set(ROTATION_PATH + '.Enabled', False)
+            return result
+        self.manager.rotate_slot.side_effect = pause
+        with patch('module.campaign.fleet_rotation.FleetRotationEquipment', return_value=equipment):
+            preflight_rotation(self.runner, 5, 'normal')
+        self.assertEqual(self.manager.rotate_slot.call_count, 1)
+        equipment.clear_outgoing.assert_called_once_with(1, [4, 5, 6])
+        equipment.apply_pending.assert_called_once()
+        self.assertTrue(self.state()['1']['paused'])
 
     def test_real_config_round_saves_three_swaps_and_only_one_reserve_then_calibrates(self):
         self.config.cross_set_many({'Event.Fleet.Fleet1': 1, 'Event.Campaign.Mode': 'normal', 'Event.Campaign.Name': 'a1',
