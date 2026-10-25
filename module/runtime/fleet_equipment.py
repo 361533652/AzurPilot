@@ -26,14 +26,17 @@ def parse_codes(value):
     if not isinstance(value, dict) or value.keys() - SHIP_TYPES.keys():
         raise ValueError('装备码包含未知舰种或不是舰种映射')
     codes = {}
-    for kind, code in value.items():
-        if not isinstance(code, str):
-            raise ValueError(f'{SHIP_TYPES[kind]}装备码必须为字符串')
-        code = code.strip()
-        if code:
-            if not EquipmentCodeHandler._is_equipment_code(code):
-                raise ValueError(f'{SHIP_TYPES[kind]}装备码格式无效')
-            codes[kind] = code.strip('\'"')
+    for kind, entries in value.items():
+        # 旧单码只占第一格，不能复制到三格而继续抢同一套装备。
+        entries = [entries] if isinstance(entries, str) else entries
+        if not isinstance(entries, list) or len(entries) > 3 or any(not isinstance(code, str) for code in entries):
+            raise ValueError(f'{SHIP_TYPES[kind]}必须填写最多三个字符串装备码')
+        entries = [code.strip().strip('\'"') for code in entries]
+        for index, code in enumerate(entries, 1):
+            if code and not EquipmentCodeHandler._is_equipment_code(code):
+                raise ValueError(f'{SHIP_TYPES[kind]}第{index}个装备码格式无效')
+        if any(entries):
+            codes[kind] = entries + [''] * (3 - len(entries))
     return codes
 
 

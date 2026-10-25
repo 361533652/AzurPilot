@@ -6818,7 +6818,7 @@
     },
     "Codes": {
       "name": "Equipment codes by type",
-      "help": "Empty codes skip that type and keep the incoming ship current equipment."
+      "help": "Up to three codes per type, ordered by actual slot separately in each row. Empty positions are skipped; old single codes remain first."
     },
     "State": {
       "name": "Pending equipment",

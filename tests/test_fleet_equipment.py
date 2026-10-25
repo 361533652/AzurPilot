@@ -47,8 +47,10 @@ class FleetEquipmentConfigTests(unittest.TestCase):
 
     def test_code_validation_and_empty_type_skip(self):
         self.assertEqual(parse_codes('{}'), {})
-        self.assertEqual(parse_codes({'DD': ' ', 'CV': ' '+CODE+' '}), {'CV': CODE})
-        for raw in ('{', '[]', {'unknown': CODE}, {'DD': 123}, {'DD': 'invalid'}):
+        self.assertEqual(parse_codes({'DD': ' ', 'CV': ' '+CODE+' '}), {'CV': [CODE, '', '']})
+        self.assertEqual(parse_codes({'DD': ['', CODE, '']}), {'DD': ['', CODE, '']})
+        for raw in ('{', '[]', {'unknown': CODE}, {'DD': 123}, {'DD': 'invalid'},
+                    {'DD': [CODE] * 4}, {'DD': [CODE, None]}, {'DD': [CODE, 'invalid']}):
             with self.subTest(raw=raw), self.assertRaises(ValueError):
                 parse_codes(raw)
 
@@ -67,12 +69,18 @@ class FleetEquipmentConfigTests(unittest.TestCase):
                 ConfigChange(path=EQUIPMENT_PATH + '.Codes', value=json.dumps({'DD': CODE, 'CV': ''}))])
             self.assertTrue(updated['values']['FleetInfo']['FleetEquipment']['Enabled'])
             self.assertEqual(parse_codes(service.get('testpilot')['values']['FleetInfo']['FleetEquipment']['Codes']),
-                             {'DD': CODE})
+                             {'DD': [CODE, '', '']})
+            triplet = [CODE, '', 'Nzc3Lzg4OC85OTkvMC8wXDA=']
+            latest = service.get('testpilot')
+            service.patch('testpilot', latest['revision'], [
+                ConfigChange(path=EQUIPMENT_PATH + '.Codes', value=json.dumps({'DD': triplet}))])
+            self.assertEqual(parse_codes(service.get('testpilot')['values']['FleetInfo']['FleetEquipment']['Codes']),
+                             {'DD': triplet})
             with self.assertRaisesRegex(ApiError, '装备码'):
                 service.patch('testpilot', updated['revision'], [
                     ConfigChange(path=EQUIPMENT_PATH + '.Codes', value='{"DD":"invalid"}')])
             self.assertEqual(parse_codes(service.get('testpilot')['values']['FleetInfo']['FleetEquipment']['Codes']),
-                             {'DD': CODE})
+                             {'DD': triplet})
 
 
 class FleetEquipmentFlowTests(unittest.TestCase):
@@ -83,10 +91,11 @@ class FleetEquipmentFlowTests(unittest.TestCase):
         self.handler.config = SimpleNamespace(cross_get=lambda path, default=None: deepcopy(self.store.get(path, default)),
                                               cross_set=lambda path, value: self.store.update({path: deepcopy(value)}))
         self.handler.manager = Mock()
-        self.handler.codes = {'DD': CODE}
+        self.handler.codes = {'DD': [CODE, '', '']}
+        self.occupied = {1, 4}
         self.handler.device = SimpleNamespace(image=badge(0), has_cached_image=True)
         self.handler._details = lambda fleet: self.events.append(('details', fleet))
-        self.handler._ship = lambda slot: self.events.append(('ship', slot)) or True
+        self.handler._ship = lambda slot: self.events.append(('ship', slot)) or slot in self.occupied
         self.handler._back_to_details = lambda: self.events.append('details-back')
         self.handler._back_to_formation = lambda: self.events.append('formation-back')
         self.handler._code_enter = lambda: self.events.append('code-page')
@@ -130,7 +139,7 @@ class FleetEquipmentFlowTests(unittest.TestCase):
         self.handler._code_apply = Mock(side_effect=[True, True, True, False])
         with self.assertRaises(FleetManagementError):
             self.handler.apply_pending()
-        self.assertEqual(self.pending(), {'6:4': {'fleet': 6, 'slot': 4}})
+        self.assertEqual(self.pending(), {'6:4': {'fleet': 6, 'slot': 4, 'kind': 'DD', 'code_index': 0}})
         self.events.clear()
         self.handler._code_apply = Mock(return_value=True)
         self.handler.apply_pending()
@@ -155,12 +164,89 @@ class FleetEquipmentFlowTests(unittest.TestCase):
         self.assertIn('6:4', self.pending())
 
     def test_ship_type_transition_requires_two_matching_new_frames(self):
-        self.handler.codes['CV'] = 'NDQ0LzU1NS82NjYvMC8wXDA='
+        self.handler.codes['CV'] = ['NDQ0LzU1NS82NjYvMC8wXDA=', '', '']
         self.handler.clear_outgoing(6, [4])
         self.handler._code_apply = Mock(return_value=True)
         with patch('module.equipment.fleet_rotation.recognize_ship_type', side_effect=['DD', 'CV', 'CV']):
             self.handler.apply_pending()
-        self.assertEqual(self.handler._code_apply.call_args_list[-1].kwargs['code'], self.handler.codes['CV'])
+        self.assertEqual(self.handler._code_apply.call_args_list[-1].kwargs['code'], self.handler.codes['CV'][0])
+
+    def test_three_same_types_use_three_distinct_codes_in_slot_order(self):
+        self.occupied = {4, 5, 6}
+        codes = [CODE, 'NDQ0LzU1NS82NjYvMC8wXDA=', 'Nzc3Lzg4OC85OTkvMC8wXDA=']
+        self.handler.codes = {'DD': codes}
+        self.handler.clear_outgoing(6, [6, 4, 5])
+        self.handler._code_apply = Mock(return_value=True)
+        self.handler.apply_pending()
+        self.assertEqual([call.kwargs['code'] for call in self.handler._code_apply.call_args_list
+                          if call.kwargs['code'] is not None], codes)
+
+    def test_recovery_counts_completed_same_type_instead_of_reusing_first_code(self):
+        self.occupied = {4, 5, 6}
+        codes = [CODE, 'NDQ0LzU1NS82NjYvMC8wXDA=', 'Nzc3Lzg4OC85OTkvMC8wXDA=']
+        self.handler.codes = {'DD': codes}
+        self.handler.clear_outgoing(6, [4, 5, 6])
+        self.handler._code_apply = Mock(side_effect=[True, True, True, False])
+        with self.assertRaises(FleetManagementError):
+            self.handler.apply_pending()
+        self.assertNotIn('6:4', self.pending())
+        self.assertEqual(self.pending()['6:5']['code_index'], 1)
+        self.handler._code_apply = Mock(return_value=True)
+        self.handler.apply_pending()
+        self.assertEqual([call.kwargs['code'] for call in self.handler._code_apply.call_args_list
+                          if call.kwargs['code'] is not None], codes[1:])
+
+    def test_unchanged_ship_occupies_first_code_and_blank_second_does_not_fall_back(self):
+        self.occupied = {4, 5, 6}
+        self.handler.codes = {'DD': [CODE, '', 'Nzc3Lzg4OC85OTkvMC8wXDA=']}
+        self.handler.clear_outgoing(6, [5, 6])
+        self.handler._code_apply = Mock(return_value=True)
+        self.handler.apply_pending()
+        self.assertEqual(self.handler._code_apply.call_count, 2)
+        self.assertEqual(self.handler._code_apply.call_args.kwargs['code'], self.handler.codes['DD'][2])
+
+    def test_different_rows_and_fleets_start_from_their_own_first_code(self):
+        self.occupied = {1, 2, 4, 5}
+        codes = [CODE, 'NDQ0LzU1NS82NjYvMC8wXDA=', '']
+        self.handler.codes = {'DD': codes}
+        self.handler.clear_outgoing(1, [1, 2, 4, 5])
+        self.handler.clear_outgoing(6, [1, 2, 4, 5])
+        self.handler._code_apply = Mock(return_value=True)
+        self.handler.apply_pending()
+        applied = [call.kwargs['code'] for call in self.handler._code_apply.call_args_list
+                   if call.kwargs['code'] is not None]
+        self.assertEqual(applied, codes[:2] * 4)
+
+    def test_mixed_types_have_independent_occurrences(self):
+        self.occupied = {4, 5, 6}
+        self.handler.codes = {'DD': [CODE, 'NDQ0LzU1NS82NjYvMC8wXDA=', ''], 'CL': [CODE, '', '']}
+        self.handler.clear_outgoing(6, [4, 5, 6])
+        self.handler._code_apply = Mock(return_value=True)
+        with patch('module.equipment.fleet_rotation.recognize_ship_type', side_effect=['DD'] * 2 + ['CL'] * 2 + ['DD'] * 2):
+            self.handler.apply_pending()
+        applied = [call.kwargs['code'] for call in self.handler._code_apply.call_args_list
+                   if call.kwargs['code'] is not None]
+        self.assertEqual(applied, [CODE, CODE, self.handler.codes['DD'][1]])
+
+    def test_real_config_keeps_second_code_index_after_partial_failure(self):
+        import tempfile
+        from module.config.config import AzurLaneConfig
+        from tests.test_api import fixture
+
+        with tempfile.TemporaryDirectory() as directory:
+            service = ConfigService(fixture(directory))
+            path = str(service.path('testpilot'))
+            with patch('module.config.config.filepath_config', return_value=path), \
+                    patch('module.config.config_updater.filepath_config', return_value=path):
+                self.handler.config = AzurLaneConfig('testpilot', task='Main')
+                self.occupied = {4, 5}
+                self.handler.codes = {'DD': [CODE, 'NDQ0LzU1NS82NjYvMC8wXDA=', '']}
+                self.handler.clear_outgoing(6, [4, 5])
+                self.handler._code_apply = Mock(side_effect=[True, True, True, False])
+                with self.assertRaises(FleetManagementError):
+                    self.handler.apply_pending()
+                saved = service.get('testpilot')['values']['FleetInfo']['FleetEquipment']['State']
+                self.assertEqual(saved, {'6:5': {'fleet': 6, 'slot': 5, 'kind': 'DD', 'code_index': 1}})
 
     def test_detail_ship_click_waits_for_the_expected_occupied_slot(self):
         from module.equipment.assets import EQUIPMENT_CODE_ENTRANCE

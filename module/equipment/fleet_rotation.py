@@ -119,10 +119,14 @@ class FleetRotationEquipment(Equipment):
         pending = dict(self.config.cross_get(EQUIPMENT_PATH + '.State', {}))
         for fleet in sorted({job['fleet'] for job in pending.values()}):
             self._details(fleet)
-            for key, job in list(pending.items()):
-                if job['fleet'] != fleet:
-                    continue
-                if self._ship(job['slot']):
+            slots = {slot for job in pending.values() if job['fleet'] == fleet
+                     for slot in range((job['slot'] - 1) // 3 * 3 + 1, job['slot'] + 1)}
+            occurrences = {}
+            # 未换船的同舰种也占用一套；恢复时重新计入已完成舰位，不能从第一套重来。
+            for slot in sorted(slots):
+                key = f'{fleet}:{slot}'
+                job = pending.get(key)
+                if self._ship(slot):
                     kind, previous = None, None
                     for _ in self.loop(skip_first=False, timeout=10):
                         if self.appear(EQUIPMENT_CODE_ENTRANCE):
@@ -133,18 +137,26 @@ class FleetRotationEquipment(Equipment):
                             previous = candidate
                     if not kind:
                         raise FleetManagementError('未能唯一识别角色详情舰种，保留待完成换装记录')
-                    code = self.codes.get(kind)
-                    if code:
-                        logger.attr('换入舰船装备方案', f"{fleet}-{job['slot']} {SHIP_TYPES[kind]}")
+                    group = (slot <= 3, kind)
+                    index = occurrences.get(group, 0)
+                    occurrences[group] = index + 1
+                    code = self.codes.get(kind, ['', '', ''])[index]
+                    if job is not None:
+                        job = dict(job, kind=kind, code_index=index)
+                        pending[key] = job
+                        self.config.cross_set(EQUIPMENT_PATH + '.State', pending)
+                    if job is not None and code:
+                        logger.attr('换入舰船装备方案', f'{fleet}-{slot} {SHIP_TYPES[kind]} 第{index + 1}套')
                         self._code_enter()
                         if not self._code_apply(code=None):
                             raise FleetManagementError('换入舰船清空装备失败，保留待完成换装记录')
                         self._code_enter()
                         if not self._code_apply(code=code):
                             raise FleetManagementError('换入舰船装备码应用失败，保留待完成换装记录')
-                    else:
-                        logger.info(f'{SHIP_TYPES[kind]}未填写装备码，保留换入舰船当前装备并继续')
+                    elif job is not None:
+                        logger.info(f'{SHIP_TYPES[kind]}第{index + 1}套未填写装备码，保留换入舰船当前装备并继续')
                     self._back_to_details()
-                pending.pop(key)
-                self.config.cross_set(EQUIPMENT_PATH + '.State', pending)
+                if job is not None:
+                    pending.pop(key)
+                    self.config.cross_set(EQUIPMENT_PATH + '.State', pending)
             self._back_to_formation()
