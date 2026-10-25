@@ -442,4 +442,4 @@ ws.send_json({'v':1,'type':'request','id':'2','method':'events.subscribe',
 
 `dock.report` 只读返回实例共享快照、来源、版本、时间、待核对数和扫描配置；`scan_range` 是已保存快照的实际覆盖范围，`min_level/max_level` 是下一次扫描配置。`dock.configure` 严格校验 `1 ≤ min_level ≤ max_level ≤ 125` 后仅保存配置，不操作设备。`tasks.run(DockScan)` 才显式启动共享扫描。
 
-`mind.report/save` 和 `fleetTech.report/patch` 从同一底账派生，人工编辑保存在各自分析设置中，不互相修改或复制原始快照。当前逐卡舰船表、单条最新扫描信息与独立的科技进度、阵营等级和心智设置均以类型化字段保存在 `config/fleet/<实例名>.sqlite3`，报告默认不读取旧任务 JSON 数据。`dock.importLegacy` 仅在用户显式操作后读取当前实例本地 JSON，将旧船坞、心智和科技数据一次性转换为当前清单、累计科技成就与人工设置，不保留扫描批次、历史证据表或原始 JSON；已有数据库值优先，成功提交后清理配置中的旧舰船数据字段，不接受上传或任意文件路径。科技重载合并累计扫描证据与人工设置，人工值优先。旧 `fleetTech.syncMind` 始终只读返回报告，不再复制数据。沿用登录、实例隔离、演示只读与版本冲突规则。见 [船坞数据分析](fleet-analysis.md)。
+`dock.report` 返回可编辑的已确认舰船底账与待采纳差异。`dock.patch` 按内部序号修改、新增或删除舰船行，`dock.review` 在底账及候选双版本校验下逐条或全部采纳、忽略差异。主动扫描和 `dock.importLegacy` 仅生成候选，不覆盖人工底账；后者只读取当前实例本地旧 JSON，不上传、不清理原文件。`mind.report` 直接从已确认底账计算，旧 `mind.save` 引导到舰船数据表；不再保存独立心智覆盖。科技和阵营等级保留直接编辑，重新载入不采纳候选。见 [舰队数据分析](fleet-analysis.md)。
