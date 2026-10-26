@@ -222,6 +222,55 @@ test('同名舰船实读按舰位展示60好感，不串用另一艘布里的记
   expect(methods).not.toContain('scheduler.start')
 })
 
+test('仅等级调度展示长舰名及三艘105级舰船的经验和核对时间', async ({page}) => {
+  const methods: string[] = []
+  await page.addInitScript(() => {
+    localStorage.setItem('azurpilot.language', 'zh-CN')
+    localStorage.setItem('azurpilot.theme', 'light')
+    localStorage.setItem('azurpilot.material', 'plain')
+    localStorage.setItem('azurpilot.background.plain', JSON.stringify({source: 'off'}))
+  })
+  await page.routeWebSocket('**/api/v1/ws', socket => {
+    const server = socket.connectToServer()
+    socket.onMessage(message => {methods.push(JSON.parse(String(message)).method); server.send(message)})
+    server.onMessage(message => {
+      const response = JSON.parse(String(message)), values = response.result?.values?.FleetInfo
+      if (values) {
+        const names = ['阿尔弗雷多·奥里亚尼', '花月', '文琴佐·焦贝蒂']
+        values.FleetRotation.Enabled = false
+        values.FleetRotation.SelectedOnly = false
+        values.FleetTraining.CheckIntervalHours = 6
+        values.FleetLevelTraining = {Enabled: true, Target: 120}
+        values.FleetAffinityTraining = {Enabled: false, Target: 100}
+        values.FleetRotation.Rules = JSON.stringify({'1': {slots: [4, 5, 6], sources: [3, 4]}})
+        values.FleetInfo.Result = {vanguard: {
+          '1': names.map((name, index) => ({name, slot: index + 4, level: 105, emotion: 150})),
+          '4': [{name: names[0], slot: 4, level: 105, emotion: null}],
+        }}
+        values.FleetTraining.State = {
+          records: Object.fromEntries(names.slice(1).map((name, index) => [name, {level: 105,
+            exp: [1594218, 1583910][index], fleet: 1, slot: index + 5, checked_at: '2026-10-27T06:37:03'}])),
+          readings: {'1:4': {name: names[0], fleet: 1, slot: 4, level: 105, exp: 1582026,
+            checked_at: '2026-10-27T06:37:03'}}, pending: {},
+        }
+      }
+      socket.send(JSON.stringify(response))
+    })
+  })
+  await page.goto('/#/i/demo-main/task/FleetTraining')
+  await expect(page.getByRole('switch', {name: '启用等级调度', exact: true})).toHaveAttribute('aria-checked', 'true')
+  for (const title of ['心情调度', '好感调度'])
+    await expect(page.getByRole('switch', {name: `启用${title}`, exact: true})).toHaveAttribute('aria-checked', 'false')
+  const rows = page.getByRole('region', {name: '培养舰船', exact: true}).locator('tbody tr')
+  await expect(rows).toHaveCount(3)
+  await expect(rows.locator('td:nth-child(5)')).toHaveText(['105', '105', '105'])
+  await expect(rows.locator('td:nth-child(6)')).toHaveText(['1582026', '1594218', '1583910'])
+  await expect(rows.locator('td:nth-child(7)')).toHaveText(['未读取', '未读取', '未读取'])
+  await expect(rows.locator('td:nth-child(8)')).toHaveText(Array(3).fill('2026-10-27 06:37:03'))
+  await page.screenshot({path: 'test-results/fleet-training-level-only.png', fullPage: true, animations: 'disabled'})
+  for (const method of ['config.patch', 'tasks.run', 'scheduler.start']) expect(methods).not.toContain(method)
+})
+
 test('自动换装备页面默认关闭并可独立保存舰种码与开关', async ({page}) => {
   await page.addInitScript(() => {
     localStorage.setItem('azurpilot.language', 'zh-CN')
