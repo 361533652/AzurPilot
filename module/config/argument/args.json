@@ -12774,7 +12774,12 @@
       },
       "JoinThreshold": {
         "type": "input",
-        "value": 1
+        "value": 1.0,
+        "valuetype": "float",
+        "validate": [
+          0.0,
+          1.0
+        ]
       },
       "AttackBoss": {
         "type": "checkbox",
@@ -20075,6 +20080,10 @@
         "type": "checkbox",
         "value": false
       },
+      "SelectedOnly": {
+        "type": "checkbox",
+        "value": false
+      },
       "Rules": {
         "type": "textarea",
         "value": "{}"
@@ -20082,6 +20091,62 @@
       "State": {
         "type": "storage",
         "value": {}
+      }
+    },
+    "FleetLevelTraining": {
+      "Enabled": {
+        "type": "checkbox",
+        "value": false
+      },
+      "Target": {
+        "type": "input",
+        "value": 120,
+        "validate": [
+          1,
+          125
+        ]
+      }
+    },
+    "FleetAffinityTraining": {
+      "Enabled": {
+        "type": "checkbox",
+        "value": false
+      },
+      "Target": {
+        "type": "input",
+        "value": 100,
+        "validate": [
+          1,
+          200
+        ]
+      }
+    },
+    "FleetTraining": {
+      "CheckIntervalHours": {
+        "type": "input",
+        "value": 0.5,
+        "valuetype": "float",
+        "validate": "^[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$"
+      },
+      "State": {
+        "type": "stored",
+        "value": {},
+        "display": "hide"
+      }
+    },
+    "FleetEquipment": {
+      "Enabled": {
+        "type": "checkbox",
+        "value": false
+      },
+      "Codes": {
+        "type": "textarea",
+        "value": "{}"
+      },
+      "State": {
+        "type": "stored",
+        "value": {},
+        "display": "hide"
       }
     },
     "Storage": {

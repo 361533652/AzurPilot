@@ -40,6 +40,8 @@ const SchedulerProgram = lazy(() => import('./pages/SchedulerProgram').then(modu
 const StockExchange = lazy(() => import('./pages/StockExchange').then(module => ({default: module.StockExchange})))
 const FleetAnalysis = lazy(() => import('./pages/FleetAnalysis').then(module => ({default: module.FleetAnalysis})))
 const FleetRotation = lazy(() => import('./pages/FleetRotation').then(module => ({default: module.FleetRotation})))
+const FleetTraining = lazy(() => import('./pages/FleetTraining').then(module => ({default: module.FleetTraining})))
+const FleetEquipment = lazy(() => import('./pages/FleetEquipment').then(module => ({default: module.FleetEquipment})))
 
 const router = createHashRouter([
   {path: '/', element: <App/>, errorElement: <ErrorPage/>, children: [{index: true, element: <Home/>}, {path: 'announcement', element: <Announcement/>}, {path: 'interface', element: <InterfaceSettings/>}, {path: 'remote', element: <RemoteAccess/>}, {path: 'settings', element: <Settings/>}, {path: 'updater', element: <Updater/>}, {path: 'configs', element: <ConfigManager/>}, {path: 'dev', element: <DevControls/>}]},
@@ -52,6 +54,10 @@ const router = createHashRouter([
     {path: 'task/SchedulerProgram', element: <Suspense fallback={<div>{translateCurrentUi('common.loading')}</div>}><SchedulerProgram/></Suspense>},
     {path: 'task/FleetAnalysis', element: <Suspense fallback={<div>{translateCurrentUi('common.loading')}</div>}><FleetAnalysis/></Suspense>},
     {path: 'task/FleetRotation', element: <Suspense fallback={<div>{translateCurrentUi('common.loading')}</div>}><FleetRotation/></Suspense>},
+    {path: 'task/FleetTraining', element: <Suspense fallback={<div>{translateCurrentUi('common.loading')}</div>}><FleetTraining/></Suspense>},
+    {path: 'task/FleetLevelTraining', element: <Navigate to="../FleetTraining" relative="path" replace/>},
+    {path: 'task/FleetAffinityTraining', element: <Navigate to="../FleetTraining" relative="path" replace/>},
+    {path: 'task/FleetEquipment', element: <Suspense fallback={<div>{translateCurrentUi('common.loading')}</div>}><FleetEquipment/></Suspense>},
   ]},
   {path: '*', element: <Navigate to="/" replace/>},
 ])
