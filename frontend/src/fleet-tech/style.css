@@ -23,8 +23,9 @@
 .ft-search > span { color: #526c83; font-size: 13px; }
 .ft-state-legend { margin-left: auto; }
 .ft-edit-hint { margin: 0; color: #526c83; font-size: 13px; line-height: 1.6; }
-.ft-table-wrap { min-width: 0; max-width: 100%; overflow-x: auto; border: 1px solid #75b0fa; background: #fff; }
+.ft-table-wrap { min-width: 0; max-width: 100%; max-height: 70dvh; overflow: auto; overscroll-behavior: contain; border: 1px solid #75b0fa; background: #fff; isolation: isolate; }
 .ft-table-wrap table { width: 100%; min-width: 1000px; border-collapse: separate; border-spacing: 0; white-space: nowrap; font-size: 13px; }
+.ft-table-wrap thead { position: sticky; top: 0; z-index: 1; }
 .ft-table-wrap th { padding: 9px 8px; background: #4b9bec; color: #fff; text-align: center; border-right: 1px solid #ffffff40; border-bottom: 1px solid #ffffff40; }
 .ft-table-wrap thead tr:first-child th { background: #4a9fe9; font-size: 14px; }
 .ft-table-wrap .ft-sort { display: inline-flex; align-items: center; justify-content: center; gap: 5px; background: none; border: 0; color: inherit; padding: 2px 0; font-weight: 600; cursor: pointer; }
