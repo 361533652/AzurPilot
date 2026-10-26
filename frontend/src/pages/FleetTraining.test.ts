@@ -81,6 +81,22 @@ describe('换船调度记录分组', () => {
     expect(grouped.training).toHaveLength(7)
     expect(grouped.training[0]?.emotion).toBeNull()
   })
+  it('同名舰船按实际舰位展示已实读的60好感，不借用旧同名完成记录', () => {
+    const snapshot: Parameters<typeof trainingRecordGroups>[0] = {
+      records: {'泛用型布里': {level: 125, exp: 0, affinity: 200, completed_for: {level: 120}, fleet: 6, slot: 4}},
+      readings: {'5:4': {name: '泛用型布里', fleet: 5, slot: 4, level: 100, exp: 13669, affinity: 60,
+        emotion: 119, checked_at: '2026-10-27T05:19:05'}},
+      formation: {vanguard: {'5': [{name: '泛用型布里', slot: 4, level: 100, emotion: 119}],
+        '6': [{name: '泛用型布里', slot: 4, level: 100, emotion: null}]}},
+      rules: rotationRules({'5': {slots: [4], sources: [3]}, '6': {slots: [4], sources: [3]}}),
+    }
+    const grouped = trainingRecordGroups(snapshot)
+    expect(grouped.training.map(row => row.affinity)).toEqual([60, undefined])
+    expect(grouped.training[0]).toMatchObject({fleet: 5, slot: 4, level: 100, exp: 13669, emotion: 119})
+    expect(grouped.completedCount).toBe(1)
+    snapshot.formation = {vanguard: {'5': [{name: '拉菲', slot: 4, level: 100, emotion: 120}]}}
+    expect(trainingRecordGroups(snapshot).training[0]?.affinity).toBeUndefined()
+  })
   it('用三个独立大框显示，舰队舰位名字心情等列均可查看', () => {
     const html = renderToStaticMarkup(createElement(AppContext.Provider, {value: {
       ui: (key, params) => translateUi('zh-CN', key, params),

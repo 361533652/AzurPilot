@@ -12,13 +12,13 @@ type Row = {
 }
 type PositionedRow = Row & {name: string; key: string}
 type FleetSnapshot = {name?: string; slot?: number; level?: number; emotion?: number | null; occupied?: boolean; review?: boolean}
-type RecordSnapshot = {records: Record<string, Row>; formation: unknown; rules: ReturnType<typeof rotationRules>}
+type RecordSnapshot = {records: Record<string, Row>; readings?: Record<string, Row & {name?: string}>; formation: unknown; rules: ReturnType<typeof rotationRules>}
 const emptySnapshot = (): RecordSnapshot => ({records: {}, formation: {}, rules: rotationRules(undefined)})
 const positionNumber = (value: unknown) => typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 6 ? value : undefined
 const moraleNumber = (value: unknown) => typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 150 ? value : null
 
 /** 只读归类；先选最近六条历史，再按舰队和舰位排列，不裁剪持久记录。 */
-export function trainingRecordGroups({records, formation, rules}: RecordSnapshot) {
+export function trainingRecordGroups({records, readings = {}, formation, rules}: RecordSnapshot) {
   const value = (typeof formation === 'string' ? JSON.parse(formation.trim() || '{}') : formation) as
     Record<string, Record<string, FleetSnapshot[]>> | null
   const ships: (PositionedRow & {review?: boolean})[] = []
@@ -41,7 +41,10 @@ export function trainingRecordGroups({records, formation, rules}: RecordSnapshot
   const training = ships.filter(ship => rules[String(ship.fleet)]?.slots.includes(ship.slot!))
     .filter(ship => !byName.has(ship.name) || !isCompleted(records[ship.name] ?? {}))
     .map(ship => {
-      const reading = byName.has(ship.name) ? records[ship.name] : undefined
+      // 同名的实读只属于当前舰位，不借用按舰名保存的完成记录，也不归入完成分类。
+      const position = readings[ship.key]
+      const reading = byName.has(ship.name) ? records[ship.name]
+        : !ship.review && position?.name === ship.name ? position : undefined
       return {...reading, ...ship, level: reading?.level ?? ship.level}
     }).sort(atPosition)
   const currentNames = new Set(training.filter(ship => byName.has(ship.name)).map(ship => ship.name))
@@ -89,7 +92,8 @@ export function TrainingRecords({snapshot}: {snapshot: RecordSnapshot}) {
 }
 
 function recordSnapshot(values: Record<string, Record<string, unknown>>): RecordSnapshot {
-  const snapshot = {records: (values.FleetTraining?.State as {records?: Record<string, Row>} | undefined)?.records ?? {},
+  const saved = values.FleetTraining?.State as Pick<RecordSnapshot, 'records' | 'readings'> | undefined
+  const snapshot = {records: saved?.records ?? {}, readings: saved?.readings ?? {},
     formation: values.FleetInfo?.Result, rules: rotationRules(values.FleetRotation?.Rules)}
   // 先验证快照；格式错误交给页面现有错误提示，保留上一次可用记录。
   trainingRecordGroups(snapshot)
