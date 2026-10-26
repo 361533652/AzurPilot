@@ -18,7 +18,7 @@ export interface Parameters {
   "dock.report": { instance: string }
   "dock.importLegacy": { instance: string; revision: string }
   "dock.configure": { instance: string; min_level: number; max_level: number }
-  "dock.patch": { instance: string; revision: string; changes: Array<{ id?: number | null; delete?: boolean; group_type?: number | null; name?: string; level?: number; rarity?: "" | "N" | "R" | "SR" | "SSR" | "UR"; base_rarity?: "" | "N" | "R" | "SR" | "SSR" | "UR"; extra_exp?: number | null; breakthrough?: number | null; form?: "base" | "retrofit" | null; excluded?: boolean; review?: boolean; source?: string }> }
+  "dock.patch": { instance: string; revision: string; changes: Array<{ id?: number | null; delete?: boolean; group_type?: number | null; name?: string; level?: number; rarity?: "" | "N" | "R" | "SR" | "SSR" | "UR"; base_rarity?: "" | "N" | "R" | "SR" | "SSR" | "UR"; extra_exp?: number | null; full_star?: boolean | null; form?: "base" | "retrofit" | null; excluded?: boolean; review?: boolean; source?: string }> }
   "dock.stageImport": { instance: string; revision: string; ships: Array<{ name: string; level: number; rarity?: "" | "N" | "R" | "SR" | "SSR" | "UR"; base_rarity?: "" | "N" | "R" | "SR" | "SSR" | "UR"; excluded?: boolean; review?: boolean; source?: string; extra_exp?: number | null }> }
   "dock.review": { instance: string; revision: string; pending_revision: string; decisions: Array<{ id: string; accept: boolean; ship_id?: number | null }> }
   "mind.catalog": { instance: string }

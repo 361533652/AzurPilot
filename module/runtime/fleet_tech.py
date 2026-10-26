@@ -102,14 +102,32 @@ def merge_mind(record, ships):
 MILESTONES = ('owned', 'full_star', 'lv120')
 
 
-def positive_facts(ship):
-    """Only confirmed identity and applicable ship rules can prove a milestone.
+def fixed_full_star_state(ship):
+    """Return a state only when the level and confirmed identity force it."""
+    level = ship.get('level', 0)
+    if type(level) is int and 1 <= level < 70:
+        return False
+    if type(level) is int and level > 100 and not ship.get('review'):
+        info = next((row for row in catalog()['ships'] if row['group_type'] == ship.get('group_type')), None)
+        if info and info['full_star_rule'] == 'ordinary_level_cap':
+            return True
+    return None
 
-    Research, META and native UR ships can exceed level 100 before full development / limit
-    break, so their level never proves full stars. Explicit breakthrough stage 3
-    proves full stars for every supported type. A known lower breakthrough stage
-    takes precedence over the ordinary level-cap inference.
-    """
+
+def full_star_state(ship):
+    """Apply fixed game constraints on writes, or once when migrating legacy data."""
+    forced = fixed_full_star_state(ship)
+    if forced is not None:
+        return forced
+    if 'full_star' in ship:
+        return ship['full_star']
+    # Old databases stored 0..3. Convert once without inventing an exact stage.
+    stage = ship.get('breakthrough')
+    return stage == 3 if stage is not None else None
+
+
+def positive_facts(ship):
+    """Read persisted card states; only legacy inputs need level-rule conversion."""
     info = next((row for row in catalog()['ships'] if row['group_type'] == ship.get('group_type')), None)
     if info is None or ship.get('review'):
         return set()
@@ -117,9 +135,7 @@ def positive_facts(ship):
     facts = {'owned'}
     if type(level) is int and level >= 120:
         facts.add('lv120')
-    breakthrough = ship.get('breakthrough')
-    if (breakthrough == 3 or breakthrough is None and type(level) is int
-            and level > 100 and info['full_star_rule'] == 'ordinary_level_cap'):
+    if (ship['full_star'] if 'full_star' in ship else full_star_state(ship)) is True:
         facts.add('full_star')
     return facts
 

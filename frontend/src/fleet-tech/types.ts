@@ -4,7 +4,7 @@ export interface Catalog {ships: Ship[]; nations: Record<string, [number[], numb
 export type Milestone = 'owned' | 'full_star' | 'lv120'
 export type State = boolean | null
 export interface Change {group_type: number; owned?: State; full_star?: State; lv120?: State}
-export interface HistoricalEvidence {ship_id: number; level: number; breakthrough: number | null; source: string; confirmed_at: string}
+export interface HistoricalEvidence {ship_id: number; level: number; full_star: boolean | null; source: string; confirmed_at: string}
 export interface Progress {historical_evidence?: Partial<Record<Milestone, HistoricalEvidence[]>>; conflicts?: Partial<Record<Milestone, number[]>>;source?: string; updated_at?: string; group_type: number; owned: State; full_star: State; lv120: State; current_count: number; current_level: number | null; evidence: Record<Milestone, number[]>; points: number; status: 'complete' | 'unowned' | 'unfinished' | 'unknown'}
 export type Bonuses = Record<string, Record<string, number>>
 export interface Report {instance: string; revision: string; ships: Progress[]; nation_levels: Record<string, number | null>; bonuses: Bonuses; ship_bonuses: Bonuses; nation_bonuses: Bonuses; confirmed_points: number; completed: number; milestone_counts: Record<Milestone, number>; unknown_count: number; unknown_ships: number}

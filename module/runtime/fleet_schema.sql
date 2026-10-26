@@ -11,7 +11,7 @@ CREATE TABLE ships (
     excluded INTEGER NOT NULL DEFAULT 0 CHECK(excluded IN (0, 1)),
     review INTEGER NOT NULL CHECK(review IN (0, 1)),
     source TEXT NOT NULL,
-    breakthrough INTEGER CHECK(breakthrough BETWEEN 0 AND 3),
+    full_star INTEGER CHECK(full_star IN (0, 1)),
     form TEXT CHECK(form IN ('base', 'retrofit'))
 ) STRICT;
 
@@ -65,7 +65,7 @@ CREATE TABLE pending_ships (
     excluded INTEGER NOT NULL CHECK(excluded IN (0, 1)),
     review INTEGER NOT NULL CHECK(review IN (0, 1)),
     source TEXT NOT NULL,
-    breakthrough INTEGER CHECK(breakthrough BETWEEN 0 AND 3),
+    full_star INTEGER CHECK(full_star IN (0, 1)),
     form TEXT CHECK(form IN ('base', 'retrofit'))
 ) STRICT;
 
@@ -112,7 +112,7 @@ CREATE TABLE technology_evidence (
     milestone TEXT NOT NULL CHECK(milestone IN ('owned', 'full_star', 'lv120')),
     ship_id INTEGER NOT NULL,
     level INTEGER NOT NULL,
-    breakthrough INTEGER,
+    full_star INTEGER CHECK(full_star IN (0, 1)),
     source TEXT NOT NULL,
     confirmed_at TEXT NOT NULL,
     PRIMARY KEY(group_type, milestone, ship_id)

@@ -142,7 +142,7 @@ class DockCardChange(Params):
     rarity: Literal['', 'N', 'R', 'SR', 'SSR', 'UR'] = None
     base_rarity: Literal['', 'N', 'R', 'SR', 'SSR', 'UR'] = None
     extra_exp: StrictInt | None = Field(default=None, ge=0)
-    breakthrough: StrictInt | None = Field(default=None, ge=0, le=3)
+    full_star: StrictBool | None = None
     form: Literal['base', 'retrofit'] | None = None
     excluded: StrictBool = None
     review: StrictBool = None

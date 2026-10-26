@@ -148,7 +148,7 @@ export interface LauncherStatus {
 }
 
 export interface DockCard {
-  breakthrough?: number | null; form?: 'base' | 'retrofit' | null
+  full_star?: boolean | null; form?: 'base' | 'retrofit' | null
   id: number; group_type: number | null; name: string; level: number
   rarity: string; base_rarity: string; extra_exp: number | null; review: boolean; source: string; excluded: boolean
 }

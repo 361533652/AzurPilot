@@ -4,14 +4,14 @@ import type {DockCard, DockReport} from '../api/types'
 import {useApp} from '../app/context'
 import type {MindCatalog} from '../mind/types'
 
-type Ship = DockCard & {breakthrough?: number | null; form?: 'base' | 'retrofit' | null}
+type Ship = DockCard
 export function ShipDetailEditor({ship, report, catalog, disabled, initiallyEditing = false, onSave, onRemove, onClose}: {
   ship: Ship; report: DockReport; catalog?: MindCatalog; disabled: boolean; initiallyEditing?: boolean
   onSave: (ship: Ship) => Promise<boolean>; onRemove: () => Promise<void>; onClose: () => void
 }) {
   const {ui} = useApp(), list = useId(), panel = useRef<HTMLElement>(null)
   useEffect(() => {panel.current?.focus()}, [])
-  const storageKey = `azurpilot.ship-detail.${report.instance}.${ship.id}`
+  const storageKey = `azurpilot.ship-detail.v5.${report.instance}.${ship.id}`
   const [restored] = useState<{draft: Ship; revision: string} | null>(() => {
     try {const saved = JSON.parse(sessionStorage.getItem(storageKey) ?? 'null'); return saved?.draft?.id === ship.id && typeof saved.revision === 'string' ? saved : null} catch {return null}
   })
@@ -48,10 +48,11 @@ export function ShipDetailEditor({ship, report, catalog, disabled, initiallyEdit
       <datalist id={list}>{catalog?.ships.map(info => <option key={`${info.group_type}:${info.name}`} value={info.name}/>)}</datalist>
       <label>{ui('analysis.level')}<input type="number" min={0} max={125} value={draft.level} readOnly={!editing} disabled={disabled} onChange={e => setDraft({...draft, level: Number(e.target.value)})}/></label>
       <label>{ui('analysis.extraExp')}<input type="number" min={0} value={draft.extra_exp ?? ''} readOnly={!editing} disabled={disabled} onChange={e => setDraft({...draft, extra_exp: e.target.value === '' ? null : Number(e.target.value)})}/></label>
-      <label>{ui('analysis.breakthrough')}<select aria-label={ui('analysis.breakthrough')} value={draft.breakthrough ?? ''} disabled={!editing || disabled} onChange={e => setDraft({...draft, breakthrough: e.target.value === '' ? null : Number(e.target.value)})}><option value="">{ui('analysis.unknownValue')}</option>{[0, 1, 2, 3].map(value => <option key={value}>{value}</option>)}</select></label>
+      <label>{ui('analysis.breakthrough')}<select aria-label={ui('analysis.breakthrough')} value={draft.full_star == null ? '' : String(draft.full_star)} disabled={!editing || disabled} onChange={e => setDraft({...draft, full_star: e.target.value === '' ? null : e.target.value === 'true'})}><option value="">{ui('analysis.unknownValue')}</option><option value="false">{ui('analysis.fullStarNo')}</option><option value="true">{ui('analysis.fullStarYes')}</option></select></label>
       <label>{ui('analysis.form')}<select aria-label={ui('analysis.form')} value={draft.form ?? ''} disabled={!editing || disabled} onChange={e => changeForm(e.target.value as Ship['form'] || null)}><option value="">{ui('analysis.unknownValue')}</option><option value="base">{ui('analysis.base')}</option><option value="retrofit">{ui('analysis.retrofit')}</option></select></label>
       <label><input type="checkbox" checked={draft.review} disabled={!editing || disabled} onChange={e => setDraft({...draft, review: e.target.checked})}/>{ui('analysis.reviewFlag')}</label>
     </div>
+    {editing && <p>{ui('analysis.fullStarRule')}</p>}
     {editing ? <button className="button primary" disabled={disabled || stale} onClick={() => void save()}>{ui('analysis.save')}</button> : <button className="button primary" disabled={disabled} onClick={() => setEditing(true)}>{ui('analysis.edit')}</button>}
     {editing && <button className="button secondary" disabled={disabled} onClick={discard}>{ui('analysis.discard')}</button>}
     <p>{ui('analysis.copies')}: {copies.length ? copies.map(row => `${row.name} #${row.id} · Lv.${row.level}`).join(' / ') : '—'}</p>

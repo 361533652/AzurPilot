@@ -18,7 +18,7 @@ class FleetDatabaseConflict(ValueError):
 
 
 class FleetDatabaseMigrationRequired(ValueError):
-    """An existing v3 database needs one transactional upgrade."""
+    """An older database needs one transactional upgrade."""
 
 
 class FleetTechnologyConflict(FleetDatabaseConflict):
@@ -33,7 +33,7 @@ class FleetDatabaseAlreadyImported(ValueError):
 
 
 class FleetDatabase:
-    SCHEMA_VERSION = 4
+    SCHEMA_VERSION = 5
     BUSY_TIMEOUT_MS = 10000
 
     def __init__(self, config_path):
@@ -109,10 +109,13 @@ class FleetDatabase:
         version = connection.execute('PRAGMA user_version').fetchone()[0]
         if version == self.SCHEMA_VERSION:
             return
-        if version == 3:
+        if version in (3, 4):
             if connection.execute('PRAGMA query_only').fetchone()[0]:
                 raise FleetDatabaseMigrationRequired()
-            self._migrate_v3(connection)
+            if version == 3:
+                self._migrate_v3(connection)
+            else:
+                self._migrate_v4(connection)
             return
         if version != 0 or not create:
             raise ValueError(f'Unsupported fleet database schema version: {version}; '
@@ -133,16 +136,17 @@ class FleetDatabase:
             connection.execute(f'ALTER TABLE fleet_info ADD COLUMN {field} INTEGER CHECK({check})')
         # Keep every original card ID and all legacy technology evidence intact.
         for table in ('ships', 'pending_ships'):
-            connection.execute(f'ALTER TABLE {table} ADD COLUMN breakthrough INTEGER CHECK(breakthrough BETWEEN 0 AND 3)')
+            connection.execute(f'ALTER TABLE {table} ADD COLUMN full_star INTEGER CHECK(full_star IN (0, 1))')
             connection.execute(f"ALTER TABLE {table} ADD COLUMN form TEXT CHECK(form IN ('base', 'retrofit'))")
         connection.execute("CREATE TABLE technology_progress (group_type TEXT PRIMARY KEY NOT NULL, "
                            "owned INTEGER CHECK(owned IN (0,1)), full_star INTEGER CHECK(full_star IN (0,1)), "
                            "lv120 INTEGER CHECK(lv120 IN (0,1)), source TEXT NOT NULL, updated_at TEXT NOT NULL) STRICT")
         connection.execute("CREATE TABLE technology_evidence (group_type TEXT NOT NULL, "
                            "milestone TEXT NOT NULL CHECK(milestone IN ('owned','full_star','lv120')), "
-                           "ship_id INTEGER NOT NULL, level INTEGER NOT NULL, breakthrough INTEGER, "
+                           "ship_id INTEGER NOT NULL, level INTEGER NOT NULL, full_star INTEGER CHECK(full_star IN (0,1)), "
                            "source TEXT NOT NULL, confirmed_at TEXT NOT NULL, "
                            "PRIMARY KEY(group_type,milestone,ship_id)) STRICT")
+        self._fill_star_states(connection)
         legacy = {row['group_type']: row for row in self._rows(connection, 'SELECT * FROM technology')}
         merged = {gid: tech.legacy_milestones(gid, row['max_observed_level'], self._manual(row))
                   for gid, row in legacy.items()}
@@ -157,11 +161,47 @@ class FleetDatabase:
                 if key not in manual and manual.get('owned') is not False:
                     values[key] = True
                 self._write_evidence(connection, card, key, 'migration: current ship')
-        # Explicit legacy corrections win. Any disagreement with current cards is
-        # visible as a conflict in the report, retaining both inputs for review.
+        # Retain explicit legacy corrections, except full-star completion proved
+        # by the fixed game rules applied below.
         for gid, values in merged.items():
             self._set_progress(connection, gid, values, source='migration: legacy and current evidence')
+        self._migrate_full_star_progress(connection)
         connection.execute(f'PRAGMA user_version={self.SCHEMA_VERSION}')
+
+    def _fill_star_states(self, connection):
+        for table in ('ships', 'pending_ships'):
+            for row in self._rows(connection, f'SELECT * FROM {table}'):
+                connection.execute(f'UPDATE {table} SET full_star=? WHERE id=?',
+                                   (tech.full_star_state(row), row['id']))
+
+    def _migrate_v4(self, connection):
+        # Keep the field's bit position in pending_ships unchanged. Only its value
+        # changes from an exact stage to nullable boolean; IDs and targets survive.
+        for table in ('ships', 'pending_ships', 'technology_evidence'):
+            connection.execute(f'ALTER TABLE {table} ADD COLUMN full_star INTEGER CHECK(full_star IN (0, 1))')
+            connection.execute(f'UPDATE {table} SET full_star=CASE WHEN breakthrough IS NULL THEN NULL '
+                               'WHEN breakthrough=3 THEN 1 ELSE 0 END')
+            connection.execute(f'ALTER TABLE {table} DROP COLUMN breakthrough')
+        self._fill_star_states(connection)
+        self._migrate_full_star_progress(connection)
+        info = self._info(connection)
+        if info['revision'] is not None:
+            self._touch(connection)
+        if info['pending_revision'] is not None:
+            connection.execute('UPDATE fleet_info SET pending_revision=? WHERE id=1', (tech.revision(uuid4().hex),))
+        connection.execute(f'PRAGMA user_version={self.SCHEMA_VERSION}')
+
+    def _migrate_full_star_progress(self, connection):
+        # Current low-level copies never erase historical completion.
+        progress = self._options(connection).get('progress', {})
+        for card in self._cards(connection):
+            if 'full_star' not in tech.positive_facts(card):
+                continue
+            gid = str(card['group_type'])
+            values = progress.setdefault(gid, {})
+            values.update(owned=True, full_star=True)
+            self._set_progress(connection, gid, values, source='migration: fixed full-star rules')
+            self._write_evidence(connection, card, 'full_star', 'migration: fixed full-star rules')
 
     @staticmethod
     def _rows(connection, query, args=()):
@@ -175,8 +215,8 @@ class FleetDatabase:
     def _cards(self, connection):
         rows = self._rows(connection, 'SELECT id, ' + ', '.join(ledger.CARD_FIELDS) + ' FROM ships ORDER BY position')
         for row in rows:
-            for field in ('review', 'excluded'):
-                row[field] = bool(row[field])
+            for field in ('review', 'excluded', 'full_star'):
+                row[field] = None if row[field] is None else bool(row[field])
         return rows
 
     def _snapshot(self, connection):
@@ -225,6 +265,7 @@ class FleetDatabase:
         evidence = {}
         for row in self._rows(connection, 'SELECT * FROM technology_evidence ORDER BY group_type, milestone, ship_id'):
             gid, milestone = row.pop('group_type'), row.pop('milestone')
+            row['full_star'] = None if row['full_star'] is None else bool(row['full_star'])
             evidence.setdefault(gid, {}).setdefault(milestone, []).append(row)
         if evidence:
             output['evidence'] = evidence
@@ -388,11 +429,13 @@ class FleetDatabase:
                            (str(gid), *(values.get(key) for key in tech.MILESTONES), source, self._now()))
 
     def _write_evidence(self, connection, card, milestone, source):
-        connection.execute('INSERT INTO technology_evidence VALUES (?, ?, ?, ?, ?, ?, ?) '
+        connection.execute('INSERT INTO technology_evidence '
+                           '(group_type, milestone, ship_id, level, full_star, source, confirmed_at) '
+                           'VALUES (?, ?, ?, ?, ?, ?, ?) '
                            'ON CONFLICT(group_type,milestone,ship_id) DO UPDATE SET level=excluded.level, '
-                           'breakthrough=excluded.breakthrough, source=excluded.source, confirmed_at=excluded.confirmed_at',
+                           'full_star=excluded.full_star, source=excluded.source, confirmed_at=excluded.confirmed_at',
                            (str(card['group_type']), milestone, card['id'], card['level'],
-                            card.get('breakthrough'), source, self._now()))
+                            card.get('full_star'), source, self._now()))
 
     def _promote_cards(self, connection, cards, *, source='confirmed ship'):
         progress = self._options(connection).get('progress', {})
@@ -404,7 +447,7 @@ class FleetDatabase:
             gid = str(card['group_type'])
             values = progress.setdefault(gid, {})
             for key in facts:
-                if values.get(key) is False:
+                if values.get(key) is False and not (key == 'full_star' and tech.fixed_full_star_state(card) is True):
                     conflicts.append(dict(group_type=int(gid), milestone=key, ship_ids=[card['id']]))
                 values[key] = True
                 self._write_evidence(connection, card, key, source)
@@ -489,7 +532,7 @@ class FleetDatabase:
         cards = {row['id']: row for row in self._cards(connection)}
         output = []
         for row in self._rows(connection, 'SELECT * FROM pending_ships ORDER BY id'):
-            values = {field: bool(row[field]) if field in ('excluded', 'review') else row[field]
+            values = {field: bool(row[field]) if field in ('excluded', 'review', 'full_star') and row[field] is not None else row[field]
                       for field in ledger.CARD_FIELDS}
             before = cards.get(row['ship_id'])
             operation = row['operation']
@@ -542,7 +585,7 @@ class FleetDatabase:
     def _stage(self, connection, rows, *, complete, observed, options, source, updated_at):
         if source != 'legacy':
             rows = [{key: value for key, value in row.items()
-                     if not (key in ('extra_exp', 'breakthrough', 'form') and value is None)} for row in rows]
+                     if not (key in ('extra_exp', 'full_star', 'form') and value is None)} for row in rows]
         if self._info(connection)['pending_revision'] is not None:
             raise FleetDatabaseConflict('仍有待确认更新，请先采纳或忽略后再读取新数据')
         for table in ('pending_ships', 'pending_technology', 'pending_nations'):

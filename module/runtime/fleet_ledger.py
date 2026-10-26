@@ -2,7 +2,7 @@
 import copy
 from collections import Counter
 
-CARD_FIELDS = ('group_type', 'name', 'level', 'rarity', 'base_rarity', 'extra_exp', 'excluded', 'review', 'source', 'breakthrough', 'form')
+CARD_FIELDS = ('group_type', 'name', 'level', 'rarity', 'base_rarity', 'extra_exp', 'excluded', 'review', 'source', 'full_star', 'form')
 MANUAL_FIELDS = ('owned', 'full_star', 'lv120', 'level', 'level_toggle')
 RARITIES = ('', 'N', 'R', 'SR', 'SSR', 'UR')
 
@@ -17,7 +17,7 @@ def integer(value, label, low=0, high=None, *, nullable=False):
 
 def card(values, base=None):
     result = dict(group_type=None, name='', level=0, rarity='', base_rarity='', extra_exp=None,
-                  excluded=False, review=False, source='', breakthrough=None, form=None)
+                  excluded=False, review=False, source='', full_star=None, form=None)
     if base:
         result.update({key: base[key] for key in CARD_FIELDS if key in base})
     result.update({key: values[key] for key in CARD_FIELDS if key in values})
@@ -31,7 +31,8 @@ def card(values, base=None):
     integer(result['group_type'], '舰船类型', 1, nullable=True)
     integer(result['level'], '等级', 0, 125)
     integer(result['extra_exp'], '零散经验', nullable=True)
-    integer(result['breakthrough'], '突破阶段', 0, 3, nullable=True)
+    if result['full_star'] is not None and type(result['full_star']) is not bool:
+        raise ValueError('满星状态必须是布尔值或空值')
     if result['form'] not in (None, 'base', 'retrofit'):
         raise ValueError('舰船形态无效')
     if result['group_type'] is not None:
@@ -49,6 +50,8 @@ def card(values, base=None):
             raise ValueError(f'{key} 必须是布尔值')
     if not isinstance(result['source'], str) or len(result['source']) > 200:
         raise ValueError('来源不能超过 200 字')
+    from module.runtime import fleet_tech
+    result['full_star'] = fleet_tech.full_star_state(result)
     return result
 
 
