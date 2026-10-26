@@ -35,7 +35,7 @@ export const analysisZhCN = {
   'analysis.calculateLink': '查看养成计算',
   'analysis.copies': '同名副本',
   'analysis.normal': '正常',
-  'analysis.missing': '信息缺失',
+  'analysis.missing': '等级未知',
 
   'analysis.editHint': '点击列标题切换升序或降序，排序覆盖全部记录。输入舰名并选择联想候选，舰船组 ID 和稀有度会自动填写；自由输入的未知舰名保留为待核对。',
   'analysis.chooseShip': '输入舰名选择舰船',
@@ -164,7 +164,7 @@ export const analysisEnUS: Record<keyof typeof analysisZhCN, string> = {
   'analysis.calculateLink': 'View cultivation costs',
   'analysis.copies': 'Copies',
   'analysis.normal': 'Normal',
-  'analysis.missing': 'Missing information',
+  'analysis.missing': 'Unknown level',
 
   'analysis.editHint': 'Click a column heading to sort all records ascending or descending. Choose a suggested ship name to fill its group ID and rarities. Unknown names remain marked for review.',
   'analysis.chooseShip': 'Type a name to choose a ship',
@@ -293,7 +293,7 @@ export const analysisZhTW: Record<keyof typeof analysisZhCN, string> = {
   'analysis.calculateLink': '查看养成计算',
   'analysis.copies': '同名副本',
   'analysis.normal': '正常',
-  'analysis.missing': '信息缺失',
+  'analysis.missing': '等級未知',
 
   'analysis.editHint': '點擊欄位標題切換升冪或降冪，排序涵蓋全部紀錄。輸入艦名並選擇聯想候選，艦船組 ID 和稀有度會自動填寫；自由輸入的未知艦名保留為待核對。',
   'analysis.chooseShip': '輸入艦名選擇艦船',
@@ -422,7 +422,7 @@ export const analysisJaJP: Record<keyof typeof analysisZhCN, string> = {
   'analysis.calculateLink': 'View cultivation costs',
   'analysis.copies': 'Copies',
   'analysis.normal': 'Normal',
-  'analysis.missing': 'Missing information',
+  'analysis.missing': 'レベル不明',
 
   'analysis.editHint': '列見出しをクリックすると全件を昇順・降順に並べ替えます。艦名候補を選択するとグループ ID とレアリティを自動入力します。未知の艦名は要確認として保持します。',
   'analysis.chooseShip': '艦名を入力して候補を選択',
