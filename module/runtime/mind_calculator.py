@@ -20,6 +20,8 @@ SHIP_DATA_FILE = Path(__file__).parents[2] / 'assets/ship/ship_data.json'
 def catalog():
     """从共享舰船资料构建国服目录，改造按基础舰船稀有度计费。"""
     data = json.loads(SHIP_DATA_FILE.read_text(encoding='utf-8'))
+    handbook_codes = {row['group_type']: row['code'] for row in
+                      json.loads(SHIP_DATA_FILE.with_name('fleet_tech.json').read_text(encoding='utf-8'))['ships']}
     entries = {}
     for ship_id, row in data.items():
         if row['group_type'] is None or row['star_max'] is None or row['rarity_name'] not in RARITIES:
@@ -36,6 +38,7 @@ def catalog():
         group = ('联动' if row['nationality'] >= 100 else '布里' if row['nationality'] == 98 else 'META' if row['nationality'] == 97
                  else '幼体' if row.get('is_child') else '方案' if row['group_type'] // 100 % 100 == 99 else '')
         info = dict(name=name, raw_name=name, rarity=rarity, base_rarity=rarity, group_type=row['group_type'],
+                    code=handbook_codes.get(row['group_type']),
                     base_name=base['name']['cn'].strip() if row['is_retrofit'] else name,
                     group=group, type=row['type_name'], nationality=base['nationality'],
                     nation=base.get('nation_name', str(base['nationality'])))

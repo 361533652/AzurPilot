@@ -14,7 +14,7 @@ const typeIds: Record<string, number> = {'驱逐': 1, '轻巡': 2, '重巡': 3, 
 const rarities = ['N', 'R', 'SR', 'SSR', 'UR']
 const nationValue = (ship?: CatalogShip) => ship?.nationality == null ? ship?.nation ?? '' : String(ship.nationality)
 const nationOrder = (value: string) => {const index = fleetFactionOrder.indexOf(Number(value)); return index < 0 ? fleetFactionOrder.length : index}
-const sortColumns = ['name', 'level', 'breakthrough', 'type', 'nation', 'rarity', 'reviewFlag'] as const
+const sortColumns = ['code', 'name', 'level', 'breakthrough', 'type', 'nation', 'rarity', 'reviewFlag'] as const
 type SortColumn = typeof sortColumns[number]
 type Sort = {column: SortColumn; direction: 'ascending' | 'descending'}
 type DraftCard = Omit<DockCard, 'level'> & {level: number | ''}
@@ -50,7 +50,7 @@ export function FleetLedger({instance, report, onReport, onBusy, onDirty, locked
   const groupFilter = params.get('group'), shipFilter = params.get('ship')
   const [query, setQuery] = useState(''), [filters, setFilters] = useState<Record<string, string[]>>({})
   const [minimum, setMinimum] = useState(''), [maximum, setMaximum] = useState('')
-  const [sort, setSort] = useState<Sort>({column: 'name', direction: 'ascending'})
+  const [sort, setSort] = useState<Sort>({column: 'code', direction: 'ascending'})
   const [batch, setBatch] = useState(false), [selected, setSelected] = useState<number[]>([])
   useEffect(() => {
     let active = true
@@ -99,6 +99,7 @@ export function FleetLedger({instance, report, onReport, onBusy, onDirty, locked
     function sortValue(row: DockCard): string | number | null {
       const ship = shipInfo.get(row.id)
       switch (sort.column) {
+        case 'code': return ship?.code ?? null
         case 'name': return row.name
         case 'level': return row.level || null
         case 'breakthrough': return row.full_star == null ? null : Number(row.full_star)
@@ -222,11 +223,12 @@ export function FleetLedger({instance, report, onReport, onBusy, onDirty, locked
     </div>
     <p className="ledger-hint">{ui('analysis.inlineHint')} {ui('analysis.fullStarRule')}</p>
     <datalist id={list}>{catalog?.ships.map(info => <option key={`${info.group_type}:${info.name}`} value={info.name}/>)}</datalist>
-    <div className="ft-table-wrap ledger-table-wrap" ref={table}><table><thead><tr>{batch && <th scope="col">{ui('analysis.batch')}</th>}{sortColumns.map(column => <th key={column} scope="col" aria-sort={sort.column === column ? sort.direction : 'none'}><button type="button" className="ft-sort" onClick={() => sortBy(column)}>{ui(`analysis.${column}`)}<span aria-hidden="true">{sort.column === column ? sort.direction === 'ascending' ? '↑' : '↓' : '↕'}</span></button></th>)}<th scope="col">{ui('analysis.delete')}</th></tr></thead><tbody>{displayRows.map(original => {
+    <div className="ft-table-wrap ledger-table-wrap" ref={table}><table><thead><tr>{batch && <th scope="col">{ui('analysis.batch')}</th>}{sortColumns.map(column => <th key={column} scope="col" aria-sort={sort.column === column ? sort.direction : 'none'}><button type="button" className="ft-sort" onClick={() => sortBy(column)}>{column === 'code' ? tr('code') : ui(`analysis.${column}`)}<span aria-hidden="true">{sort.column === column ? sort.direction === 'ascending' ? '↑' : '↓' : '↕'}</span></button></th>)}<th scope="col">{ui('analysis.delete')}</th></tr></thead><tbody>{displayRows.map(original => {
       const row = draft?.ships[original.id] ?? original, deleted = draft?.deleted.includes(row.id), info = infoFor(row)
       const label = (key: string) => `${ui(key)} · ${row.name || ui('analysis.new')} #${row.id}`
       return <tr key={row.id} id={`ledger-ship-${row.id}`} className={[deleted ? 'ledger-deleted' : '', draft?.ships[row.id] ? 'ledger-modified' : '', shipFilter === String(row.id) ? 'ledger-highlight' : ''].filter(Boolean).join(' ')}>
         {batch && <td><input type="checkbox" disabled={disabled || deleted} aria-label={label('analysis.batch')} checked={selected.includes(row.id)} onChange={e => setSelected(e.target.checked ? [...selected, row.id] : selected.filter(id => id !== row.id))}/></td>}
+        <td>{info?.code == null ? '—' : String(info.code).padStart(3, '0')}</td>
         <td className={`ft-name ft-rarity-${row.rarity}`}><input className="ledger-name" list={list} aria-label={label('analysis.name')} maxLength={100} value={row.name} disabled={disabled || deleted || !catalog} onChange={e => rename(row, e.target.value)}/>{row.id > 0 && (counts.get(String(row.group_type ?? row.name)) ?? 0) > 1 && <small> · #{row.id}</small>}{row.id < 0 && <small> · {ui('analysis.new')}</small>}</td>
         <td><input className="ledger-level" type="number" min={0} max={125} step={1} aria-label={label('analysis.level')} value={row.level} disabled={disabled || deleted} onChange={e => change(row, {level: e.target.value === '' ? '' : Number(e.target.value)})}/></td>
         <td><select aria-label={label('analysis.breakthrough')} value={row.full_star == null ? '' : String(row.full_star)} disabled={disabled || deleted} onChange={e => change(row, {full_star: e.target.value === '' ? null : e.target.value === 'true'})}><option value="">{ui('analysis.unknownValue')}</option><option value="false">{ui('analysis.fullStarNo')}</option><option value="true">{ui('analysis.fullStarYes')}</option></select></td>
