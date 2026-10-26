@@ -158,7 +158,7 @@ export function MindCalculator() {
         {group('bonusType', types.map(value => [String(value), tr(`type.${value}`)]))}
         {group('attr', attrs.map(value => [String(value), tr(`attr.${value}`)]))}
         {extra && <>{group('getBonusType', types.map(value => [String(value), tr(`type.${value}`)]), `${tr('unlock')} · ${tr('shipClass')}`)}{group('getAttr', attrs.map(value => [String(value), tr(`attr.${value}`)]), `${tr('unlock')} · ${tr('attr')}`)}{group('levelBonusType', types.map(value => [String(value), tr(`type.${value}`)]), `${tr('completionBonus')} · ${tr('shipClass')}`)}{group('levelAttr', attrs.map(value => [String(value), tr(`attr.${value}`)]), `${tr('completionBonus')} · ${tr('attr')}`)}</>}
-        {group('status', ['notTrained120', 'missingStar', 'awakening_pending', 'unowned', 'owned'].map(key => [key, tr(key)]))}
+        {group('status', ['notTrained120', 'missingStar', 'awakening_pending'].map(key => [key, tr(key)]))}
         <div className="ft-filter-row"><strong>筛选功能</strong><div className="ft-chips"><button type="button" aria-expanded={extra} onClick={toggleExtra}>{tr('extra')}</button></div></div>
       </section>
       <p className="ft-edit-hint">仅计算心智单元和物资。100、105、110、115级均视为尚未支付下一阶段觉醒费用，计入从该阶段至120级的全部剩余费用。</p>
