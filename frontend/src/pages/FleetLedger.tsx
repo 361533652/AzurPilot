@@ -54,6 +54,7 @@ export function FleetLedger({instance, report, onReport, onBusy, onDirty, locked
   const [batch, setBatch] = useState(false), [selected, setSelected] = useState<number[]>([])
   useEffect(() => {
     let active = true
+    setCatalog(undefined)
     if (connection === 'ready') void api.request('mind.catalog', {instance}).then(value => {if (active) setCatalog(value)}).catch(e => {if (active) setError((e as Error).message)})
     return () => {active = false}
   }, [instance, connection])
@@ -196,8 +197,9 @@ export function FleetLedger({instance, report, onReport, onBusy, onDirty, locked
     return <div className="ft-filter-row"><strong>{label}</strong><div className="ft-chips">{[['', tr('all')], ...options].map(([value, label]) => <button type="button" key={value} aria-pressed={value ? filters[key]?.includes(value) ?? false : !filters[key]?.length} onClick={() => setFilters(current => ({...current, [key]: value ? current[key]?.includes(value) ? current[key]!.filter(item => item !== value) : [...current[key] ?? [], value] : []}))}>{label}</button>)}</div></div>
   }
   const changedCount = new Set([...Object.keys(draft?.ships ?? {}).map(Number), ...draft?.deleted ?? []]).size
+  if (!report || !catalog) return error ? <ErrorBox message={error}/> : <Loading/>
   return <div className="fleet-ledger fleet-technology">
-    {error && <ErrorBox message={error}/>}{!report && <Loading/>}
+    {error && <ErrorBox message={error}/>}
     <div className="ft-toolbar ledger-summary" role="status"><strong>{ui('analysis.confirmedCount')}: {report?.ships.length ?? 0}</strong><span>{ui('analysis.species')}: {counts.size}</span><span>{ui('analysis.needsReview')}: {report?.ships.filter(row => row.review || !row.group_type).length ?? 0}</span><span>{ui('analysis.time')}: {report?.updated_at || '—'}</span></div>
     {groupFilter && <p>{ui('analysis.filter')}: {report?.ships.find(row => row.group_type === Number(groupFilter))?.name || groupFilter} <button className="button secondary" onClick={() => {const next = new URLSearchParams(params); next.delete('group'); setParams(next, {replace: true})}}>{ui('analysis.all')}</button></p>}
     <section className="ft-filters" aria-label={ui('analysis.filter')}>
