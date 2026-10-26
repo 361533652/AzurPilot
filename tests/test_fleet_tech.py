@@ -57,7 +57,7 @@ class FleetTechTests(unittest.TestCase):
         self.assertEqual(row['points'], 15)
 
     def test_full_star_default_is_strictly_above_100_and_does_not_write_records(self):
-        for level, star, points, pending in [(99, None, 3, 1), (100, None, 3, 1),
+        for level, star, points, pending in [(99, False, 3, 0), (100, False, 3, 0),
                                              (101, True, 10, 0), (120, True, 15, 0), (125, True, 15, 0)]:
             with self.subTest(level=level):
                 record = {'observed': {'10102': level}}
@@ -71,14 +71,14 @@ class FleetTechTests(unittest.TestCase):
 
     def test_full_star_default_respects_current_level_absence_and_manual_values(self):
         cases = [
-            ({'current': {'10102': 100}}, None),
+            ({'current': {'10102': 100}}, False),
             ({'absent': ['10102']}, False),
             ({'manual': {'10102': {'owned': False}}}, False),
-            ({'manual': {'10102': {'level': 100}}}, None),
+            ({'manual': {'10102': {'level': 100}}}, False),
             ({'manual': {'10102': {'level': 101}}}, True),
             ({'manual': {'10102': {'full_star': False}}}, False),
             ({'current': {'10102': 100}, 'manual': {'10102': {'full_star': True}}}, True),
-            ({'manual': {'10102': {'full_star': None}}}, None),
+            ({'manual': {'10102': {'full_star': None}}}, False),
         ]
         for values, expected in cases:
             with self.subTest(values=values):
@@ -115,7 +115,7 @@ class FleetTechTests(unittest.TestCase):
         record['nations']['1'] = 2
         self.assertEqual(tech.report(record)['bonuses']['7']['5'], 1)
 
-    def test_new_catalog_ships_start_unknown_without_mutating_records(self):
+    def test_new_catalog_ships_start_incomplete_without_mutating_records(self):
         record = tech.merge_mind({}, [ship()])
         original = copy.deepcopy(record)
         data = copy.deepcopy(tech.catalog())
@@ -135,8 +135,8 @@ class FleetTechTests(unittest.TestCase):
             with self.assertRaises(ApiError) as error:
                 service.patch('testpilot', initial['revision'], [FleetTechChange(group_type=10102, owned=True)], {})
             self.assertEqual(error.exception.code, 'CONFLICT')
-            updated = service.patch('testpilot', updated['revision'], [FleetTechChange(group_type=10102, owned=None)], {})
-            self.assertIsNone(next(row for row in updated['ships'] if row['group_type'] == 10102)['owned'])
+            updated = service.patch('testpilot', updated['revision'], [FleetTechChange(group_type=10102, owned=True)], {})
+            self.assertTrue(next(row for row in updated['ships'] if row['group_type'] == 10102)['owned'])
             self.assertEqual(service.report('second')['completed'], 0)
             self.assertEqual(service.sync_mind('testpilot'), updated)
 
@@ -151,7 +151,8 @@ class FleetTechTests(unittest.TestCase):
             with self.assertRaises(ApiError):
                 service.patch('testpilot', initial['revision'], [FleetTechChange(group_type=10102, owned=True)], {'1': 100})
             self.assertEqual(before, configs.path('testpilot').read_bytes())
-            for change in [{'group_type': 10102, 'level': 0}, {'group_type': True}, {'group_type': 10102, 'level': 126}]:
+            for change in [{'group_type': 10102, 'level': 0}, {'group_type': True}, {'group_type': 10102, 'level': 126},
+                           *({'group_type': 10102, key: None} for key in tech.MILESTONES)]:
                 with self.assertRaises(ValidationError):
                     FleetTechChange.model_validate(change)
             with self.assertRaises(ValidationError):

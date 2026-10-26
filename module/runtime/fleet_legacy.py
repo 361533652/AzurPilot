@@ -94,7 +94,9 @@ def _options(record):
     for nation, level in nations.items():
         if nation not in public['nations'] or not (level is None or _integer(level, 0, len(public['nations'][nation]))):
             raise ValueError('阵营科技等级无效')
-    return copy.deepcopy(dict(manual={gid: entry for gid, entry in manual.items() if entry}, nations=nations))
+    return copy.deepcopy(dict(manual={gid: {field: value is True if field in tech.MILESTONES else value
+                                           for field, value in entry.items()}
+                                     for gid, entry in manual.items() if entry}, nations=nations))
 
 
 def _merge_options(target, source):

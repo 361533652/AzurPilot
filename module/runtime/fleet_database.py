@@ -33,7 +33,7 @@ class FleetDatabaseAlreadyImported(ValueError):
 
 
 class FleetDatabase:
-    SCHEMA_VERSION = 6
+    SCHEMA_VERSION = 7
     BUSY_TIMEOUT_MS = 10000
 
     def __init__(self, config_path):
@@ -109,7 +109,7 @@ class FleetDatabase:
         version = connection.execute('PRAGMA user_version').fetchone()[0]
         if version == self.SCHEMA_VERSION:
             return
-        if version in (3, 4, 5):
+        if version in (3, 4, 5, 6):
             if connection.execute('PRAGMA query_only').fetchone()[0]:
                 raise FleetDatabaseMigrationRequired()
             if version == 3:
@@ -118,14 +118,16 @@ class FleetDatabase:
                 self._migrate_v4(connection)
             # v3 initializes the new table above; v4/v5 already saved account
             # progress separately. Never reseed an existing independent table.
-            connection.execute('ALTER TABLE fleet_info ADD COLUMN technology_initialized INTEGER '
-                               'NOT NULL DEFAULT 1 CHECK(technology_initialized IN (0, 1))')
-            if self._info(connection)['pending_source'] == 'scan' and connection.execute(
+            if version < 6:
+                connection.execute('ALTER TABLE fleet_info ADD COLUMN technology_initialized INTEGER '
+                                   'NOT NULL DEFAULT 1 CHECK(technology_initialized IN (0, 1))')
+            if version < 6 and self._info(connection)['pending_source'] == 'scan' and connection.execute(
                     'SELECT 1 FROM pending_technology LIMIT 1').fetchone():
                 # Earlier dock readings also proposed technology inferred from
                 # card levels. Retire those proposals without changing progress.
                 connection.execute('DELETE FROM pending_technology')
                 self._prune_pending(connection)
+            self._migrate_v6(connection)
             connection.execute(f'PRAGMA user_version={self.SCHEMA_VERSION}')
             return
         if version != 0 or not create:
@@ -167,12 +169,12 @@ class FleetDatabase:
             facts = tech.positive_facts(card)
             if not facts:
                 continue
-            values = merged.setdefault(gid, {key: None for key in tech.MILESTONES})
+            values = merged.setdefault(gid, {key: False for key in tech.MILESTONES})
             for key in facts:
                 if key not in manual and manual.get('owned') is not False:
                     values[key] = True
                 self._write_evidence(connection, card, key, 'migration: current ship')
-        # Retain explicit legacy corrections, including unknown and false.
+        # Legacy unknown corrections become incomplete; positive proof survives.
         for gid, values in merged.items():
             self._set_progress(connection, gid, values, source='migration: legacy and current evidence')
 
@@ -195,6 +197,26 @@ class FleetDatabase:
         if info['revision'] is not None:
             self._touch(connection)
         if info['pending_revision'] is not None:
+            connection.execute('UPDATE fleet_info SET pending_revision=? WHERE id=1', (tech.revision(uuid4().hex),))
+
+    def _migrate_v6(self, connection):
+        # Rebuild only account milestones: physical-card uncertainty and all
+        # historical evidence keep their original values and identities.
+        connection.execute('CREATE TABLE technology_progress_v7 ('
+                           'group_type TEXT PRIMARY KEY NOT NULL, '
+                           'owned INTEGER NOT NULL DEFAULT 0 CHECK(owned IN (0, 1)), '
+                           'full_star INTEGER NOT NULL DEFAULT 0 CHECK(full_star IN (0, 1)), '
+                           'lv120 INTEGER NOT NULL DEFAULT 0 CHECK(lv120 IN (0, 1)), '
+                           'source TEXT NOT NULL, updated_at TEXT NOT NULL) STRICT')
+        connection.execute('INSERT INTO technology_progress_v7 '
+                           'SELECT group_type, CASE WHEN owned=1 OR full_star=1 OR lv120=1 THEN 1 ELSE 0 END, '
+                           'COALESCE(full_star, 0), COALESCE(lv120, 0), source, updated_at '
+                           'FROM technology_progress')
+        connection.execute('DROP TABLE technology_progress')
+        connection.execute('ALTER TABLE technology_progress_v7 RENAME TO technology_progress')
+        if self._info(connection)['revision'] is not None:
+            self._touch(connection)
+        if self._info(connection)['pending_revision'] is not None:
             connection.execute('UPDATE fleet_info SET pending_revision=? WHERE id=1', (tech.revision(uuid4().hex),))
 
     @staticmethod
@@ -253,7 +275,7 @@ class FleetDatabase:
         progress = {row.pop('group_type'): row for row in self._rows(connection, 'SELECT * FROM technology_progress')}
         for row in progress.values():
             for key in tech.MILESTONES:
-                row[key] = None if row[key] is None else bool(row[key])
+                row[key] = bool(row[key])
         if progress:
             output['progress'] = progress
         evidence = {}
@@ -416,8 +438,9 @@ class FleetDatabase:
     def _set_progress(self, connection, gid, values, *, source):
         values = dict(values)
         for key in tech.MILESTONES:
-            if values.get(key) is not None and type(values[key]) is not bool:
-                raise ValueError('科技里程碑必须为布尔值或空值')
+            if key in values and type(values[key]) is not bool:
+                raise ValueError('科技里程碑必须为布尔值')
+            values.setdefault(key, False)
         if values.get('full_star') is True or values.get('lv120') is True:
             values['owned'] = True
         elif values.get('owned') is False:
@@ -448,7 +471,7 @@ class FleetDatabase:
             if not facts:
                 continue
             gid = str(card['group_type'])
-            # Even an explicitly blank saved row is an independent decision.
+            # Even an explicitly incomplete saved row is an independent decision.
             if gid in progress:
                 continue
             values = inferred.setdefault(gid, {})
@@ -583,11 +606,11 @@ class FleetDatabase:
         names = {str(row['group_type']): row['name'] for row in tech.catalog()['ships']}
         for row in self._rows(connection, 'SELECT * FROM pending_technology ORDER BY group_type'):
             gid = row['group_type']
-            before = current.get('progress', {}).get(gid, {})
+            before = current.get('progress', {}).get(gid, {key: False for key in tech.MILESTONES})
             manual = self._manual(row)
             inferred = tech.legacy_milestones(gid, row['max_observed_level'], manual)
             after = {key: value for key, value in inferred.items()
-                     if value is not None or key in manual}
+                     if value is True or key in manual}
             fields = [key for key in after if before.get(key) != after[key]]
             if fields:
                 output.append(dict(id=f'technology:{gid}', kind='technology', operation='update', ship_id=None,

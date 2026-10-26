@@ -72,27 +72,27 @@ class AccountProgressTests(unittest.TestCase):
             self.assertIsNone(connection.execute("SELECT name FROM sqlite_master WHERE name='technology_progress'").fetchone())
         self.assertTrue(self.row()['lv120'])
 
-    def test_explicit_migrated_unknown_is_not_restored_by_incidental_edit(self):
+    def test_explicit_migrated_unknown_becomes_incomplete_and_is_not_restored(self):
         self.v3([(10102, 120)], [('10102', 120, 1 | (1 << 2), None)])
-        self.assertIsNone(self.row()['full_star'])
+        self.assertFalse(self.row()['full_star'])
         self.assertEqual(self.row()['conflicts'], {})
         self.database.patch_cards([dict(id=1, extra_exp=10)], self.revision())
-        self.assertIsNone(self.row()['full_star'])
+        self.assertFalse(self.row()['full_star'])
         self.database.patch_cards([dict(id=1, excluded=True)], self.revision())
-        self.assertIsNone(self.row()['full_star'])
+        self.assertFalse(self.row()['full_star'])
 
     def test_research_and_meta_levels_do_not_prove_full_stars(self):
         self.database.patch_cards([dict(group_type=29901, name='海王星', level=125),
                                    dict(group_type=970101, name='猎人·META', level=125),
                                    dict(group_type=10517, name='新泽西', level=125)], self.revision())
         for gid in (29901, 970101, 10517):
-            self.assertIsNone(self.row(gid)['full_star'])
+            self.assertFalse(self.row(gid)['full_star'])
             self.assertTrue(self.row(gid)['lv120'])
-            self.assertEqual(self.row(gid)['status'], 'unknown')
+            self.assertEqual(self.row(gid)['status'], 'unfinished')
         cards = self.database.load()['snapshot']['ships']
         self.database.patch_cards([dict(id=row['id'], full_star=True) for row in cards], self.revision())
         for gid in (29901, 970101, 10517):
-            self.assertIsNone(self.row(gid)['full_star'])
+            self.assertFalse(self.row(gid)['full_star'])
         self.patch_tech([dict(group_type=gid, full_star=True) for gid in (29901, 970101, 10517)])
         for gid in (29901, 970101, 10517):
             self.assertTrue(self.row(gid)['full_star'])
@@ -119,15 +119,15 @@ class AccountProgressTests(unittest.TestCase):
         self.assertFalse(self.row()['lv120'])
         self.assertEqual(self.row()['current_count'], 0)
         self.assertEqual(self.row()['historical_evidence']['lv120'][0]['ship_id'], card_id)
-        self.patch_tech([dict(group_type=10102, lv120=None)])
+        self.patch_tech([dict(group_type=10102, lv120=False)])
         self.database.patch_cards([dict(group_type=10103, name='卡辛', level=125)], self.revision())
-        self.assertIsNone(self.row()['lv120'])
+        self.assertFalse(self.row()['lv120'])
 
-    def test_identity_correction_leaves_new_type_unknown_and_retains_old_history(self):
+    def test_identity_correction_leaves_new_type_incomplete_and_retains_old_history(self):
         self.database.patch_cards([dict(group_type=10102, name='杜威', level=120)], self.revision())
         self.database.patch_cards([dict(id=1, group_type=10103, name='卡辛')], self.revision())
-        self.assertIsNone(self.row(10103)['lv120'])
-        self.assertIsNone(self.row(10103)['owned'])
+        self.assertFalse(self.row(10103)['lv120'])
+        self.assertFalse(self.row(10103)['owned'])
         self.assertTrue(self.row(10102)['lv120'])
         self.assertEqual(self.row(10102)['current_count'], 0)
 
@@ -173,20 +173,20 @@ class AccountProgressTests(unittest.TestCase):
     def test_initial_seed_only_confirms_positive_facts_and_never_reseeds(self):
         self.database.patch_cards([dict(group_type=10102, name='杜威', level=50)], self.revision())
         self.assertTrue(self.row()['owned'])
-        self.assertIsNone(self.row()['full_star'])
-        self.assertIsNone(self.row()['lv120'])
+        self.assertFalse(self.row()['full_star'])
+        self.assertFalse(self.row()['lv120'])
         self.database.patch_cards([dict(id=1, level=120),
                                    dict(group_type=10103, name='卡辛', level=120)], self.revision())
-        self.assertIsNone(self.row()['full_star'])
-        self.assertIsNone(self.row()['lv120'])
-        self.assertIsNone(self.row(10103)['owned'])
+        self.assertFalse(self.row()['full_star'])
+        self.assertFalse(self.row()['lv120'])
+        self.assertFalse(self.row(10103)['owned'])
 
     def test_manual_milestones_before_first_ledger_prevent_automatic_seeding(self):
-        self.patch_tech([dict(group_type=10102, owned=None, full_star=None, lv120=None)])
+        self.patch_tech([dict(group_type=10102, owned=False, full_star=False, lv120=False)])
         self.database.patch_cards([dict(group_type=10102, name='杜威', level=120),
                                    dict(group_type=10103, name='卡辛', level=120)], self.revision())
         for gid in (10102, 10103):
-            self.assertTrue(all(self.row(gid)[key] is None for key in tech.MILESTONES))
+            self.assertTrue(all(self.row(gid)[key] is False for key in tech.MILESTONES))
 
     def test_confirming_dock_scan_changes_cards_without_proposing_or_updating_milestones(self):
         self.database.patch_cards([dict(group_type=10102, name='杜威', level=100)], self.revision())
@@ -212,9 +212,9 @@ class AccountProgressTests(unittest.TestCase):
                              self.revision(), state['pending_revision'])
         self.assertTrue(all(self.row()[key] is False for key in tech.MILESTONES))
 
-    def test_v5_upgrade_preserves_saved_false_and_unknown_without_reseeding(self):
+    def test_v5_upgrade_preserves_saved_incomplete_without_reseeding(self):
         self.database.patch_cards([dict(group_type=10102, name='杜威', level=120)], self.revision())
-        self.patch_tech([dict(group_type=10102, full_star=False, lv120=None)])
+        self.patch_tech([dict(group_type=10102, full_star=False, lv120=False)])
         before = self.record()['progress']
         with closing(sqlite3.connect(self.database.path)) as connection, connection:
             connection.execute('ALTER TABLE fleet_info DROP COLUMN technology_initialized')
@@ -222,6 +222,37 @@ class AccountProgressTests(unittest.TestCase):
         self.assertEqual(self.record()['progress'], before)
         self.database.patch_cards([dict(id=1, extra_exp=3)], self.revision())
         self.assertEqual(self.record()['progress'], before)
+
+    def test_v6_upgrade_normalizes_only_account_milestones_and_preserves_proof(self):
+        self.database.patch_cards([dict(group_type=10102, name='杜威', level=100)], self.revision())
+        before = self.database.load()
+        with closing(sqlite3.connect(self.database.path)) as connection, connection:
+            connection.execute('ALTER TABLE technology_progress RENAME TO saved_progress')
+            connection.execute('CREATE TABLE technology_progress (group_type TEXT PRIMARY KEY NOT NULL, '
+                               'owned INTEGER CHECK(owned IN (0, 1)), '
+                               'full_star INTEGER CHECK(full_star IN (0, 1)), '
+                               'lv120 INTEGER CHECK(lv120 IN (0, 1)), '
+                               'source TEXT NOT NULL, updated_at TEXT NOT NULL) STRICT')
+            connection.execute('INSERT INTO technology_progress SELECT * FROM saved_progress')
+            connection.execute('DROP TABLE saved_progress')
+            connection.execute('UPDATE technology_progress SET owned=NULL, full_star=NULL, lv120=1')
+            connection.execute('PRAGMA user_version=6')
+        after = self.database.load()
+        self.assertNotEqual(after['snapshot']['revision'], before['snapshot']['revision'])
+        self.assertEqual(after['snapshot']['ships'], before['snapshot']['ships'])
+        self.assertIsNone(after['snapshot']['ships'][0]['full_star'])
+        self.assertEqual(after['technology']['evidence'], before['technology']['evidence'])
+        progress = after['technology']['progress']['10102']
+        self.assertEqual([progress[key] for key in tech.MILESTONES], [True, False, True])
+        original = before['technology']['progress']['10102']
+        self.assertEqual((progress['source'], progress['updated_at']), (original['source'], original['updated_at']))
+        with closing(sqlite3.connect(self.database.path)) as connection:
+            self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0], 7)
+            fields = {row[1]: row for row in connection.execute('PRAGMA table_info(technology_progress)')}
+            for key in tech.MILESTONES:
+                self.assertEqual((fields[key][3], fields[key][4]), (1, '0'))
+                with self.assertRaises(sqlite3.IntegrityError):
+                    connection.execute(f'UPDATE technology_progress SET {key}=NULL')
 
     def test_explicit_union_only_adds_confirmed_current_facts_and_is_idempotent(self):
         self.patch_tech([dict(group_type=10102, owned=False),
@@ -237,8 +268,8 @@ class AccountProgressTests(unittest.TestCase):
         self.assertTrue(self.row(10103)['full_star'])
         self.assertFalse(self.row(10104)['owned'])
         self.assertTrue(self.row(10105)['owned'])
-        self.assertIsNone(self.row(10105)['full_star'])
-        self.assertIsNone(self.row(10105)['lv120'])
+        self.assertFalse(self.row(10105)['full_star'])
+        self.assertFalse(self.row(10105)['lv120'])
         before = self.database.load()
         self.database.merge_ship_technology(tech.revision(self.record()))
         self.assertEqual(self.database.load(), before)
@@ -251,7 +282,7 @@ class AccountProgressTests(unittest.TestCase):
             self.database.merge_ship_technology(stale)
         self.assertEqual(self.database.load(), before)
         stale = tech.revision(self.record())
-        self.patch_tech([dict(group_type=10102, lv120=None)])
+        self.patch_tech([dict(group_type=10102, lv120=False)])
         with self.assertRaises(FleetDatabaseConflict):
             self.database.merge_ship_technology(stale)
 

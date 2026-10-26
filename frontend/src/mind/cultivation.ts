@@ -21,7 +21,7 @@ export function highestCopies(cards: DockCard[]): number[] {
   }
   return [...groups.values()].map(card => card.id)
 }
-/** Account achievements survive retirement; an unknown achievement remains an estimate. */
+/** Completed account achievements survive retirement; incomplete entries remain cultivation candidates. */
 export function automaticCandidates(cards: DockCard[], catalog: Catalog, progress: Progress[]): DockCard[] {
   const supported = new Set(catalog.ships.filter(row => row.technology).map(row => row.group_type))
   const completed = new Set(progress.filter(row => row.lv120 === true).map(row => row.group_type))

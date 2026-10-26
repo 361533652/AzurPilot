@@ -11,9 +11,9 @@ const types = [1, 2, 3, 18, 4, 5, 7, 6, 13, 12, 10, 8, 17, 19, 22]
 const attrs = [1, 2, 3, 4, 5, 6, 9, 8, 12]
 const rarities = ['N', 'R', 'SR', 'SSR', 'UR', 'PR', 'DR']
 const stageLabel = {owned: 'get', full_star: 'star', lv120: 'Lv.120'}
-const stateKey = (value: State) => value === null ? 'unverified' : value ? 'finished' : 'notFinished'
-const stateSymbol = (value: State) => value === null ? '?' : value ? '✓' : '—'
-const nextState = (value: State): State => value === null ? true : value ? false : null
+const stateKey = (value: State) => value ? 'finished' : 'notFinished'
+const stateSymbol = (value: State) => value ? '✓' : '—'
+const nextState = (value: State): State => !value
 const nameFor = (row: Row, language: string) => row.names[language === 'en-US' ? 'en' : language === 'ja-JP' ? 'jp' : language === 'zh-TW' ? 'tw' : 'cn'] || row.name
 const pointsFor = (row: Row, key: Milestone) => row.technology?.[key === 'owned' ? 'pt_get' : key === 'full_star' ? 'pt_upgrage' : 'pt_level'] ?? 0
 const maximumPoints = (row: Row) => milestones.reduce((sum, key) => sum + pointsFor(row, key), 0)
@@ -40,7 +40,7 @@ export function TechnologyTable({rows, language, tr, editing = false, disabled =
     const title = `${tr('held')}: ${row.current_count} · ${row.current_level === null ? tr('unknown') : `Lv.${row.current_level}`}`
     return <tr key={row.group_type} id={`technology-${row.group_type}`} data-group={row.group_type} className={[complete(row) ? 'ft-complete' : '', modified.includes(row.group_type) ? 'ft-modified' : '', targetGroup === String(row.group_type) ? 'ft-target' : ''].filter(Boolean).join(' ')}>
       <td>{String(row.code).padStart(3, '0')}</td><td className={`ft-name ft-rarity-${row.rarity}`}><Link to={`?tab=data&group=${row.group_type}`} title={title}>{nameFor(row, language)}</Link></td><td>{tr(`nation.${row.nationality}`)}</td><td>{tr(`type.${shipType(row.type)}`)}</td>
-      {milestones.map(key => <td key={key} className={`ft-point ft-state-${stateKey(row[key])}`}><span className="ft-point-value" aria-label={`${row.name} · ${tr(stageLabel[key])} · ${tr(stateKey(row[key]))}`} title={tr(stateKey(row[key]))}><b>{pointsFor(row, key)}</b><span className="ft-mark" aria-hidden="true">{stateSymbol(row[key])}</span></span>{editing && <select aria-label={`${row.name} ${tr(stageLabel[key])}`} disabled={disabled} value={row[key] === null ? '' : String(row[key])} onChange={event => onChange?.(row, key, event.target.value === '' ? null : event.target.value === 'true')}><option value="">{tr('unverified')}</option><option value="true">{tr('finished')}</option><option value="false">{tr('notFinished')}</option></select>}</td>)}
+      {milestones.map(key => <td key={key} className={`ft-point ft-state-${stateKey(row[key])}`}><span className="ft-point-value" aria-label={`${row.name} · ${tr(stageLabel[key])} · ${tr(stateKey(row[key]))}`} title={tr(stateKey(row[key]))}><b>{pointsFor(row, key)}</b><span className="ft-mark" aria-hidden="true">{stateSymbol(row[key])}</span></span>{editing && <select aria-label={`${row.name} ${tr(stageLabel[key])}`} disabled={disabled} value={String(row[key])} onChange={event => onChange?.(row, key, event.target.value === 'true')}><option value="true">{tr('finished')}</option><option value="false">{tr('notFinished')}</option></select>}</td>)}
       <td title={`${tr('confirmed')}: ${row.points}`}>{maximumPoints(row)}</td>
       {(['get', 'level'] as const).map(stage => {
         const key = stage === 'get' ? 'owned' : 'lv120', label = `${row.name} · ${tr(stage === 'get' ? 'unlock' : 'completionBonus')} · ${tr(stateKey(row[key]))}`
@@ -62,7 +62,14 @@ export function FleetTechnology() {
   const scope = useRef(0), writing = useRef(false)
   const storageKey = `azurpilot.fleet-tech.v1.${instance}`
   const [draft, setDraft] = useState<Draft | null>(() => {
-    try {const value = JSON.parse(sessionStorage.getItem(storageKey) ?? 'null'); return value && typeof value.revision === 'string' && value.changes && value.nations ? value : null} catch {return null}
+    try {
+      const value = JSON.parse(sessionStorage.getItem(storageKey) ?? 'null')
+      if (!value || typeof value.revision !== 'string' || !value.changes || !value.nations) return null
+      for (const change of Object.values(value.changes) as Record<string, unknown>[]) {
+        for (const key of milestones) if (key in change) change[key] = change[key] === true
+      }
+      return value
+    } catch {return null}
   })
   const dirty = !!draft && (!!Object.keys(draft.changes).length || !!Object.keys(draft.nations).length)
   const stale = dirty && !!report && draft.revision !== report.revision
@@ -192,13 +199,13 @@ export function FleetTechnology() {
       {group('bonusType', types.map(value => [String(value), tr(`type.${value}`)]))}
       {group('attr', attrs.map(value => [String(value), tr(`attr.${value}`)]))}
       {extra && <>{group('getBonusType', types.map(value => [String(value), tr(`type.${value}`)]), `${tr('unlock')} · ${tr('shipClass')}`)}{group('getAttr', attrs.map(value => [String(value), tr(`attr.${value}`)]), `${tr('unlock')} · ${tr('attr')}`)}{group('levelBonusType', types.map(value => [String(value), tr(`type.${value}`)]), `${tr('completionBonus')} · ${tr('shipClass')}`)}{group('levelAttr', attrs.map(value => [String(value), tr(`attr.${value}`)]), `${tr('completionBonus')} · ${tr('attr')}`)}</>}
-      {group('status', ['incomplete', 'unfinished', 'unowned', 'owned', 'lv120', 'missingStar', 'unverified'].map(key => [key, tr(key === 'lv120' ? 'Lv.120' : key)]))}
+      {group('status', ['incomplete', 'unfinished', 'unowned', 'owned', 'lv120', 'missingStar'].map(key => [key, tr(key === 'lv120' ? 'Lv.120' : key)]))}
       <div className="ft-filter-row"><strong>{tr('functions')}</strong><div className="ft-chips"><button aria-pressed={editing} onClick={() => setEditing(!editing)}>{tr('edit')}</button><button aria-expanded={bonuses} aria-controls="fleet-tech-bonuses" onClick={() => setBonuses(!bonuses)}>{tr('bonuses')}</button><button aria-expanded={extra} onClick={() => {setExtra(!extra); if (extra) setFilters(current => {const next = {...current}; for (const key of ['getBonusType', 'getAttr', 'levelBonusType', 'levelAttr']) delete next[key]; return next})}}>{tr('extra')}</button></div></div>
     </section>
     <div className="ft-toolbar ft-savebar"><button className="button primary" disabled={disabled || !dirty || stale} onClick={() => void save()}>{ui('analysis.save')}</button>{dirty && <><span role="status">{tr('pendingEdits')}: {Object.keys(draft.changes).length + Object.keys(draft.nations).length}</span><button className="button secondary" disabled={busy} onClick={() => {setDraft(null); setError('')}}>{ui('analysis.discard')}</button></>}<button className="button secondary" disabled={disabled || dirty} title={dirty ? tr('saveBeforeMerge') : tr('mergeHint')} onClick={() => void mergeShips()}>{tr('mergeShips')}</button><small>{tr('mergeHint')}</small></div>
     {stale && <p role="alert">{ui('analysis.stale')}</p>}
-    {bonuses && <section id="fleet-tech-bonuses" className="ft-bonuses"><h2>{tr('bonuses')}{dirty && ` · ${tr('draftPreview')}`}</h2><div className="ft-nation-levels">{Object.entries(catalog.nations).map(([id, values]) => <label key={id}>{tr(`nation.${id}`)} {tr('factionLevel')}<select aria-label={`${tr(`nation.${id}`)} ${tr('factionLevel')}`} disabled={disabled} value={levels[id] ?? ''} onChange={event => changeNation(id, event.target.value === '' ? null : Number(event.target.value))}><option value="">{tr('unverified')}</option>{Array.from({length: values.length + 1}, (_, value) => <option key={value} value={value}>{value}</option>)}</select></label>)}</div><h3>{tr('shipBonuses')}</h3>{bonusList(totals.shipBonuses)}<h3>{tr('nationBonuses')}</h3>{bonusList(totals.nationBonuses)}<h3>{tr('total')}</h3>{bonusList(totals.bonuses)}<p>{tr('unknownImpact')}</p></section>}
-    <div className="ft-search"><input aria-label={tr('search')} placeholder={tr('search')} value={query} onChange={event => setQuery(event.target.value)}/><span>{ui('mind.rowCount', {count: filtered.length})}</span><span className="ft-state-legend">✓ {tr('finished')} · — {tr('notFinished')} · ? {tr('unverified')}</span></div>
+    {bonuses && <section id="fleet-tech-bonuses" className="ft-bonuses"><h2>{tr('bonuses')}{dirty && ` · ${tr('draftPreview')}`}</h2><div className="ft-nation-levels">{Object.entries(catalog.nations).map(([id, values]) => <label key={id}>{tr(`nation.${id}`)} {tr('factionLevel')}<select aria-label={`${tr(`nation.${id}`)} ${tr('factionLevel')}`} disabled={disabled} value={levels[id] ?? ''} onChange={event => changeNation(id, event.target.value === '' ? null : Number(event.target.value))}><option value="">{tr('unspecified')}</option>{Array.from({length: values.length + 1}, (_, value) => <option key={value} value={value}>{value}</option>)}</select></label>)}</div><h3>{tr('shipBonuses')}</h3>{bonusList(totals.shipBonuses)}<h3>{tr('nationBonuses')}</h3>{bonusList(totals.nationBonuses)}<h3>{tr('total')}</h3>{bonusList(totals.bonuses)}<p>{tr('unknownImpact')}</p></section>}
+    <div className="ft-search"><input aria-label={tr('search')} placeholder={tr('search')} value={query} onChange={event => setQuery(event.target.value)}/><span>{ui('mind.rowCount', {count: filtered.length})}</span><span className="ft-state-legend">✓ {tr('finished')} · — {tr('notFinished')}</span></div>
     {editing && <p className="ft-edit-hint">{tr('inlineEditHint')}</p>}
     <TechnologyTable rows={filtered} language={language} tr={tr} editing={editing} disabled={disabled} sort={sort} onSort={column => setSort(current => ({column, direction: current.column === column && current.direction === 'ascending' ? 'descending' : 'ascending'}))} onChange={change} modified={Object.keys(draft?.changes ?? {}).map(Number)} targetGroup={targetGroup}/>
     {!filtered.length && <p>{ui('mind.empty')}</p>}

@@ -138,7 +138,7 @@ class FleetLegacyTests(unittest.TestCase):
                 self.assertEqual(merged['technology']['manual']['10102'], {**existing, 'full_star': False})
         merged = merge_legacy(dict(snapshot=None, mind={}, technology={'manual': {'10102': {'owned': True, 'level': 100}}}), converted)
         self.assertEqual(merged['technology']['manual']['10102']['level'], 100)
-        self.assertIsNone(tech.progress(dock_data.technology_record(merged), 10102)['owned'])
+        self.assertFalse(tech.progress(dock_data.technology_record(merged), 10102)['owned'])
 
     def test_review_settings_stay_bound_to_their_original_snapshot(self):
         original = dock_data.build_snapshot([dict(row(name='未确认舰', level=0), review=True)],

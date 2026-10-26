@@ -85,7 +85,7 @@ class DockDataTests(unittest.TestCase):
         self.assertFalse(state['owned'])
         self.assertEqual(state['current_count'], 1)
         self.assertEqual(state['conflicts']['owned'], [1])
-        self.assertIsNone(tech.progress(record, 10103)['owned'])
+        self.assertFalse(tech.progress(record, 10103)['owned'])
         self.assertEqual(data, before)
 
     def test_无快照仍读取独立人工设置且默认全范围(self):
@@ -99,7 +99,7 @@ class DockDataTests(unittest.TestCase):
         result = snapshot([ship(level=105)], min_level=95, previous=previous)
         self.assertEqual(result['history']['current']['10102'], 125)
         self.assertFalse({'manual', 'nations', 'last_scan'} & result['history'].keys())
-        self.assertIsNone(tech.progress(dock.technology_record({'snapshot': result}), 10102)['owned'])
+        self.assertFalse(tech.progress(dock.technology_record({'snapshot': result}), 10102)['owned'])
 
     def test_心智合并确认副本而疑点卡位保持独立(self):
         rows = [ship(level=105), ship(level=120), ship(None, 0), ship(None, 0)]

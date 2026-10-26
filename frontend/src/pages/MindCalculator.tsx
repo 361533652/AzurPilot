@@ -76,7 +76,6 @@ export function MindCalculator() {
     && (!includedOnly || included.has(row.id))), [candidates, query, includedOnly, included])
   const pages = Math.max(1, Math.ceil(rows.length / 50)), currentPage = Math.min(page, pages - 1)
   const estimates = new Map(result?.ships.map(row => [row.id, row]))
-  const progress = new Map(facts?.technology.ships.map(row => [row.group_type, row]))
   function exclude(group: number, excluded: boolean) {
     setPlan(current => current && ({...current, excluded_groups: excluded
       ? [...new Set([...current.excluded_groups, group])] : current.excluded_groups.filter(value => value !== group)}))
@@ -95,7 +94,6 @@ export function MindCalculator() {
     const rest = plan.assumptions.filter(row => row.ship_id !== id)
     setPlan({...plan, assumptions: Object.keys(next).length > 1 ? [...rest, next] : rest})
   }
-  const unverified = candidates.filter(card => progress.get(card.group_type!)?.lv120 == null).length
   const review = facts?.dock.ships.filter(card => card.review || !card.group_type).length ?? 0
   return <div className="mind-calculator">
     <h2>养成计算</h2><p>自动按每种舰船现有最高等级的一艘，计算培养至120级所需的心智单元和物资。累计120级科技已完成的舰船种类不再重复计算。</p>
@@ -108,7 +106,6 @@ export function MindCalculator() {
           <div>心智单元<strong>{amount(result.mind)}</strong></div><div>物资<strong>{amount(result.gold)}</strong></div>
         </div><p role="status">参与 {result.included - result.unknown} 艘 · 觉醒状态待确认 {result.estimated} 艘 · 信息不足 {result.unknown} 艘（未计入合计）</p></>}
         <p>自动识别 {candidates.length} 种舰船，本次排除 {candidates.length - ids.length} 个。数据更新后自动重算。</p>
-        {unverified > 0 && <p className="muted">其中 {unverified} 种舰船的累计120级科技未核实，暂按当前等级估算费用。</p>}
         {review > 0 && <p className="muted">另有 {review} 条舰船身份待核对，未参与自动计算。<Link to="?tab=data">前往我的舰船核对</Link></p>}
         <p className="muted">仅统计认知觉醒费用。处于觉醒边界时，默认按尚未觉醒估算；可在试算条件中设置已觉醒上限。</p>
       </section>
@@ -127,7 +124,6 @@ export function MindCalculator() {
               <td><Link to={`?tab=data&ship=${card.id}`}>{card.name} · #{card.id}</Link></td><td>{card.level || '未知'}</td>
               <td>{amount(row?.mind)}</td><td>{amount(row?.gold)}</td>
               <td>{!included.has(card.id) ? <p>本次已排除</p> : <>
-                {progress.get(card.group_type!)?.lv120 == null && <p>累计120级科技未核实，按当前等级估算</p>}
                 {row?.notes.map(note => <p key={note}>{note}</p>)}<details><summary>{assumption ? '已启用试算条件' : '设置试算条件'}</summary>
                   <label>假设等级<input aria-label={`假设等级 ${card.id}`} type="number" min={1} max={125} value={assumption?.level ?? ''} placeholder={String(card.level)} onChange={event => assume(card.id, 'level', event.target.value)}/></label>
                   <label>已觉醒上限<select aria-label={`已觉醒上限 ${card.id}`} value={assumption?.awakened_to ?? ''} onChange={event => assume(card.id, 'awakened_to', event.target.value)}><option value="">按等级估算</option>{caps.map(value => <option key={value} value={value}>{value}</option>)}</select></label>

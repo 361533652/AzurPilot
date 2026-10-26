@@ -4,7 +4,7 @@ import type {DockCard} from '../api/types'
 import type {Catalog, Progress} from '../fleet-tech/types'
 const card = (id: number, level: number, extra: Partial<DockCard> = {}): DockCard => ({id, name: '企业', group_type: 10706, level, rarity: 'SSR', base_rarity: 'SSR', extra_exp: null, review: false, excluded: false, source: '', ...extra})
 const catalog = {ships: [{group_type: 10706, technology: {}}, {group_type: 10102, technology: null}]} as Catalog
-const progress = (lv120: boolean | null) => [{group_type: 10706, lv120}] as Progress[]
+const progress = (lv120: boolean) => [{group_type: 10706, lv120}] as Progress[]
 describe('automatic cultivation', () => {
   it('selects highest physical copy once, keeping unknown identities separate', () => {
     expect(highestCopies([card(1, 100), card(2, 110), card(3, 0, {review: true}), card(4, 0, {review: true})])).toEqual([2, 3, 4])
@@ -12,10 +12,10 @@ describe('automatic cultivation', () => {
   })
   it('retains cumulative completion after the level120 copy retires', () => {
     expect(automaticCandidates([card(1, 100)], catalog, progress(true))).toEqual([])
-    expect(automaticCandidates([card(1, 100), card(2, 120)], catalog, progress(null))).toEqual([])
+    expect(automaticCandidates([card(1, 100), card(2, 120)], catalog, progress(false))).toEqual([])
   })
-  it('estimates unknown milestones without changing them and omits unsupported identities', () => {
-    const facts = progress(null), before = JSON.stringify(facts)
+  it('uses incomplete milestones without changing them and omits unsupported identities', () => {
+    const facts = progress(false), before = JSON.stringify(facts)
     expect(automaticCandidates([card(1, 100), card(2, 119, {review: true}), card(3, 100, {group_type: 10102}), card(4, 0, {group_type: null})], catalog, facts).map(row => row.id)).toEqual([1])
     expect(JSON.stringify(facts)).toBe(before)
   })

@@ -141,18 +141,18 @@ def positive_facts(ship):
 
 
 def legacy_milestones(group_type, observed=None, manual=None):
-    """Convert evidence once; explicit unknown and negative corrections remain explicit."""
+    """Convert evidence once; legacy unknown corrections become incomplete."""
     manual = manual or {}
     level = manual.get('level', observed)
-    values = {key: None for key in MILESTONES}
+    values = {key: False for key in MILESTONES}
     if level:
         for key in positive_facts(dict(group_type=int(group_type), level=level)):
             values[key] = True
     for key in MILESTONES:
         if key in manual:
-            values[key] = manual[key]
-    if values['owned'] is False:
-        values.update(full_star=False, lv120=False)
+            values[key] = manual[key] is True
+    if 'owned' in manual and manual['owned'] is not True:
+        values.update(owned=False, full_star=False, lv120=False)
     if values['full_star'] is True or values['lv120'] is True:
         values['owned'] = True
     return values
@@ -163,10 +163,9 @@ def _account_progress(record, group_type):
     saved = record['progress'].get(gid, {})
     cards = [row for row in record.get('holdings', []) if row.get('group_type') == group_type and not row.get('review')]
     evidence = {key: [row['id'] for row in cards if 'id' in row and key in positive_facts(row)] for key in MILESTONES}
-    state = {key: saved.get(key) for key in MILESTONES}
+    state = {key: saved.get(key) is True for key in MILESTONES}
     status = ('complete' if all(state[key] is True for key in MILESTONES) else
-              'unowned' if state['owned'] is False else
-              'unknown' if any(state[key] is None for key in MILESTONES) else 'unfinished')
+              'unowned' if state['owned'] is False else 'unfinished')
     return dict(group_type=group_type, **state, status=status, points=0,
                 current_count=len(cards), current_level=max((row['level'] for row in cards), default=None),
                 evidence=evidence, historical_evidence=record.get('evidence_history', {}).get(gid, {}),
@@ -201,7 +200,7 @@ def _source_progress(record, group_type):
     if (owned and full_star is None and level and 'full_star' not in manual
             and 'full_star' in positive_facts(dict(group_type=group_type, level=level))):
         full_star = True
-    state = dict(group_type=group_type, owned=owned, level=level, full_star=full_star, lv120=lv120,
+    state = dict(group_type=group_type, owned=owned, level=level, full_star=full_star is True, lv120=lv120,
                  status='complete' if lv120 else 'unfinished' if owned else 'unowned',
                  manual=bool(manual), observed_level=observed, points=0)
     state.update(acquire_level=acquire_level, acquire_lv120=bool(acquire_lv120))

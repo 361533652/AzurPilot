@@ -95,13 +95,13 @@ CREATE TABLE pending_nations (
     level INTEGER CHECK(level >= 0)
 ) STRICT;
 
--- Authoritative cumulative account milestones. NULL means unverified, not false.
+-- Authoritative cumulative account milestones: completed or incomplete.
 -- The old technology table remains intact as migration evidence only.
 CREATE TABLE technology_progress (
     group_type TEXT PRIMARY KEY NOT NULL,
-    owned INTEGER CHECK(owned IN (0, 1)),
-    full_star INTEGER CHECK(full_star IN (0, 1)),
-    lv120 INTEGER CHECK(lv120 IN (0, 1)),
+    owned INTEGER NOT NULL DEFAULT 0 CHECK(owned IN (0, 1)),
+    full_star INTEGER NOT NULL DEFAULT 0 CHECK(full_star IN (0, 1)),
+    lv120 INTEGER NOT NULL DEFAULT 0 CHECK(lv120 IN (0, 1)),
     source TEXT NOT NULL,
     updated_at TEXT NOT NULL
 ) STRICT;

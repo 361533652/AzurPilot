@@ -45,7 +45,6 @@
 .ft-point-value { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 27px; }
 .ft-mark { font-size: 12px; font-weight: 700; color: #718091; }
 .ft-state-finished .ft-mark, .ft-marked .ft-mark { color: #13775f; }
-.ft-state-unverified .ft-mark { color: #92671b; }
 .ft-point select { display: block; margin: 4px auto 0; width: 90px; min-height: 28px; padding: 4px; font-size: 12px; }
 .ft-bonus-button { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 28px; border: 0; padding: 2px; background: transparent; color: #263746; }
 .fleet-technology .ft-bonus-button:disabled { opacity: 1; color: inherit; }

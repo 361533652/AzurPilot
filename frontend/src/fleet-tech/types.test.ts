@@ -1,16 +1,15 @@
 import {describe, expect, it} from 'vitest'
 import {catalogRows, changeMilestone, complete, matches, remainingPoints, type Catalog, type Row} from './types'
 const row: Row = {group_type: 10102, code: 4, handbook_type: 0, blueprint: false, name: '杜威', names: {cn: '杜威', en: 'Dewey'}, nationality: 1, rarity: 'R', type: 20,
-  owned: true, full_star: null, lv120: true, current_count: 0, current_level: null, evidence: {owned: [], full_star: [], lv120: []}, status: 'unknown', points: 8,
+  owned: true, full_star: false, lv120: true, current_count: 0, current_level: null, evidence: {owned: [], full_star: [], lv120: []}, status: 'unfinished', points: 8,
   technology: {pt_get: 3, pt_upgrage: 7, pt_level: 5, max_star: 5, add_get_shiptype: [1, 20, 21], add_get_attr: 1, add_get_value: 1, add_level_shiptype: [7], add_level_attr: 5, add_level_value: 1}}
 const catalog: Catalog = {ships: [row, {...row, group_type: 10103, name: '卡辛', code: 5}], nations: {}, updated_at: '', source_commit: '', max_points: 30, nation_points: {}}
 describe('authoritative cumulative technology', () => {
-  it('keeps the full catalog and absent historical facts unknown', () => {
+  it('keeps the full catalog and defaults unrecorded milestones to incomplete', () => {
     const rows = catalogRows(catalog, [row])
     expect(rows).toHaveLength(2)
-    expect(rows[1]).toMatchObject({owned: null, full_star: null, lv120: null, current_count: 0, points: 0})
-    expect(matches(rows[1]!, {status: ['unowned']}, '')).toBe(false)
-    expect(matches(rows[1]!, {status: ['unverified']}, '')).toBe(true)
+    expect(rows[1]).toMatchObject({owned: false, full_star: false, lv120: false, current_count: 0, points: 0})
+    expect(matches(rows[1]!, {status: ['unowned']}, '')).toBe(true)
   })
   it('does not equate retirement with never obtained or erase confirmed rewards', () => {
     expect(matches(row, {status: ['notHeld']}, '')).toBe(true)
@@ -22,7 +21,6 @@ describe('authoritative cumulative technology', () => {
     expect(complete(row)).toBe(false)
     expect(matches(row, {status: ['incomplete']}, '')).toBe(true)
     expect(complete({...row, full_star: true})).toBe(true)
-    expect(matches({...row, lv120: null}, {status: ['missing120']}, '')).toBe(false)
     expect(matches({...row, lv120: false}, {status: ['missing120']}, '')).toBe(true)
   })
   it('keeps duplicate counts and current level separate from milestones', () => {
@@ -40,7 +38,6 @@ describe('authoritative cumulative technology', () => {
 describe('explicit correction dependencies', () => {
   it('shows dependent milestone resets before save so point previews include every change', () => {
     expect(changeMilestone({group_type: 1}, 'owned', false)).toEqual({group_type: 1, owned: false, full_star: false, lv120: false})
-    expect(changeMilestone({group_type: 1}, 'owned', null)).toEqual({group_type: 1, owned: null, full_star: null, lv120: null})
     expect(changeMilestone({group_type: 1, owned: false}, 'lv120', true)).toEqual({group_type: 1, owned: true, lv120: true})
   })
 })

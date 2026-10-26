@@ -263,13 +263,14 @@ class SharedAnalysisTests(unittest.TestCase):
         card_id = snapshot['ships'][0]['id']
         before = self.tech.report('testpilot')
         for field in ('owned', 'full_star', 'lv120'):
-            for target in (False, None):
-                with self.subTest(field=field, target=target), self.assertRaises(ApiError) as error:
-                    self.tech.patch('testpilot', before['revision'],
-                                    [FleetTechChange(group_type=10102, **{field: target})], {})
-                self.assertEqual(error.exception.code, 'CONFLICT')
-                self.assertIn(str(card_id), error.exception.message)
-                self.assertEqual(self.tech.report('testpilot'), before)
+            with self.subTest(field=field, target=None), self.assertRaises(ValidationError):
+                FleetTechChange(group_type=10102, **{field: None})
+            with self.subTest(field=field, target=False), self.assertRaises(ApiError) as error:
+                self.tech.patch('testpilot', before['revision'],
+                                [FleetTechChange(group_type=10102, **{field: False})], {})
+            self.assertEqual(error.exception.code, 'CONFLICT')
+            self.assertIn(str(card_id), error.exception.message)
+            self.assertEqual(self.tech.report('testpilot'), before)
         self.dock.patch('testpilot', snapshot['revision'], [dict(id=card_id, delete=True)])
         report = self.tech.report('testpilot')
         row = next(row for row in report['ships'] if row['group_type'] == 10102)
@@ -294,9 +295,9 @@ class SharedAnalysisTests(unittest.TestCase):
         self.assertTrue(row['lv120'])
         self.assertTrue(row['full_star'])
         report = self.tech.patch('testpilot', self.tech.report('testpilot')['revision'],
-                                [FleetTechChange(group_type=10102, lv120=None, full_star=False)], {})
+                                [FleetTechChange(group_type=10102, lv120=False, full_star=False)], {})
         row = next(row for row in report['ships'] if row['group_type'] == 10102)
-        self.assertIsNone(row['lv120'])
+        self.assertFalse(row['lv120'])
         self.assertFalse(row['full_star'])
         self.assertEqual(row['evidence']['owned'], [card_id])
         self.assertEqual(row['evidence']['lv120'], [])

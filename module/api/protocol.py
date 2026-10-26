@@ -187,12 +187,12 @@ class DockReviewParams(InstanceParams):
 
 
 class FleetTechChange(Params):
-    """只修改明确提供的人工字段；恢复自动记录使用独立标记。"""
+    """只修改明确提供的人工字段；科技里程碑仅接受完成或未完成。"""
     model_config = ConfigDict(extra='forbid', strict=True, json_schema_extra=_partial_update_schema)
     group_type: StrictInt = Field(ge=1)
-    owned: StrictBool | None = None
-    full_star: StrictBool | None = None
-    lv120: StrictBool | None = None
+    owned: StrictBool = False
+    full_star: StrictBool = False
+    lv120: StrictBool = False
     level: StrictInt | None = Field(default=None, ge=1, le=125)
     restore: StrictBool = False
     toggle: Literal['owned', 'complete', 'star'] | None = None

@@ -893,7 +893,7 @@
         "$defs": {
           "FleetTechChange": {
             "additionalProperties": false,
-            "description": "只修改明确提供的人工字段；恢复自动记录使用独立标记。",
+            "description": "只修改明确提供的人工字段；科技里程碑仅接受完成或未完成。",
             "properties": {
               "group_type": {
                 "minimum": 1,
@@ -901,37 +901,16 @@
                 "type": "integer"
               },
               "owned": {
-                "anyOf": [
-                  {
-                    "type": "boolean"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Owned"
+                "title": "Owned",
+                "type": "boolean"
               },
               "full_star": {
-                "anyOf": [
-                  {
-                    "type": "boolean"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Full Star"
+                "title": "Full Star",
+                "type": "boolean"
               },
               "lv120": {
-                "anyOf": [
-                  {
-                    "type": "boolean"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Lv120"
+                "title": "Lv120",
+                "type": "boolean"
               },
               "level": {
                 "anyOf": [
