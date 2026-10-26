@@ -107,17 +107,19 @@ class AccountProgressTests(unittest.TestCase):
         self.patch_tech([dict(group_type=10102, lv120=True)])
         self.assertEqual([self.row()[key] for key in tech.MILESTONES], [True, True, True])
         self.patch_tech([dict(group_type=10102, owned=False)])
-        self.assertEqual([self.row()[key] for key in tech.MILESTONES], [False, True, True])
+        self.assertEqual([self.row()[key] for key in tech.MILESTONES], [False, False, False])
         self.patch_tech([dict(group_type=10102, lv120=False)])
-        self.assertEqual([self.row()[key] for key in tech.MILESTONES], [False, True, False])
+        self.assertEqual([self.row()[key] for key in tech.MILESTONES], [False, False, False])
         self.patch_tech([dict(group_type=10102, owned=False, full_star=False, lv120=True)])
-        self.assertEqual([self.row()[key] for key in tech.MILESTONES], [False, False, True])
+        self.assertEqual([self.row()[key] for key in tech.MILESTONES], [False, False, False])
 
     def test_manual_final_milestones_survive_reload_and_independent_cancellations(self):
         for mask in range(8):
             values = {key: bool(mask & (1 << index)) for index, key in enumerate(tech.MILESTONES)}
             with self.subTest(values=values):
                 self.patch_tech([dict(group_type=10102, **values)])
+                if not values['owned']:
+                    values.update(full_star=False, lv120=False)
                 self.assertEqual({key: self.row()[key] for key in tech.MILESTONES}, values)
                 report = tech.report(self.record())
                 self.assertEqual(report['milestone_counts'], {key: int(value) for key, value in values.items()})
@@ -129,7 +131,8 @@ class AccountProgressTests(unittest.TestCase):
                     self.patch_tech([dict(group_type=10102, **values)])
                     self.patch_tech([dict(group_type=10102, **{key: False})])
                     self.assertEqual({field: self.row()[field] for field in tech.MILESTONES},
-                                     dict(values, **{key: False}))
+                                     {field: False for field in tech.MILESTONES} if key == 'owned'
+                                     else dict(values, **{key: False}))
 
     def test_card_full_star_changes_do_not_override_independent_correction(self):
         self.database.patch_cards([dict(group_type=10102, name='杜威', level=100, full_star=True)], self.revision())

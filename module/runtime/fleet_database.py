@@ -495,13 +495,15 @@ class FleetDatabase:
                     raise ValueError('只允许编辑科技里程碑；等级请在我的舰船维护')
                 values = dict(record['progress'].get(str(gid), {}))
                 values.update({key: change[key] for key in tech.MILESTONES if key in change})
-                # Enabling a milestone fills omitted prerequisites. Explicit
-                # final values preserve later clicks that cancel just one bit.
+                # Enabling fills omitted prerequisites. Clearing ownership
+                # clears both dependents; other cancellations stay independent.
                 if 'owned' not in change and any(change.get(key) is True for key in ('full_star', 'lv120')):
                     values['owned'] = True
                 if ('full_star' not in change and change.get('lv120') is True
                         and known[gid]['full_star_rule'] == 'ordinary_level_cap'):
                     values['full_star'] = True
+                if change.get('owned') is False:
+                    values.update(full_star=False, lv120=False)
                 self._set_progress(connection, gid, values, source='manual correction')
             if changes:
                 connection.execute('UPDATE fleet_info SET technology_initialized=1 WHERE id=1')

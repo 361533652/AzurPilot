@@ -56,9 +56,10 @@ export function matches(row: Row, filters: Record<string, string[]>, query: stri
   }
   return true
 }
-/** Completing a milestone fills its prerequisites; cancelling changes only itself. */
+/** Completing fills prerequisites; clearing ownership also clears both dependent milestones. */
 export function changeMilestone(change: Change, key: Milestone, value: State, fullStarRule?: Ship['full_star_rule']): Change {
   const next = {...change, [key]: value}
+  if (key === 'owned' && !value) return {...next, full_star: false, lv120: false}
   if (value && key !== 'owned') next.owned = true
   if (value && key === 'lv120' && fullStarRule === 'ordinary_level_cap') next.full_star = true
   return next

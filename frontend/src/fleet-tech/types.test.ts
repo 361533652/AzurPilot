@@ -36,8 +36,8 @@ describe('authoritative cumulative technology', () => {
 })
 
 describe('explicit correction dependencies', () => {
-  it('completes prerequisites on enable and cancels only the selected milestone', () => {
-    expect(changeMilestone({group_type: 1, full_star: true, lv120: true}, 'owned', false)).toEqual({group_type: 1, owned: false, full_star: true, lv120: true})
+  it('completes prerequisites and clears dependents when ownership is cancelled', () => {
+    expect(changeMilestone({group_type: 1, full_star: true, lv120: true}, 'owned', false)).toEqual({group_type: 1, owned: false, full_star: false, lv120: false})
     expect(changeMilestone({group_type: 1, owned: false}, 'lv120', true, 'ordinary_level_cap')).toEqual({group_type: 1, owned: true, full_star: true, lv120: true})
     expect(changeMilestone({group_type: 1, owned: false}, 'lv120', true, 'explicit_breakthrough')).toEqual({group_type: 1, owned: true, lv120: true})
   })

@@ -68,6 +68,7 @@ export function FleetTechnology() {
       if (!value || typeof value.revision !== 'string' || !value.changes || !value.nations) return null
       for (const change of Object.values(value.changes) as Record<string, unknown>[]) {
         for (const key of milestones) if (key in change) change[key] = change[key] === true
+        if (change.owned === false) {change.full_star = false; change.lv120 = false}
       }
       return value
     } catch {return null}
