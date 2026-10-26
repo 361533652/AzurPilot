@@ -1,5 +1,12 @@
 import type {DockCard} from '../api/types'
-import type {Catalog, Progress} from '../fleet-tech/types'
+import type {Catalog, Progress, Ship} from '../fleet-tech/types'
+/** Compare all ships using the full four awakenings, independently of current progress. */
+export function technologyEfficiency(ship: Pick<Ship, 'rarity' | 'technology'> | undefined, mindCosts: Record<string, number>) {
+  const points = ship?.technology?.pt_level
+  const rarity = ship?.rarity === 'PR' ? 'SSR' : ship?.rarity === 'DR' ? 'UR' : ship?.rarity
+  const mind = rarity ? mindCosts[rarity] : undefined
+  return {points, mind, value: points != null && mind != null && mind > 0 ? points / mind * 1000 : null}
+}
 export interface CultivationRow {
   id: number; name: string; current_level: number; level: number; target_level: number
   hypothetical: boolean; mind: number | null; mind2: number | null; gold: number | null

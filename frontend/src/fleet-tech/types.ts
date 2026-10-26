@@ -1,6 +1,6 @@
 export interface Technology {pt_get: number; pt_upgrage: number; pt_level: number; max_star: number; add_get_shiptype: number[]; add_get_attr: number; add_get_value: number; add_level_shiptype: number[]; add_level_attr: number; add_level_value: number}
 export interface Ship {group_type: number; code: number; handbook_type: number; blueprint: boolean; full_star_rule: 'ordinary_level_cap' | 'explicit_breakthrough'; name: string; names: Record<string, string | null>; nationality: number; rarity: string; type: number; variant?: 'child' | 'mu' | ''; technology: Technology | null}
-export interface Catalog {ships: Ship[]; nations: Record<string, [number[], number, number][][]>; updated_at: string; source_commit: string; max_points: number; nation_points: Record<string, number>}
+export interface Catalog {ships: Ship[]; nations: Record<string, [number[], number, number][][]>; updated_at: string; source_commit: string; max_points: number; nation_points: Record<string, number>; mind_costs_100_to_120?: Record<string, number>}
 export type Milestone = 'owned' | 'full_star' | 'lv120'
 export type RecordField = Milestone | 'awakening_pending'
 export type State = boolean
@@ -36,6 +36,7 @@ export function matches(row: Row, filters: Record<string, string[]>, query: stri
     ...(row.lv120 === true ? ['lv120'] : row.owned === true && row.lv120 === false ? ['unfinished'] : []),
     ...(row.full_star === false ? ['missingStar'] : []),
     ...(row.awakening_pending ? ['awakening_pending'] : []),
+    ...(row.lv120 === false && !row.awakening_pending ? ['notTrained120'] : []),
     ...(row.lv120 === false ? ['missing120'] : []),
     ...(row.technology && !complete(row) ? ['incomplete'] : []),
     ...(row.technology && complete(row) ? ['complete'] : []),

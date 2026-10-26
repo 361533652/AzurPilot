@@ -3,6 +3,7 @@ from module.config.transaction import config_transaction
 from module.api.protocol import ApiError
 from module.runtime import fleet_tech as tech
 from module.runtime import dock_data
+from module.runtime.fleet_cultivation import mind_costs_100_to_120
 from module.runtime.fleet_database import FleetDatabase, FleetDatabaseConflict, FleetTechnologyConflict
 
 
@@ -12,7 +13,7 @@ class FleetTechService:
 
     def catalog(self, instance):
         self.configs.path(instance)
-        return tech.public_catalog()
+        return dict(tech.public_catalog(), mind_costs_100_to_120=mind_costs_100_to_120())
 
     def report(self, instance):
         data = FleetDatabase(self.configs.path(instance)).load(include_import_status=True)

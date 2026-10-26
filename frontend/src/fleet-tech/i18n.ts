@@ -7,6 +7,9 @@ export const fleetFactionOrder: readonly number[] = [
 ]
 
 const messages = {
+  notTrained120: ['未练满级', '未練滿級', 'Training unfinished', '育成未完了', '未练满级喵'],
+  efficiency: ['每千心智科技点', '每千心智科技點', 'Tech points per 1,000 chips', 'メンタルユニット1,000個あたり技術Pt', '每千心智科技点喵'],
+  efficiencyHint: ['120级奖励科技点 ÷ 100→120级完整心智单元费用 × 1000；越高越划算', '120級獎勵科技點 ÷ 100→120級完整心智單元費用 × 1000；越高越划算', 'Lv.120 tech points ÷ full Lv.100–120 cognitive chip cost × 1,000; higher is better', 'Lv.120技術Pt ÷ Lv.100→120のメンタルユニット総費用 × 1,000。高いほど効率的', '120级奖励科技点 ÷ 100→120级完整心智单元费用 × 1000；越高越划算喵'],
   awakening_pending: ['满级待觉醒', '滿級待覺醒', 'Max level, awaiting awakening', '覚醒待ち', '满级待觉醒喵'],
   awakeningHint: ['手动标记，独立于科技里程碑；编辑模式下点击切换，统一保存。', '手動標記，獨立於科技里程碑；編輯模式下點擊切換，統一儲存。', 'Manual flag, independent of technology milestones. Toggle in edit mode, then save.', '技術実績とは独立した手動マークです。編集モードで切り替え、保存してください。', '手动标记，独立于科技里程碑；编辑模式下点击切换，统一保存喵。'],
   marked: ['已标记', '已標記', 'Marked', 'マーク済み', '已标记喵'],

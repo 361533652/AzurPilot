@@ -12,6 +12,12 @@ def rules():
     return json.loads((Path(__file__).parents[2] / 'assets/ship/cultivation.json').read_text())
 
 
+def mind_costs_100_to_120():
+    data = rules()
+    return {rarity: sum(data['awaken'][str(level)][rarity]['mind'] for level in (100, 105, 110, 115))
+            for rarity in ('N', 'R', 'SR', 'SSR', 'UR')}
+
+
 def project(cards, ship_ids, target_level=120):
     by_id = {card['id']: card for card in cards}
     if len(set(ship_ids)) != len(ship_ids) or any(ship_id not in by_id for ship_id in ship_ids):
@@ -53,9 +59,8 @@ def project(cards, ship_ids, target_level=120):
                 for key in ('mind', 'mind2', 'gold'):
                     row[key] += cost[key]
         rows.append(row)
-    mind_costs = {rarity: sum(data['awaken'][str(level)][rarity]['mind'] for level in (100, 105, 110, 115))
-                  for rarity in ('N', 'R', 'SR', 'SSR', 'UR')}
-    return dict(ships=rows, target_level=target_level, included=len(rows), mind_costs_100_to_120=mind_costs,
+    return dict(ships=rows, target_level=target_level, included=len(rows),
+                mind_costs_100_to_120=mind_costs_100_to_120(),
                 unknown=sum(row['status'] == 'unknown' for row in rows),
                 estimated=0,
                 mind=sum(row['mind'] or 0 for row in rows), mind2=sum(row['mind2'] or 0 for row in rows),
