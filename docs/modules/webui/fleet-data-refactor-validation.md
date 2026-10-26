@@ -98,4 +98,4 @@ Playwright 舰队专项通过共用的类型化 WebSocket 辅助函数准备数�
 - Python 基础错误检查通过；在隔离目录重新生成配置，无差异；79 个 API 契约与重新生成内容逐字节一致。
 - 本地预览检查舰船数据、换船调度和自动换装备入口，导航样式一致，没有浏览器脚本错误；未保存用户配置或执行游戏操作。
 
-日志归档为开发运行目录 `validation/fleet-data-refactor/merge-dev-*.log`。未进行真实模拟器验证。
+日志归档为开发运行目录 `validation/fleet-data-refactor/merge-dev-*.log`。用户已确认完成实机验证；前文未实机验证的说明仅描述当时自动化验证阶段。
