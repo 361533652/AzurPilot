@@ -14,6 +14,7 @@
 .ft-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; padding: 5px 8px; }
 .ft-chips button { border: 1px solid #c8d0d9; border-radius: 5px; background: #fff; color: #445563; padding: 7px 11px; font-size: 13px; cursor: pointer; }
 .ft-chips button[aria-pressed=true], .ft-chips button[aria-expanded=true] { background: #e7f1ff; border-color: #4e9eee; color: #1670cd; }
+.ft-chips button[aria-selected=true] { background: #286db6; border-color: #286db6; color: #fff; }
 .ft-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .ft-savebar { position: sticky; top: 0; z-index: 3; padding: 12px; background: #eef3f8; border: 1px solid var(--ft-line); border-radius: 6px; }
 .ft-savebar small { flex-basis: 100%; color: #526c83; line-height: 1.6; }
