@@ -85,7 +85,7 @@ class Router:
             'fleetTech.mergeShips': Method(p.RevisionParams, lambda x: self.fleet_tech.merge_ships(x.instance, x.revision), True),
             'fleetTech.patch': Method(p.FleetTechPatchParams, lambda x: self.fleet_tech.patch(x.instance, x.revision, x.changes, x.nations), True),
             'mind.report': Method(p.InstanceParams, lambda x: self.mind.report(x.instance)),
-            'mind.plan': Method(p.CultivationParams, lambda x: self.mind.plan(x.instance, x.revision, x.ship_ids, x.target_level, [item.model_dump(exclude_unset=True) for item in x.assumptions])),
+            'mind.plan': Method(p.CultivationParams, lambda x: self.mind.plan(x.instance, x.revision, x.ship_ids, x.target_level)),
             'mind.calculate': Method(p.MindCalculateParams, lambda x: self.mind.calculate(x.instance, [ship.model_dump() for ship in x.ships])),
             'mind.save': Method(p.MindSaveParams, lambda x: self.mind.save(x.instance, x.revision, [ship.model_dump() for ship in x.ships]), True),
             'mind.import': Method(p.MindFileParams, lambda x: self.mind.import_file(x.instance, x.filename, x.content)),

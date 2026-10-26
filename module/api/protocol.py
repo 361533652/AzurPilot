@@ -159,18 +159,10 @@ class DockStageImportParams(InstanceParams):
     ships: list[MindShip] = Field(min_length=1, max_length=5000)
 
 
-class CultivationAssumption(Params):
-    ship_id: StrictInt = Field(ge=1)
-    level: StrictInt | None = Field(default=None, ge=1, le=125)
-    extra_exp: StrictInt | None = Field(default=None, ge=0)
-    awakened_to: Literal[100, 105, 110, 115, 120, 125] | None = None
-
-
 class CultivationParams(InstanceParams):
     revision: StrictStr = Field(min_length=64, max_length=64)
     ship_ids: list[StrictInt] = Field(max_length=5000)
     target_level: Literal[120, 125] = 120
-    assumptions: list[CultivationAssumption] = Field(default_factory=list, max_length=5000)
 
 
 class DockReviewDecision(Params):

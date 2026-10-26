@@ -32,16 +32,11 @@ describe('automatic cultivation', () => {
     expect(readPlan(null, [card(2, 110, {excluded: true})]).excluded_groups).toEqual([10706])
   })
   it('ignores old manual selection plans instead of freezing the automatic range', () => {
-    expect(readPlan(JSON.stringify({target: 125, ids: [], assumptions: []}), [card(1, 100)])).toEqual({excluded_groups: [], assumptions: []})
-    expect(readPlan('{', [card(1, 100)]).assumptions).toEqual([])
+    expect(readPlan(JSON.stringify({target: 125, ids: [], assumptions: []}), [card(1, 100)])).toEqual({excluded_groups: []})
+    expect(readPlan('{', [card(1, 100)])).toEqual({excluded_groups: []})
   })
-  it('validates trial conditions and drops obsolete experience inputs', () => {
-    const plan = readPlan(JSON.stringify({excluded_groups: [], assumptions: [{ship_id: 1, level: 105}, {ship_id: 1, level: 110, extra_exp: 900}, {ship_id: 2, level: 999}]}), [card(1, 100), card(2, 100)])
-    expect(plan.assumptions).toEqual([{ship_id: 1, level: 110}])
-  })
-  it('drops stale awakening assumptions when confirmed levels move to a later stage', () => {
-    const raw = JSON.stringify({excluded_groups: [], assumptions: [{ship_id: 1, awakened_to: 105}]})
-    expect(readPlan(raw, [card(1, 100)]).assumptions).toEqual([{ship_id: 1, awakened_to: 105}])
-    expect(readPlan(raw, [card(1, 110)]).assumptions).toEqual([])
+  it('discards legacy trial levels and awakening caps while preserving exclusions', () => {
+    const raw = JSON.stringify({excluded_groups: [10706], assumptions: [{ship_id: 1, level: 119, awakened_to: 120}]})
+    expect(readPlan(raw, [card(1, 100)])).toEqual({excluded_groups: [10706]})
   })
 })

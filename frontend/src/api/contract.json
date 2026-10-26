@@ -1037,70 +1037,6 @@
     "mind.plan": {
       "mutates": false,
       "params": {
-        "$defs": {
-          "CultivationAssumption": {
-            "additionalProperties": false,
-            "properties": {
-              "ship_id": {
-                "minimum": 1,
-                "title": "Ship Id",
-                "type": "integer"
-              },
-              "level": {
-                "anyOf": [
-                  {
-                    "maximum": 125,
-                    "minimum": 1,
-                    "type": "integer"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "default": null,
-                "title": "Level"
-              },
-              "extra_exp": {
-                "anyOf": [
-                  {
-                    "minimum": 0,
-                    "type": "integer"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "default": null,
-                "title": "Extra Exp"
-              },
-              "awakened_to": {
-                "anyOf": [
-                  {
-                    "enum": [
-                      100,
-                      105,
-                      110,
-                      115,
-                      120,
-                      125
-                    ],
-                    "type": "integer"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "default": null,
-                "title": "Awakened To"
-              }
-            },
-            "required": [
-              "ship_id"
-            ],
-            "title": "CultivationAssumption",
-            "type": "object"
-          }
-        },
         "additionalProperties": false,
         "properties": {
           "instance": {
@@ -1131,14 +1067,6 @@
             ],
             "title": "Target Level",
             "type": "integer"
-          },
-          "assumptions": {
-            "items": {
-              "$ref": "#/$defs/CultivationAssumption"
-            },
-            "maxItems": 5000,
-            "title": "Assumptions",
-            "type": "array"
           }
         },
         "required": [

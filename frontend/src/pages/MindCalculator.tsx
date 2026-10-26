@@ -5,8 +5,9 @@ import type {DockReport} from '../api/types'
 import type {Catalog, Report} from '../fleet-tech/types'
 import {useConnection} from '../app/context'
 import {ErrorBox, Loading} from '../components/ui'
-import {automaticCandidates, readPlan, type Assumption, type CultivationPlan, type CultivationReport} from '../mind/cultivation'
-import '../mind/mind.css'
+import {automaticCandidates, readPlan, type CultivationPlan, type CultivationReport} from '../mind/cultivation'
+import '../fleet-tech/style.css'
+import '../mind/cultivation.css'
 
 const amount = (value: number | null | undefined) => value == null ? '—' : value.toLocaleString()
 interface Facts {dock: DockReport; technology: Report; catalog: Catalog}
@@ -14,7 +15,7 @@ export function MindCalculator() {
   const {instance = ''} = useParams(), [params, setParams] = useSearchParams(), connection = useConnection()
   const [facts, setFacts] = useState<Facts>(), [plan, setPlan] = useState<CultivationPlan>()
   const [result, setResult] = useState<CultivationReport>(), [error, setError] = useState('')
-  const [query, setQuery] = useState(''), [includedOnly, setIncludedOnly] = useState(false), [page, setPage] = useState(0)
+  const [query, setQuery] = useState(''), [includedOnly, setIncludedOnly] = useState(false)
   const [reload, setReload] = useState(0), [calculating, setCalculating] = useState(false)
   const memory = useRef<{instance: string; plan: CultivationPlan} | null>(null)
   // Old manually selected copy IDs must not freeze the automatic calculation range.
@@ -60,7 +61,7 @@ export function MindCalculator() {
     setResult(undefined); setCalculating(true)
     const timer = setTimeout(() => {
       void api.request('mind.plan', {instance, revision: facts.dock.revision, ship_ids: ids,
-        target_level: 120, assumptions: plan.assumptions.filter(row => ids.includes(row.ship_id))}).then(value => {
+        target_level: 120}).then(value => {
         if (active) {setResult(value); setCalculating(false); setError('')}
       }).catch(e => {
         if (!active) return
@@ -74,67 +75,41 @@ export function MindCalculator() {
   const included = useMemo(() => new Set(ids), [ids])
   const rows = useMemo(() => candidates.filter(row => row.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
     && (!includedOnly || included.has(row.id))), [candidates, query, includedOnly, included])
-  const pages = Math.max(1, Math.ceil(rows.length / 50)), currentPage = Math.min(page, pages - 1)
   const estimates = new Map(result?.ships.map(row => [row.id, row]))
   function exclude(group: number, excluded: boolean) {
     setPlan(current => current && ({...current, excluded_groups: excluded
       ? [...new Set([...current.excluded_groups, group])] : current.excluded_groups.filter(value => value !== group)}))
   }
-  function assume(id: number, field: 'level' | 'awakened_to', raw: string) {
-    if (!plan) return
-    const existing = plan.assumptions.find(row => row.ship_id === id) ?? {ship_id: id}
-    const next = {...existing} as Assumption
-    if (!raw.trim()) {delete next[field]; if (field === 'level') delete next.awakened_to}
-    else {
-      const value = Number(raw)
-      if (!Number.isSafeInteger(value) || value < 1 || value > 125) return
-      if (field === 'awakened_to') next.awakened_to = value as Assumption['awakened_to']
-      else {next[field] = value; delete next.awakened_to}
-    }
-    const rest = plan.assumptions.filter(row => row.ship_id !== id)
-    setPlan({...plan, assumptions: Object.keys(next).length > 1 ? [...rest, next] : rest})
-  }
   const review = facts?.dock.ships.filter(card => card.review || !card.group_type).length ?? 0
-  return <div className="mind-calculator">
-    <h2>养成计算</h2><p>自动按每种舰船现有最高等级的一艘，计算培养至120级所需的心智单元和物资。累计120级科技已完成的舰船种类不再重复计算。</p>
+  return <div className="fleet-technology cultivation-calculator">
     {error && <ErrorBox message={error}/>}
     {!facts && !error && <Loading/>}
     {facts && plan && <>
-      <section className="mind-panel" aria-busy={calculating}><h3>培养至120级</h3>
+      <section className="ft-summary" aria-busy={calculating}>
+        <h2>养成计算</h2>
         {calculating && <p role="status">正在计算…</p>}
-        {result && <><div className="mind-totals mind-resource-totals">
+        {result && <><div className="cultivation-totals">
           <div>心智单元<strong>{amount(result.mind)}</strong></div><div>物资<strong>{amount(result.gold)}</strong></div>
-        </div><p role="status">参与 {result.included - result.unknown} 艘 · 觉醒状态待确认 {result.estimated} 艘 · 信息不足 {result.unknown} 艘（未计入合计）</p></>}
-        <p>自动识别 {candidates.length} 种舰船，本次排除 {candidates.length - ids.length} 个。数据更新后自动重算。</p>
-        {review > 0 && <p className="muted">另有 {review} 条舰船身份待核对，未参与自动计算。<Link to="?tab=data">前往我的舰船核对</Link></p>}
-        <p className="muted">仅统计认知觉醒费用。处于觉醒边界时，默认按尚未觉醒估算；可在试算条件中设置已觉醒上限。</p>
+        </div><p role="status">计入 {result.included - result.unknown} 种舰船{result.unknown > 0 && ` · 信息不足 ${result.unknown} 种，未计入合计`}{candidates.length > ids.length && ` · 手动排除 ${candidates.length - ids.length} 种`}</p></>}
+        <small>每种舰船取现有最高等级的一艘，已完成120级科技或已有120级副本的舰船不重复计算。数据更新后自动重算。</small>
+        {review > 0 && <p className="cultivation-review">另有 {review} 条舰船身份待核对。<Link to="?tab=data">前往我的舰船核对</Link></p>}
       </section>
-      <section className="mind-panel"><h3>舰船与资源明细</h3>
-        <div className="mind-toolbar"><input aria-label="搜索养成舰船" placeholder="搜索舰船" value={query} onChange={event => {setQuery(event.target.value); setPage(0)}}/>
-          <label><input type="checkbox" checked={includedOnly} onChange={event => {setIncludedOnly(event.target.checked); setPage(0)}}/>仅显示参与计算</label>
-          <button className="button secondary" disabled={!plan.excluded_groups.length && !plan.assumptions.length} onClick={() => setPlan({excluded_groups: [], assumptions: []})}>恢复自动计算</button>
-        </div>
-        <div className="mind-table-wrap"><table><thead><tr><th>参与计算</th><th>舰船</th><th>当前等级</th><th>心智单元</th><th>物资</th><th>计算说明 / 试算</th></tr></thead><tbody>
-          {rows.slice(currentPage * 50, (currentPage + 1) * 50).map(card => {
-            const row = estimates.get(card.id), assumption = plan.assumptions.find(value => value.ship_id === card.id)
-            const level = assumption?.level ?? card.level
-            const cap = [100, 105, 110, 115, 120, 125].find(value => value >= level) ?? 125
-            const caps = [cap, ...(level === cap && cap < 125 ? [cap + 5] : [])]
-            return <tr key={card.id}><td><input type="checkbox" aria-label={`参与计算 ${card.name}`} checked={included.has(card.id)} onChange={event => exclude(card.group_type!, !event.target.checked)}/></td>
-              <td><Link to={`?tab=data&ship=${card.id}`}>{card.name} · #{card.id}</Link></td><td>{card.level || '未知'}</td>
-              <td>{amount(row?.mind)}</td><td>{amount(row?.gold)}</td>
-              <td>{!included.has(card.id) ? <p>本次已排除</p> : <>
-                {row?.notes.map(note => <p key={note}>{note}</p>)}<details><summary>{assumption ? '已启用试算条件' : '设置试算条件'}</summary>
-                  <label>假设等级<input aria-label={`假设等级 ${card.id}`} type="number" min={1} max={125} value={assumption?.level ?? ''} placeholder={String(card.level)} onChange={event => assume(card.id, 'level', event.target.value)}/></label>
-                  <label>已觉醒上限<select aria-label={`已觉醒上限 ${card.id}`} value={assumption?.awakened_to ?? ''} onChange={event => assume(card.id, 'awakened_to', event.target.value)}><option value="">按等级估算</option>{caps.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
-                  {assumption && <button className="button secondary" onClick={() => setPlan({...plan, assumptions: plan.assumptions.filter(value => value.ship_id !== card.id)})}>恢复事实值</button>}
-                </details></>}
-              </td></tr>
-          })}
-        </tbody></table></div>
-        {!rows.length && <p>{candidates.length ? '没有符合筛选条件的舰船。' : '当前没有需要计算120级养成费用的舰船。'}</p>}
-        <div className="mind-toolbar"><button disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>上一页</button><span>{currentPage + 1} / {pages}</span><button disabled={currentPage + 1 >= pages} onClick={() => setPage(currentPage + 1)}>下一页</button></div>
-      </section>
+      <p className="ft-edit-hint">仅计算心智单元和物资。100、105、110、115级均视为尚未支付下一阶段觉醒费用，计入从该阶段至120级的全部剩余费用。</p>
+      <div className="ft-search"><input type="search" aria-label="搜索养成舰船" placeholder="搜索舰船" value={query} onChange={event => setQuery(event.target.value)}/><span>共 {rows.length} 种</span>
+        <label className="cultivation-included"><input type="checkbox" checked={includedOnly} onChange={event => setIncludedOnly(event.target.checked)}/>仅显示参与计算</label>
+        <button className="button secondary" disabled={!plan.excluded_groups.length} onClick={() => setPlan({excluded_groups: []})}>恢复全部参与</button>
+      </div>
+      <div className="ft-table-wrap cultivation-table"><table><thead><tr><th>参与计算</th><th>舰船</th><th>当前等级</th><th>心智单元</th><th>物资</th></tr></thead><tbody>
+        {rows.map(card => {
+          const row = estimates.get(card.id), participating = included.has(card.id)
+          return <tr key={card.id} className={participating ? '' : 'cultivation-excluded'}>
+            <td><input type="checkbox" aria-label={`参与计算 ${card.name}`} checked={participating} onChange={event => exclude(card.group_type!, !event.target.checked)}/></td>
+            <td className="ft-name"><Link to={`?tab=data&ship=${card.id}`}>{card.name}</Link>{participating && row?.status === 'unknown' && <small className="cultivation-warning">{row.notes.join('；')} · <Link to={`?tab=data&ship=${card.id}`}>前往核对</Link></small>}{!participating && <small className="cultivation-note">已排除</small>}</td>
+            <td>{card.level || '未知'}</td><td>{amount(row?.mind)}</td><td>{amount(row?.gold)}</td>
+          </tr>
+        })}
+      </tbody></table></div>
+      {!rows.length && <p>{candidates.length ? '没有符合筛选条件的舰船。' : '当前没有需要计算120级养成费用的舰船。'}</p>}
     </>}
   </div>
 }

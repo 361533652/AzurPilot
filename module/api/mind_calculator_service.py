@@ -149,7 +149,7 @@ class MindCalculatorService:
                     min_level=min_level, max_level=max_level,
                     **calculate(mind_analysis.ships(data)))
 
-    def plan(self, instance, expected_revision, ship_ids, target_level, assumptions):
+    def plan(self, instance, expected_revision, ship_ids, target_level):
         """Project selected card IDs against one confirmed revision without writing facts."""
         from module.runtime.fleet_cultivation import project
         data = FleetDatabase(self.configs.path(instance)).load()
@@ -157,7 +157,7 @@ class MindCalculatorService:
         if snapshot['revision'] != expected_revision:
             raise ApiError('CONFLICT', '舰船数据已更新，请重新载入后计算')
         return dict(instance=instance, revision=snapshot['revision'],
-                    **project(snapshot['ships'], ship_ids, target_level, assumptions))
+                    **project(snapshot['ships'], ship_ids, target_level))
 
     def save(self, instance, expected_revision, ships):
         """汇总清单没有稳定副本身份，禁止用它覆盖底账或删除同名副本。"""

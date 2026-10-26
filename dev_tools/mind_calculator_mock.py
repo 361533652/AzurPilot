@@ -71,7 +71,7 @@ def dispatch(request):
                         for change in request.get('decisions', [])])
             elif action == 'mind.plan':
                 result = MindCalculatorService(configs).plan(request['instance'], request['revision'],
-                    request.get('ship_ids', []), request.get('target_level', 120), request.get('assumptions', []))
+                    request.get('ship_ids', []), request.get('target_level', 120))
             elif action == 'mind.report':
                 result = MindCalculatorService(configs).report(request['instance'])
             elif action == 'mind.save':

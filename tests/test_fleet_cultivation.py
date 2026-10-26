@@ -30,31 +30,27 @@ class CultivationTests(unittest.TestCase):
         result = project([ur], [1], 125)
         self.assertEqual(result['mind2'], 225)
 
-    def test_resource_only_calculation_keeps_cap_explicit(self):
+    def test_resource_only_calculation_uses_confirmed_boundary(self):
         row = project([card(level=120)], [1], 125)['ships'][0]
         self.assertNotIn('experience', row)
         self.assertNotIn('experience_upper', row)
-        row = project([card(level=120)], [1], 125, [dict(ship_id=1, awakened_to=125)])['ships'][0]
-        self.assertEqual((row['mind'], row['mind2'], row['gold']), (0, 0, 0))
+        self.assertEqual((row['mind'], row['mind2'], row['gold']), (300, 150, 3000))
         self.assertEqual(row['status'], 'exact')
 
-    def test_trial_level_keeps_actual_level_and_cannot_mutate_input(self):
+    def test_actual_level_and_fixed_boundary_cannot_mutate_input(self):
         cards = [card(level=100)]
-        row = project(cards, [1], 120, [dict(ship_id=1, level=119, extra_exp=100)])['ships'][0]
-        self.assertEqual((row['current_level'], row['level']), (100, 119))
-        self.assertEqual((row['mind'], row['gold']), (0, 0))
+        row = project(cards, [1], 120)['ships'][0]
+        self.assertEqual((row['current_level'], row['level']), (100, 100))
+        self.assertEqual((row['mind'], row['gold']), (2200, 22000))
         self.assertEqual(cards[0]['level'], 100)
 
-    def test_bad_ids_and_cap_rejected(self):
+    def test_bad_ids_and_removed_trial_params_rejected(self):
         for ids in ([1, 1], [2]):
             with self.assertRaises(ApiError):
                 project([card()], ids)
-        with self.assertRaises(ApiError):
-            project([card(level=100)], [1], 125, [dict(ship_id=1, awakened_to=125)])
-        with self.assertRaises(ApiError):
-            project([card(level=120)], [1], 125, [dict(ship_id=1, awakened_to=115)])
-        with self.assertRaises(ApiError):
-            project([card()], [1], 120, [dict(ship_id=2, level=100)])
+        with self.assertRaises(ValueError):
+            CultivationParams(instance='alas', revision='a' * 64, ship_ids=[1],
+                              assumptions=[dict(ship_id=1, awakened_to=105)])
 
     def test_unknown_identity_and_completed_target(self):
         bad = card()
@@ -84,7 +80,7 @@ class CultivationTests(unittest.TestCase):
             values.append((result['mind'], result['gold']))
         self.assertEqual(values, [(0, 0)] * 3)
         result = project([card(level=110)], [1])
-        self.assertEqual(result['estimated'], 1)
+        self.assertEqual(result['estimated'], 0)
         self.assertGreater(result['mind'], 0)
 
     def test_confirmed_group_disambiguates_raw_names(self):
