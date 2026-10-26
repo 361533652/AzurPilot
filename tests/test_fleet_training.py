@@ -21,7 +21,7 @@ from module.awaken.assets import OCR_SHIP_LEVEL
 from module.retire.fleet_training import AffinityReader, FleetTrainingReader, TrainingExp, parse_affinity
 from module.runtime.fleet_rotation import ROTATION_PATH
 from module.runtime.fleet_training import (LEVEL_PATH, AFFINITY_PATH, TRAINING_PATH, INTERVAL_PATH, completed,
-                                           excluded, goals, due, interval, observe, state)
+                                           excluded, goals, due, identity, interval, observe, state)
 from module.runtime.mind_calculator import catalog
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -29,6 +29,25 @@ import tests.test_fleet_rotation as rotation_cases
 
 
 class TrainingRuleTests(unittest.TestCase):
+    def test_confirmed_long_name_uses_the_same_bounded_correction_as_formation_scanning(self):
+        name = '阿尔弗雷多·奥里亚尼'
+        ship = dict(name=name, raw_name='阿尔弗雷多·奥里亚', level=105, slot=4, review=False)
+        result = {'vanguard': {'1': [ship]}}
+        for raw in ('阿尔弗雷多·奥里亚', '阿尔弗雷多·奥..', 'J尔弗雷多·奥里亚尼', name):
+            with self.subTest(raw=raw):
+                ship['raw_name'] = raw
+                self.assertEqual(name, identity(ship, result))
+        for raw in ('花月', '阿', '完全未知舰船'):
+            with self.subTest(raw=raw):
+                ship['raw_name'] = raw
+                self.assertIsNone(identity(ship, result))
+        ship.update(raw_name=name, review=True)
+        self.assertIsNone(identity(ship, result))
+        ship['review'] = False
+        result['vanguard']['4'] = [dict(ship)]
+        self.assertIsNone(identity(ship, result))
+        self.assertEqual(name, identity(ship, result, allow_duplicates=True))
+
     def test_inventory_always_reads_names_and_morale_from_dock_before_training(self):
         from module.retire.fleet_management import FleetManagement
         saved = {}
@@ -647,6 +666,39 @@ class TrainingIntegrationTests(unittest.TestCase):
         self.assertEqual((name, 1, 4, 100, 60, 119),
                          tuple(reading[key] for key in ('name', 'fleet', 'slot', 'level', 'affinity', 'emotion')))
         self.assertNotIn('completed_for', reading)
+        self.assertFalse(due(self.config, self.runner._fleet_rotation_context))
+        self.manager.rotate_slot.assert_not_called()
+
+    def test_level_only_keeps_all_three_readings_after_confirmed_truncated_name(self):
+        self.configure(level=True, affinity=False, slots=(4, 5, 6))
+        names = {4: '阿尔弗雷多·奥里亚尼', 5: '花月', 6: '文琴佐·焦贝蒂'}
+        for slot, name in names.items():
+            self.names[1, slot] = name
+            self.profile[name] = dict(level=105)
+        self.names[4, 4] = names[4]
+        self.full_scan()
+        scan = self.full_scan
+
+        def scan_with_raw(*args, **kwargs):
+            scan(*args, **kwargs)
+            result = self.config.cross_get(self.manager.RESULT_PATH)
+            result['vanguard']['1'][0]['raw_name'] = '阿尔弗雷多·奥里亚'
+            self.config.cross_set(self.manager.RESULT_PATH, result)
+
+        self.full_scan = scan_with_raw
+        readings = {4: dict(level=105, exp=1582026), 5: dict(level=105, exp=1594218),
+                    6: dict(level=105, exp=1583910)}
+        with patch.object(self.reader_factory, 'read', return_value=readings) as read:
+            self.assertTrue(preflight_rotation(self.runner, 5, 'normal'))
+        read.assert_called_once_with(1, [4, 5, 6], {'level': 120})
+        saved = state(self.config)
+        self.assertNotIn(names[4], saved['records'])
+        for slot, name in names.items():
+            record = saved['readings']['1:4'] if slot == 4 else saved['records'][name]
+            self.assertEqual((105, readings[slot]['exp']), (record['level'], record['exp']))
+            self.assertTrue(record['checked_at'])
+            self.assertNotIn('affinity', record)
+            self.assertNotIn('completed_for', record)
         self.assertFalse(due(self.config, self.runner._fleet_rotation_context))
         self.manager.rotate_slot.assert_not_called()
 

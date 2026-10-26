@@ -6,6 +6,7 @@ from datetime import datetime
 from module.config.time_source import now
 from module.config.redirect_utils.utils import fleet_training_interval_redirect
 from module.exception import FleetManagementError
+from module.retire.ship_name import ShipNameMatcher
 from module.runtime.mind_calculator import find_ship
 from module.runtime.fleet_rotation import ROTATION_PATH, active_fleets
 
@@ -74,6 +75,10 @@ def identity(ship, result, *, allow_duplicates=False):
         return None
     if ship.get('raw_name'):
         raw = find_ship(ship['raw_name'])
+        if raw is None:
+            # 编队扫描已确认的截短原文须按同一规则复核，不能再次要求完整拼写。
+            matched, status = ShipNameMatcher('cn').approximate(ship['raw_name'])
+            raw = find_ship(matched) if status in ('exact', 'prefix', 'similar') else None
         if raw is None or raw['name'] != info['name']:
             return None
     name = info['name']
