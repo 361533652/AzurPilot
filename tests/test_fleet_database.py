@@ -50,8 +50,12 @@ def patch_worker(config_path, barrier, expected_revision, tag, queue):
 def scan_worker(config_path, barrier, tag, queue):
     database = FleetDatabase(Path(config_path))
     barrier.wait(timeout=15)
-    database.save_scan(snapshot(tag), revision({}))
-    queue.put('staged')
+    try:
+        database.save_scan(snapshot(tag), revision({}))
+    except FleetDatabaseConflict:
+        queue.put('conflict')
+    else:
+        queue.put('staged')
 
 
 def crash_editor_worker(config_path):
@@ -120,10 +124,10 @@ class FleetDatabaseTest(unittest.TestCase):
                 "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
             self.assertEqual(tables, {'ships', 'fleet_info', 'technology', 'nation_technology',
                                      'pending_ships', 'pending_technology', 'pending_nations',
-                                     'pending_targets'})
+                                     'pending_targets', 'technology_progress', 'technology_evidence'})
             columns = {row[1]: row for row in connection.execute('PRAGMA table_info(ships)')}
             self.assertEqual(set(columns), {'id', 'position', 'group_type', 'name', 'level',
-                'rarity', 'base_rarity', 'extra_exp', 'excluded', 'review', 'source'})
+                'rarity', 'base_rarity', 'extra_exp', 'excluded', 'review', 'source', 'breakthrough', 'form'})
             self.assertEqual(columns['id'][2], 'INTEGER')
             self.assertEqual(columns['id'][5], 1)
             self.assertEqual(columns['extra_exp'][2], 'INTEGER')
@@ -134,7 +138,7 @@ class FleetDatabaseTest(unittest.TestCase):
                 for column in connection.execute(f'PRAGMA table_info({table})'):
                     self.assertNotIn(column[1], {'payload', 'metadata', 'json'})
                     self.assertNotIn('json', column[1].lower())
-            self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0], 3)
+            self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0], 4)
 
     def test_deleted_card_ids_are_not_reused_and_scan_does_not_replace_existing_ids(self):
         first = self.seed()['snapshot']['ships']
@@ -168,9 +172,9 @@ class FleetDatabaseTest(unittest.TestCase):
             'level_toggle': {'low': 100, 'high': 125}}}, 'nations': {'1': 0, '3': None}}
         with self.db.edit() as state:
             state['technology'] = copy.deepcopy(options)
-        self.assertEqual(self.db.load()['technology'], options)
+        self.assertEqual({key: self.db.load()['technology'][key] for key in options}, options)
         self.db.save_scan(snapshot('next'), self.current_revision())
-        self.assertEqual(self.db.load()['technology'], options)
+        self.assertEqual({key: self.db.load()['technology'][key] for key in options}, options)
         with self.db.edit() as state:
             state['technology']['manual']['10102'] = {'owned': False}
         self.assertEqual(self.db.load()['technology']['manual']['10102'], {'owned': False})
@@ -222,9 +226,13 @@ class FleetDatabaseTest(unittest.TestCase):
         self.assertEqual(self.db.load()['snapshot'], before['snapshot'])
         removals = [row for row in self.db.load()['pending_changes'] if row['operation'] == 'remove']
         self.assertEqual(len(removals), 2)
-        self.decide_all(True)
+        with self.assertRaisesRegex(ValueError, '单独确认'):
+            self.decide_all(True)
+        for row in removals:
+            state = self.db.load()
+            self.db.review([dict(id=row['id'], accept=True)], self.current_revision(), state['pending_revision'])
         self.assertEqual([row['name'] for row in self.db.load()['snapshot']['ships']], ['未识别舰船'])
-        self.assertEqual(self.db.load()['snapshot']['history']['observed']['10102'], 125)
+        self.assertTrue(self.db.load()['technology']['progress']['10102']['lv120'])
 
     def test_review_batch_failure_rolls_back_cards_and_pending_deletions(self):
         self.db.save_scan(snapshot(), self.current_revision())
@@ -261,6 +269,7 @@ class FleetDatabaseTest(unittest.TestCase):
             self.db.stage_legacy({'snapshot': snapshot('broken'),
                 'technology': {'nations': {'1': 'invalid'}}}, self.current_revision())
         self.assertEqual(self.db.load(include_import_status=True), committed)
+        self.decide_all(False)
         self.db.stage_legacy({'snapshot': None, 'technology': {}}, self.current_revision())
         self.assertTrue(self.db.load(include_import_status=True)['legacy_imported'])
 
@@ -343,7 +352,7 @@ class FleetDatabaseTest(unittest.TestCase):
         queue = context.Queue()
         self.addCleanup(queue.close)
         self.run_processes(scan_worker, [('one', queue), ('two', queue)])
-        self.assertEqual([queue.get(timeout=5), queue.get(timeout=5)], ['staged', 'staged'])
+        self.assertEqual(sorted([queue.get(timeout=5), queue.get(timeout=5)]), ['conflict', 'staged'])
         self.assertIsNone(self.db.load()['snapshot'])
         self.assertTrue(self.db.load()['pending_changes'])
         self.assert_counts(ships=0)

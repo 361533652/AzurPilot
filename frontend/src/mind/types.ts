@@ -2,7 +2,7 @@ import type { Parameters } from '../api/generated'
 
 export type MindShip = Parameters['mind.save']['ships'][number]
 export type Rarity = 'N' | 'R' | 'SR' | 'SSR' | 'UR'
-export interface CatalogShip {name: string; raw_name?: string; group_type?: number; rarity: Rarity; base_rarity: Rarity; base_name: string; group: string; type: string}
+export interface CatalogShip {nation?: string; name: string; raw_name?: string; group_type?: number; rarity: Rarity; base_rarity: Rarity; base_name: string; group: string; type: string}
 export interface MindCatalog {updated_at: string; ships: CatalogShip[]}
 export interface MindRow extends MindShip {rarity: Rarity | ''; base_rarity: Rarity | ''; group: string; base_name: string; status: 'included' | 'merged' | 'review' | 'excluded'; automatic_excluded: boolean; mind: number; gold: number}
 export interface MindSummary {rarity: Rarity; stages: number[]; stage_mind: number[]; count: number; mind: number; gold: number}

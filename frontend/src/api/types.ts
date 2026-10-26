@@ -148,11 +148,13 @@ export interface LauncherStatus {
 }
 
 export interface DockCard {
+  breakthrough?: number | null; form?: 'base' | 'retrofit' | null
   id: number; group_type: number | null; name: string; level: number
   rarity: string; base_rarity: string; extra_exp: number | null; review: boolean; source: string; excluded: boolean
 }
 
 export interface LedgerDifference {
+  milestones?: ('owned' | 'full_star' | 'lv120')[]
   id: string; kind: 'ship' | 'technology' | 'nation'; operation: 'add' | 'update' | 'remove' | 'resolve'
   ship_id: number | null; group_type: number | null; name: string
   before: Record<string, unknown> | null; after: Record<string, unknown> | null; fields: string[]
@@ -160,6 +162,7 @@ export interface LedgerDifference {
 }
 
 export interface DockReport {
+  pending_read?: {source: string; updated_at: string; observed_count: number; review_count: number; complete: boolean}
   pending_revision: string | null; pending_changes: LedgerDifference[]
   legacy_imported?: boolean
   scan_range?: {min_level: number; max_level: number}
@@ -173,6 +176,7 @@ export interface Results {
   'dock.importLegacy': DockReport
   'dock.patch': DockReport
   'dock.review': DockReport
+  'dock.stageImport': DockReport
   'launcher.status': LauncherStatus
   'launcher.autostart.set': {commandId: string; status: 'pending'}
   'launcher.command.get': LauncherCommand
@@ -184,6 +188,7 @@ export interface Results {
   'fleetTech.syncMind': FleetTechReport
   'mind.report': MindReport
   'mind.calculate': MindCalculation
+  'mind.plan': import('../mind/cultivation').CultivationReport
   'mind.save': MindReport
   'mind.import': {ships: MindShip[]}
   'mind.recognize': {ships: MindShip[]}

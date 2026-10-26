@@ -59,7 +59,7 @@ class SharedAnalysisTests(unittest.TestCase):
             self.assertIsInstance(router.dispatch(method, {'instance': 'testpilot'}), dict)
         self.assertEqual(self.mind.report('testpilot')['ships'][0]['level'], 105)
         row = next(row for row in self.tech.report('testpilot')['ships'] if row['group_type'] == 10102)
-        self.assertEqual(row['level'], 105)
+        self.assertEqual(row['current_level'], 105)
         self.assertEqual(self.dock.report('testpilot')['revision'], snapshot['revision'])
         self.assertEqual(self.configs.path('testpilot').read_bytes(), before)
         runtime.start.assert_not_called()
@@ -78,12 +78,14 @@ class SharedAnalysisTests(unittest.TestCase):
         self.assertEqual(self.mind.report('testpilot')['ships'][0]['level'], 105)
         self.assertTrue(self.mind.report('testpilot')['ships'][0]['excluded'])
         self.assertTrue(self.dock.report('testpilot')['pending_changes'])
-        self.scan(110)
+        pending = self.dock.report('testpilot')
+        self.dock.review('testpilot', pending['revision'], pending['pending_revision'],
+                         [dict(id=row['id'], accept=True) for row in pending['pending_changes']])
         report = self.mind.report('testpilot')
         self.assertEqual(report['ships'][0]['level'], 110)
         self.assertTrue(report['ships'][0]['excluded'])
         row = next(row for row in self.tech.report('testpilot')['ships'] if row['group_type'] == 10102)
-        self.assertEqual(row['level'], 110)
+        self.assertEqual(row['current_level'], 110)
         self.assertTrue(row['owned'])
         self.assertTrue(FleetDatabase(self.configs.path('testpilot')).load()['snapshot']['ships'][0]['excluded'])
         self.assertEqual(self.configs.path('testpilot').read_bytes(), before)
@@ -92,7 +94,7 @@ class SharedAnalysisTests(unittest.TestCase):
         snapshot = self.scan()
         before = self.configs.path('testpilot').read_bytes()
         report = self.tech.report('testpilot')
-        self.tech.patch('testpilot', report['revision'], [FleetTechChange(group_type=10102, level=125)], {'1': 1})
+        self.tech.patch('testpilot', report['revision'], [FleetTechChange(group_type=10102, lv120=True)], {'1': 1})
         self.assertEqual(self.configs.path('testpilot').read_bytes(), before)
         state = FleetDatabase(self.configs.path('testpilot')).load()
         self.assertEqual(state['snapshot']['ships'], snapshot['ships'])
@@ -101,7 +103,7 @@ class SharedAnalysisTests(unittest.TestCase):
         self.assertNotIn('observed', stored)
         self.scan(110)
         report = self.tech.report('testpilot')
-        self.assertEqual(next(row for row in report['ships'] if row['group_type'] == 10102)['level'], 125)
+        self.assertTrue(next(row for row in report['ships'] if row['group_type'] == 10102)['lv120'])
         self.assertEqual(report['nation_levels']['1'], 1)
         self.assertEqual(self.mind.report('testpilot')['ships'][0]['level'], 110)
 
@@ -257,70 +259,48 @@ class SharedAnalysisTests(unittest.TestCase):
         self.assertEqual(self.dock.report('testpilot')['ships'], [])
 
     def test_重载独立保留人工否定且不覆盖底账正向证据(self):
-        cases = [
-            dict(level=100, full_star=False, lv120=False),
-            dict(level=125, full_star=True, lv120=True),
-            dict(owned=False),
-            dict(owned=True, full_star=False, lv120=False),
-        ]
-        fields = ('owned', 'level', 'full_star', 'lv120')
-        for values in cases:
-            with self.subTest(values=values):
-                before = self.tech.report('testpilot')
-                patched = self.tech.patch('testpilot', before['revision'],
-                    [FleetTechChange(group_type=10103, restore=True),
-                     FleetTechChange(group_type=10102, restore=True)], {})
-                # Each independent edit uses its own revision; duplicate group edits are rejected.
-                patched = self.tech.patch('testpilot', patched['revision'],
-                    [FleetTechChange(group_type=10103, **values),
-                     FleetTechChange(group_type=10102, **values)], {})
-                expected = {row['group_type']: {key: row['manual_state'][key] for key in fields}
-                            for row in patched['ships'] if row['group_type'] in (10102, 10103)}
-                for rows in (None, []):
-                    self.scan(110, rows=rows)
-                    reloaded = FleetTechService(ConfigService(self.configs.root)).report('testpilot')
-                    for row in reloaded['ships']:
-                        if row['group_type'] in expected:
-                            self.assertEqual({key: row['manual_state'][key] for key in fields},
-                                             expected[row['group_type']])
-                            in_ledger = row['group_type'] == 10102 and rows is None
-                            self.assertEqual(row['ledger']['owned'], in_ledger)
-                            if in_ledger:
-                                self.assertTrue(row['owned'])
-                                self.assertGreaterEqual(row['level'], 110)
-                                self.assertTrue(row['full_star'])
-                            else:
-                                self.assertEqual({key: row[key] for key in fields}, expected[row['group_type']])
-                    self.assertEqual(self.dock.report('testpilot')['ships'],
-                                     FleetDatabase(self.configs.path('testpilot')).load()['snapshot']['ships'])
-                    self.assertEqual(len(reloaded['last_scan']['ships']), 1 if rows is None else 0)
+        snapshot = self.scan(120)
+        card_id = snapshot['ships'][0]['id']
+        before = self.tech.report('testpilot')
+        for field in ('owned', 'full_star', 'lv120'):
+            for target in (False, None):
+                with self.subTest(field=field, target=target), self.assertRaises(ApiError) as error:
+                    self.tech.patch('testpilot', before['revision'],
+                                    [FleetTechChange(group_type=10102, **{field: target})], {})
+                self.assertEqual(error.exception.code, 'CONFLICT')
+                self.assertIn(str(card_id), error.exception.message)
+                self.assertEqual(self.tech.report('testpilot'), before)
+        self.dock.patch('testpilot', snapshot['revision'], [dict(id=card_id, delete=True)])
+        report = self.tech.report('testpilot')
+        row = next(row for row in report['ships'] if row['group_type'] == 10102)
+        self.assertTrue(row['lv120'])
+        self.assertEqual(row['current_count'], 0)
+        corrected = self.tech.patch('testpilot', report['revision'],
+                                     [FleetTechChange(group_type=10102, lv120=False)], {})
+        for _ in range(2):
+            self.assertEqual(self.tech.report('testpilot'), corrected)
+        # Editing another type cannot restore the corrected retired milestone.
+        self.dock.patch('testpilot', self.dock.report('testpilot')['revision'],
+                        [dict(name='卡辛', group_type=10103, level=120)])
+        row = next(row for row in self.tech.report('testpilot')['ships'] if row['group_type'] == 10102)
+        self.assertFalse(row['lv120'])
 
     def test_历史最高只供诊断且科技随底账与人工证据变化(self):
-        self.scan(105)
-        self.scan(125)
-        for rows in (None, []):
-            self.scan(110, rows=rows)
-            report = self.tech.report('testpilot')
-            row = next(row for row in report['ships'] if row['group_type'] == 10102)
-            self.assertEqual((row['owned'], row['level'], row['full_star'], row['lv120']),
-                             (True, 110, True, False) if rows is None else (False, None, False, False))
-            self.assertEqual(row['observed_level'], 125)
-            self.assertEqual(report['last_scan']['ships'], [(10102, 110)] if rows is None else [])
-            self.assertEqual([row['level'] for row in self.mind.report('testpilot')['ships']],
-                             [110] if rows is None else [])
-            state = FleetDatabase(self.configs.path('testpilot')).load()
-            self.assertEqual(state['snapshot']['history']['current'].get('10102'), 110 if rows is None else None)
-            self.assertEqual(state['snapshot']['history']['absent'], [])
-        for change, expected in [(dict(level=100), (True, 100, False)),
-                                 (dict(owned=False), (False, None, False))]:
-            report = self.tech.patch('testpilot', self.tech.report('testpilot')['revision'],
-                [FleetTechChange(group_type=10102, **change)], {})
-            row = next(row for row in report['ships'] if row['group_type'] == 10102)
-            self.assertEqual((row['owned'], row['level'], row['lv120']), expected)
-            restored = self.tech.patch('testpilot', report['revision'],
-                [FleetTechChange(group_type=10102, restore=True)], {})
-            row = next(row for row in restored['ships'] if row['group_type'] == 10102)
-            self.assertEqual((row['owned'], row['level'], row['lv120']), (False, None, False))
+        snapshot = self.scan(125)
+        card_id = snapshot['ships'][0]['id']
+        self.dock.patch('testpilot', snapshot['revision'], [dict(id=card_id, level=100)])
+        row = next(row for row in self.tech.report('testpilot')['ships'] if row['group_type'] == 10102)
+        self.assertEqual(row['current_level'], 100)
+        self.assertTrue(row['lv120'])
+        self.assertTrue(row['full_star'])
+        report = self.tech.patch('testpilot', self.tech.report('testpilot')['revision'],
+                                [FleetTechChange(group_type=10102, lv120=None, full_star=False)], {})
+        row = next(row for row in report['ships'] if row['group_type'] == 10102)
+        self.assertIsNone(row['lv120'])
+        self.assertFalse(row['full_star'])
+        self.assertEqual(row['evidence']['owned'], [card_id])
+        self.assertEqual(row['evidence']['lv120'], [])
+        self.assertEqual(report, self.tech.sync_mind('testpilot'))
 
     def test_反复读取与旧同步接口不写库不运行游戏(self):
         self.scan()

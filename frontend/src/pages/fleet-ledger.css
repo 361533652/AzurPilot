@@ -13,3 +13,9 @@
 .fleet-ledger .ledger-deleted td { opacity: .55; }
 .ledger-difference { padding: 1rem 0; border-top: 1px solid var(--border-color, #8884); overflow-wrap: anywhere; }
 .ledger-draft-placeholder { visibility: hidden; }
+.ship-detail { border: 1px solid var(--border-color, #8884); padding: 1rem; }
+.ship-detail .mind-toolbar { flex-wrap: wrap; }
+.ship-detail input, .ship-detail select { max-width: 100%; }
+.ship-detail details { margin: 1rem 0; overflow-wrap: anywhere; }
+.fleet-ledger .file-button { cursor: pointer; }
+.fleet-ledger .file-button input { max-width: 16rem; }

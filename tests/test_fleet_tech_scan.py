@@ -29,7 +29,7 @@ def observed(gid, level, **extra):
 
 def merge(record, ships, **extra):
     params = dict(min_level=98, max_level=125, reached_bottom=False, filters_clear=True,
-                  physical_count=2, expected_count=2, updated_at='fixture')
+                  physical_count=len(ships), expected_count=len(ships), updated_at='fixture')
     params.update(extra)
     return tech.merge_scan(record, ships, **params)
 
@@ -64,24 +64,18 @@ class FleetTechRecordTests(unittest.TestCase):
             self.assertFalse(next(row for row in imported['ships'] if row['group_type'] == 10220)['owned'])
             self.assertEqual(imported, service.report('testpilot'))
 
-    def test_level_toggle_survives_reload_and_restores_actual_level(self):
-        for level, low, high in [(105, 105, 120), (120, 100, 120), (125, 100, 125)]:
-            with self.subTest(level=level), tempfile.TemporaryDirectory() as directory:
-                configs = ConfigService(fixture(directory))
-                service = FleetTechService(configs)
-                current = service.patch('testpilot', service.report('testpilot')['revision'],
-                                        [FleetTechChange(group_type=10220, level=level)], {})
-                for target in [level < 120, level >= 120, level < 120]:
-                    current = service.patch('testpilot', current['revision'],
-                                            [FleetTechChange(group_type=10220, toggle='complete', target=target)], {})
-                    # 重新创建服务模拟重启，既验证数据库落盘，也不依赖前端内存。
-                    service = FleetTechService(ConfigService(configs.root))
-                    current = service.report('testpilot')
-                    row = next(row for row in current['ships'] if row['group_type'] == 10220)
-                    self.assertEqual(row['level'], high if target else low)
-                    self.assertEqual(row['lv120'], target)
-                    self.assertTrue(row['owned'])
-                    self.assertEqual(row['points'], 0)
+    def test_milestone_correction_survives_reload_without_changing_levels(self):
+        with tempfile.TemporaryDirectory() as directory:
+            configs = ConfigService(fixture(directory))
+            service = FleetTechService(configs)
+            for target in (True, False, None):
+                service.patch('testpilot', service.report('testpilot')['revision'],
+                              [FleetTechChange(group_type=10220, lv120=target)], {})
+                service = FleetTechService(ConfigService(configs.root))
+                row = next(row for row in service.report('testpilot')['ships'] if row['group_type'] == 10220)
+                self.assertIs(row['lv120'], target)
+                self.assertIsNone(row['current_level'])
+                self.assertEqual(row['current_count'], 0)
 
     def test_owned_and_completion_targets_are_independent_and_idempotent(self):
         record = {}
@@ -118,18 +112,18 @@ class FleetTechRecordTests(unittest.TestCase):
             initial = service.report('testpilot')
             self.assertEqual(initial['completed'], 0)
             self.assertFalse(next(row for row in initial['ships'] if row['group_type'] == 10103)['owned'])
-            service.patch('testpilot', initial['revision'], [FleetTechChange(group_type=10102, toggle='complete', target=True)], {})
+            service.patch('testpilot', initial['revision'], [FleetTechChange(group_type=10102, lv120=True)], {})
             self.assertEqual(before, configs.path('testpilot').read_bytes())
             stored = FleetDatabase(configs.path('testpilot')).load()['technology']
-            self.assertNotIn('10103', stored['manual'])
+            self.assertNotIn('10103', stored['progress'])
             self.assertEqual(stored.get('nations', {}), {})
-            self.assertEqual(stored['manual']['10102']['level'], 120)
+            self.assertTrue(stored['progress']['10102']['lv120'])
 
     def test_partial_filtered_uncertain_and_count_mismatch_scans_never_clear_old_evidence(self):
         original = dict(observed={'10103': 125})
         for params, ships in [({}, [observed(10102, 120)]),
                               ({'min_level': 1, 'reached_bottom': True, 'filters_clear': False}, [observed(10102, 120)]),
-                              ({'min_level': 1, 'reached_bottom': True, 'physical_count': 1}, [observed(10102, 120)]),
+                              ({'min_level': 1, 'reached_bottom': True, 'physical_count': 2}, [observed(10102, 120)]),
                               ({'min_level': 1, 'reached_bottom': True, 'expected_count': None}, [observed(10102, 120)]),
                               ({'min_level': 1, 'reached_bottom': True}, [observed(10102, 120), dict(name='约克', level=120, review=True)])]:
             with self.subTest(params=params):
@@ -298,7 +292,8 @@ class FleetTechIdentityTests(unittest.TestCase):
         scanner._check_scan_page(cards, False)
         scanner._check_scan_page(cards[:-4], True)
         for incomplete, bottom in [(cards[:-4], False), (cards[:8] + cards[9:], True)]:
-            with self.assertRaises(ValueError): scanner._check_scan_page(incomplete, bottom)
+            with self.assertRaises(ValueError):
+                scanner._check_scan_page(incomplete, bottom)
 
     def test_interrupted_or_failed_scan_does_not_enter_record_transaction(self):
         from module.retire.fleet_tech_scan import FleetTechScan

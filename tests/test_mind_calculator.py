@@ -603,6 +603,11 @@ class ServiceTests(unittest.TestCase):
         for changed in (False, True):
             with self.subTest(changed=changed):
                 path = str(self.configs.path('testpilot'))
+                database = FleetDatabase(self.configs.path('testpilot'))
+                pending = database.load()
+                if pending['pending_revision']:
+                    database.review([dict(id=row['id'], accept=False) for row in pending['pending_changes']],
+                                    pending['snapshot']['revision'], pending['pending_revision'])
                 self.save_ledger('testpilot', self.service.report('testpilot')['revision'], [ship('拉菲')])
                 database = FleetDatabase(self.configs.path('testpilot'))
                 original = database.load()['snapshot']
@@ -634,7 +639,7 @@ class ServiceTests(unittest.TestCase):
                         scanner._scan_metadata = dict(reached_bottom=True, physical_count=1)
                     scanner._scan_pages = Mock(side_effect=collect)
                     if changed:
-                        with self.assertRaisesRegex(MindCalculatorScanError, '共享船坞数据已更新'):
+                        with self.assertRaisesRegex(MindCalculatorScanError, '舰船底账已更新'):
                             scanner.run()
                         scanner._prune_scan_evidence.assert_not_called()
                     else:

@@ -2,7 +2,7 @@
 import copy
 from collections import Counter
 
-CARD_FIELDS = ('group_type', 'name', 'level', 'rarity', 'base_rarity', 'extra_exp', 'excluded', 'review', 'source')
+CARD_FIELDS = ('group_type', 'name', 'level', 'rarity', 'base_rarity', 'extra_exp', 'excluded', 'review', 'source', 'breakthrough', 'form')
 MANUAL_FIELDS = ('owned', 'full_star', 'lv120', 'level', 'level_toggle')
 RARITIES = ('', 'N', 'R', 'SR', 'SSR', 'UR')
 
@@ -17,7 +17,7 @@ def integer(value, label, low=0, high=None, *, nullable=False):
 
 def card(values, base=None):
     result = dict(group_type=None, name='', level=0, rarity='', base_rarity='', extra_exp=None,
-                  excluded=False, review=False, source='')
+                  excluded=False, review=False, source='', breakthrough=None, form=None)
     if base:
         result.update({key: base[key] for key in CARD_FIELDS if key in base})
     result.update({key: values[key] for key in CARD_FIELDS if key in values})
@@ -31,6 +31,16 @@ def card(values, base=None):
     integer(result['group_type'], '舰船类型', 1, nullable=True)
     integer(result['level'], '等级', 0, 125)
     integer(result['extra_exp'], '零散经验', nullable=True)
+    integer(result['breakthrough'], '突破阶段', 0, 3, nullable=True)
+    if result['form'] not in (None, 'base', 'retrofit'):
+        raise ValueError('舰船形态无效')
+    if result['group_type'] is not None:
+        from module.runtime import fleet_tech
+        info = next((row for row in fleet_tech.catalog()['ships'] if row['group_type'] == result['group_type']), None)
+        if info is None and not result['review']:
+            raise ValueError('舰船身份不在图鉴中，请保留为待核对记录')
+        if result['form'] == 'retrofit' and info and not info['retrofit_names']:
+            raise ValueError('该舰船没有已知改造形态')
     for key in ('rarity', 'base_rarity'):
         if result[key] not in RARITIES:
             raise ValueError('稀有度无效')

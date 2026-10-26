@@ -80,30 +80,14 @@ def mind_ships(snapshot):
 
 
 def technology_record(data):
-    """合并数据库中的已确认舰船与科技设置，不改写来源。"""
-    record = tech.read_record(data)
-    record['ledger_levels'] = {}
-    if not has_snapshot(data):
-        return record
+    """Read cumulative milestones directly; holdings explain facts without remerging them."""
+    options = tech.read_record(data)
     snapshot = read_snapshot(data)
-    record['snapshot_revision'] = snapshot['revision']
-    history = snapshot.get('history', {})
-    for gid, level in history.get('observed', {}).items():
-        observed = record.setdefault('observed', {})
-        observed[gid] = max(observed.get(gid, 0), level)
-    record.setdefault('current', {}).update(history.get('current', {}))
-    positive = set(history.get('current', {})) - set(history.get('absent', []))
-    record['absent'] = sorted((set(record.get('absent', [])) | set(history.get('absent', []))) - positive, key=int)
-    record = tech.merge_scan(record, snapshot['ships'], **{key: snapshot[key] for key in
-                             ('min_level', 'max_level', 'reached_bottom', 'filters_clear',
-                              'physical_count', 'expected_count', 'updated_at')})
-    # 当前底账与人工记录是两份独立证据，累计历史不作为第三份获取来源。
-    record['ledger_levels'] = {str(gid): level for gid, level in record['last_scan']['ships']}
-    # 保留累计记录供诊断与兼容读取，不回写或删除既有历史。
-    record['current'] = {gid: max(level, record.get('current', {}).get(gid, 0))
-                         for gid, level in record.get('observed', {}).items()}
-    record['absent'] = []
-    return record
+    return dict(progress=copy.deepcopy(options.get('progress', {})),
+                nations=copy.deepcopy(options.get('nations', {})),
+                evidence_history=copy.deepcopy(options.get('evidence', {})),
+                holdings=copy.deepcopy(snapshot['ships']),
+                snapshot_revision=snapshot['revision'])
 
 
 def report_snapshot(data):

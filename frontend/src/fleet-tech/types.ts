@@ -1,76 +1,44 @@
-import type {Parameters} from '../api/generated'
-
-export type Change = NonNullable<Parameters['fleetTech.patch']['changes']>[number]
 export interface Technology {pt_get: number; pt_upgrage: number; pt_level: number; max_star: number; add_get_shiptype: number[]; add_get_attr: number; add_get_value: number; add_level_shiptype: number[]; add_level_attr: number; add_level_value: number}
 export interface Ship {group_type: number; code: number; handbook_type: number; blueprint: boolean; name: string; names: Record<string, string | null>; nationality: number; rarity: string; type: number; variant?: 'child' | 'mu' | ''; technology: Technology | null}
 export interface Catalog {ships: Ship[]; nations: Record<string, [number[], number, number][][]>; updated_at: string; source_commit: string; max_points: number; nation_points: Record<string, number>}
-export interface Evidence {owned: boolean; full_star: boolean | null; lv120: boolean; level: number | null}
-export interface Progress {group_type: number; owned: boolean; full_star: boolean | null; lv120: boolean; level: number | null; observed_level: number | null; completion_target: number; acquire_level: number; acquire_lv120: boolean; status: 'complete' | 'unowned' | 'unfinished'; manual: boolean; points: number; ledger?: Evidence; manual_state?: Evidence & {completion_target: number}}
-export interface ScanSummary {min_level: number; max_level: number; complete: boolean; reached_bottom: boolean; physical_count: number; expected_count: number | null; matched_count: number; review_count: number; updated_at: string; fingerprint: string; ships: [number, number][]}
-export interface ReviewShip {name: string; level: number; source: string; candidates: number[]; group_type: number | null; review: boolean}
-export interface Report {instance: string; revision: string; ships: Progress[]; nation_levels: Record<string, number | null>; bonuses: Record<string, Record<string, number>>; confirmed_points: number; completed: number; pending_star: number; min_level: number; max_level: number; last_scan: ScanSummary | null; review_ships: ReviewShip[]}
+export type Milestone = 'owned' | 'full_star' | 'lv120'
+export type State = boolean | null
+export interface Change {group_type: number; owned?: State; full_star?: State; lv120?: State}
+export interface HistoricalEvidence {ship_id: number; level: number; breakthrough: number | null; source: string; confirmed_at: string}
+export interface Progress {historical_evidence?: Partial<Record<Milestone, HistoricalEvidence[]>>; conflicts?: Partial<Record<Milestone, number[]>>;source?: string; updated_at?: string; group_type: number; owned: State; full_star: State; lv120: State; current_count: number; current_level: number | null; evidence: Record<Milestone, number[]>; points: number; status: 'complete' | 'unowned' | 'unfinished' | 'unknown'}
+export type Bonuses = Record<string, Record<string, number>>
+export interface Report {instance: string; revision: string; ships: Progress[]; nation_levels: Record<string, number | null>; bonuses: Bonuses; ship_bonuses: Bonuses; nation_bonuses: Bonuses; confirmed_points: number; completed: number; milestone_counts: Record<Milestone, number>; unknown_count: number; unknown_ships: number}
 export type Row = Ship & Progress
-export function scanRows(catalog: Catalog, scan: ScanSummary): Row[] {
-  const levels = new Map(scan.ships)
-  return catalog.ships.flatMap(ship => {
-    const level = levels.get(ship.group_type)
-    if (level === undefined) return []
-    const lv120 = level >= 120
-    const fullStar = level > 100 ? true : null
-    return [{...ship, owned: true, full_star: fullStar, lv120, level, observed_level: level,
-      status: lv120 ? 'complete' as const : 'unfinished' as const, manual: false,
-      points: ship.technology ? ship.technology.pt_get + (fullStar ? ship.technology.pt_upgrage : 0)
-        + (lv120 ? ship.technology.pt_level : 0) : 0,
-      completion_target: lv120 ? 100 : 120, acquire_level: level, acquire_lv120: lv120}]
-  })
-}
-export function ledgerRows(catalog: Catalog, progress: Progress[]): Row[] {
-  // 使用服务端独立的底账投影，旧扫描摘要和人工记录不能补入当前底账。
-  const evidence = new Map(progress.map(row => [row.group_type, row.ledger]))
-  return catalog.ships.map(ship => {
-    const state = evidence.get(ship.group_type) ?? {owned: false, full_star: false, lv120: false, level: null}
-    const tech = ship.technology
-    return {...ship, ...state, observed_level: state.level, manual: false,
-      status: state.lv120 ? 'complete' : state.owned ? 'unfinished' : 'unowned',
-      points: tech ? (state.owned ? tech.pt_get : 0) + (state.full_star ? tech.pt_upgrage : 0)
-        + (state.lv120 ? tech.pt_level : 0) : 0,
-      completion_target: state.lv120 ? 100 : 120, acquire_level: state.level ?? 100, acquire_lv120: state.lv120}
-  })
-}
-export function summarize(catalog: Catalog, rows: Row[], nationLevels: Report['nation_levels']) {
-  const bonuses: Report['bonuses'] = {}
-  let confirmed_points = 0, completed = 0, pending_star = 0
-  function add(types: number[], attr: number, value: number) {
-    for (const type of new Set(types.map(shipType))) {
-      const values = bonuses[type] ??= {}
-      values[attr] = (values[attr] ?? 0) + value
-    }
-  }
-  for (const row of rows) {
-    const tech = row.technology
-    if (!tech) continue
-    confirmed_points += row.points
-    if (row.owned) {
-      add(tech.add_get_shiptype, tech.add_get_attr, tech.add_get_value)
-      if (row.full_star === null) pending_star++
-    }
-    if (row.lv120) {completed++; add(tech.add_level_shiptype, tech.add_level_attr, tech.add_level_value)}
-  }
-  for (const [nation, level] of Object.entries(nationLevels)) {
-    if (level) for (const [types, attr, value] of catalog.nations[nation]?.[level - 1] ?? []) add(types, attr, value)
-  }
-  return {confirmed_points, completed, pending_star, bonuses}
-}
+export const milestones: Milestone[] = ['owned', 'full_star', 'lv120']
 export const shipType = (value: number) => [20, 21].includes(value) ? 1 : [22, 23, 24].includes(value) ? 22 : value
-export function matches(row: Row, filters: Record<string, string[]>, query: string, scope: string, stage: string) {
+/** Missing account facts stay unknown, independently of current holdings. */
+export function catalogRows(catalog: Catalog, progress: Progress[]): Row[] {
+  const facts = new Map(progress.map(row => [row.group_type, row]))
+  return catalog.ships.map(ship => ({...ship, ...(facts.get(ship.group_type) ?? {
+    group_type: ship.group_type, owned: null, full_star: null, lv120: null, current_count: 0,
+    current_level: null, evidence: {owned: [], full_star: [], lv120: []}, points: 0, status: 'unknown' as const,
+  })}))
+}
+export function complete(row: Row) {return milestones.every(key => row[key] === true)}
+export function remainingPoints(row: Row) {
+  const t = row.technology
+  return t ? t.pt_get + t.pt_upgrage + t.pt_level - row.points : 0
+}
+export function matches(row: Row, filters: Record<string, string[]>, query: string, scope = 'all', stage = 'all') {
   if (scope === 'tech' && !row.technology || scope === 'none' && row.technology) return false
-  if (query && ![row.name, String(row.code).padStart(3, '0'), ...Object.values(row.names)].some(value => value?.toLocaleLowerCase().includes(query.toLocaleLowerCase()))) return false
-  const type = shipType(row.type)
-  const categories = [String(type), ...([1, 2, 3, 18].includes(type) ? ['front'] : [4, 5, 6, 7, 10, 12, 13].includes(type) ? ['back'] : [])]
-  const statuses = [row.status, ...(row.owned ? ['owned'] : []), ...(row.status === 'unowned' || row.status === 'unfinished' ? ['incomplete'] : [])]
+  if (query && ![row.name, ...Object.values(row.names)].some(value => value?.toLocaleLowerCase().includes(query.toLocaleLowerCase()))) return false
+  const statuses = [
+    ...(!row.current_count ? ['notHeld'] : ['held']),
+    ...(row.owned === false ? ['unowned'] : []),
+    ...(row.full_star === false ? ['missingStar'] : []),
+    ...(row.lv120 === false ? ['missing120'] : []),
+    ...(milestones.some(key => row[key] === null) ? ['unverified'] : []),
+    ...(row.technology && !complete(row) ? ['incomplete'] : []),
+    ...(row.technology && complete(row) ? ['complete'] : []),
+  ]
   for (const [key, values] of Object.entries(filters)) {
     if (!values.length || ['bonusType', 'attr'].includes(key)) continue
-    const current = key === 'type' ? categories : key === 'status' ? statuses : key === 'nation' ? [String(row.nationality), row.variant ?? ''] : [row.rarity]
+    const current = key === 'type' ? [String(shipType(row.type))] : key === 'status' ? statuses : key === 'nation' ? [String(row.nationality)] : [row.rarity]
     if (!values.some(value => current.includes(value))) return false
   }
   if (filters.bonusType?.length || filters.attr?.length) {
@@ -81,25 +49,9 @@ export function matches(row: Row, filters: Record<string, string[]>, query: stri
   }
   return true
 }
-
-export function preview(row: Row, change?: Change): Row {
-  // 双来源的科技结论由服务端统一生成，未确认的人工草稿不改写合并结果。
-  if (row.ledger) return row
-  if (!change || change.restore) return row
-  const next = {...row, manual: true}
-  if (change.toggle === 'owned') {
-    next.owned = change.target === true
-    if (!next.owned) {next.level = null; next.lv120 = false; next.full_star = false}
-    else if (!row.owned) {next.level = row.acquire_level; next.lv120 = row.acquire_lv120}
-  } else if (change.toggle === 'complete' && change.target !== row.lv120) {
-    next.owned = true; next.level = row.completion_target; next.lv120 = change.target === true
-  } else if (change.toggle === 'star') {
-    next.full_star = change.target === true
-    if (next.full_star) next.owned = true
-  } else if (Object.hasOwn(change, 'level')) {
-    next.level = change.level ?? null; next.lv120 = !!next.level && next.level >= 120
-    if (next.level) next.owned = true
-  }
-  next.status = next.lv120 ? 'complete' : next.owned ? 'unfinished' : 'unowned'
-  return next
+/** Mirror the server's milestone dependency rules in the explicit correction form. */
+export function changeMilestone(change: Change, key: Milestone, value: State): Change {
+  if (key === 'owned' && value !== true) return {...change, owned: value, full_star: value, lv120: value}
+  if (key !== 'owned' && value === true) return {...change, [key]: value, owned: true}
+  return {...change, [key]: value}
 }

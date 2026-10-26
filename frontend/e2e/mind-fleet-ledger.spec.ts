@@ -22,15 +22,10 @@ test.beforeEach(async ({page}) => {
   })
 })
 
-test('三个标签共用底账，重名卡片独立编辑并保留未知和零经验', async ({page}, info) => {
-  const instance = `ledger-${info.testId.replace(/[^a-z0-9]/gi, '').slice(-12)}-${info.retry}`
-  const requests: string[] = []
-  page.on('websocket', socket => {
-    socket.on('framesent', ({payload}) => {
-      const request = JSON.parse(String(payload))
-      if (request.type === 'request') requests.push(request.method)
-    })
-  })
+test('four flat pages preserve per-copy edits and never start a scan on navigation', async ({page}, info) => {
+  const instance = `four-${info.testId.replace(/[^a-z0-9]/gi, '').slice(-12)}-${info.retry}`
+  const methods: string[] = []
+  page.on('websocket', socket => socket.on('framesent', ({payload}) => {const request = JSON.parse(String(payload)); if (request.type === 'request') methods.push(request.method)}))
   await page.goto('/')
   await rpc(page, 'instances.create', {name: instance})
   const empty = await rpc(page, 'dock.report', {instance})
@@ -39,74 +34,68 @@ test('三个标签共用底账，重名卡片独立编辑并保留未知和零�
     {name: '杜威', group_type: 10102, level: 100, rarity: 'R', base_rarity: 'R', extra_exp: 0},
   ]})
   const [first, second] = saved.ships
-  expect(first.id).not.toBe(second.id)
+  // Fixtures are seeded through an external socket; reload the app's instance list.
+  await page.goto('about:blank')
   await page.goto(`/#/i/${instance}/task/FleetAnalysis?tab=data`)
-  const tabs = page.getByRole('tablist')
-  await expect(tabs.getByRole('tab')).toHaveCount(3)
-  for (const name of ['心智分析', '舰队科技分析', '舰船数据']) await expect(tabs.getByRole('tab', {name, exact: true})).toBeVisible()
-  await expect(page.getByLabel(`额外经验（未知留空） · 杜威 #${first.id}`, {exact: true})).toHaveValue('')
-  await expect(page.getByLabel(`额外经验（未知留空） · 杜威 #${second.id}`, {exact: true})).toHaveValue('0')
-  await page.getByLabel(`等级 · 杜威 #${first.id}`, {exact: true}).fill('110')
-  // 首次失焦会创建草稿提示；同一次点击仍须命中复选框并保留等级修改。
-  await page.getByLabel(`排除心智计算 · 杜威 #${first.id}`, {exact: true}).check()
-  await page.getByRole('button', {name: '保存舰船数据', exact: true}).click()
-  await expect(page.getByRole('button', {name: '保存舰船数据', exact: true})).toBeDisabled()
+  await expect(page.getByRole('tab')).toHaveCount(4)
+  await expect(page.locator('tbody input')).toHaveCount(0)
+  await page.locator(`a[href$="ship=${first.id}&edit=1"]`).click()
+  const details = page.getByRole('dialog')
+  await expect(details.getByLabel('额外经验（未知留空）')).toHaveValue('')
+  await details.getByLabel('等级', {exact: true}).fill('110')
+  await details.getByRole('button', {name: '保存舰船数据', exact: true}).click()
+  await expect(details).toHaveCount(0)
   await page.reload()
-  await expect(page.getByLabel(`等级 · 杜威 #${first.id}`, {exact: true})).toHaveValue('110')
-  await expect(page.getByLabel(`等级 · 杜威 #${second.id}`, {exact: true})).toHaveValue('100')
-  await expect(page.getByLabel(`排除心智计算 · 杜威 #${first.id}`, {exact: true})).toBeChecked()
-  await expect(page.getByLabel(`额外经验（未知留空） · 杜威 #${first.id}`, {exact: true})).toHaveValue('')
-  await expect(page.getByLabel(`额外经验（未知留空） · 杜威 #${second.id}`, {exact: true})).toHaveValue('0')
-  await tabs.getByRole('tab', {name: '心智分析', exact: true}).click()
-  await tabs.getByRole('tab', {name: '舰队科技分析', exact: true}).click()
-  await tabs.getByRole('tab', {name: '舰船数据', exact: true}).click()
-  expect(requests.filter(method => ['tasks.run', 'dock.importLegacy', 'mind.save', 'fleetTech.syncMind'].includes(method))).toEqual([])
+  const reloaded = await rpc(page, 'dock.report', {instance})
+  expect(reloaded.ships.find((row: any) => row.id === first.id)).toMatchObject({level: 110, extra_exp: null})
+  expect(reloaded.ships.find((row: any) => row.id === second.id)).toMatchObject({level: 100, extra_exp: 0})
+  for (const tab of ['舰队科技', '养成计算', '我的舰船']) {
+    await page.getByRole('tab', {name: tab, exact: true}).click()
+    await expect(page.getByRole('button', {name: '扫描船坞', exact: true})).toHaveCount(0)
+    await expect(page.locator('input[type=file]')).toHaveCount(0)
+    await expect(page.getByRole('tabpanel')).toHaveCount(1)
+  }
+  await page.getByRole('tab', {name: '扫描更新', exact: true}).click()
+  await expect(page.getByRole('button', {name: '扫描船坞', exact: true})).toBeVisible()
+  expect(methods.filter(method => ['tasks.run', 'dock.importLegacy', 'mind.save', 'fleetTech.syncMind'].includes(method))).toEqual([])
 })
 
-test('候选变化逐条拒绝和全部采纳，歧义副本必须选择目标', async ({page}, info) => {
-  const instance = `review-${info.testId.replace(/[^a-z0-9]/gi, '').slice(-12)}-${info.retry}`
-  await page.goto('/')
-  await rpc(page, 'instances.create', {name: instance})
-  await page.goto('about:blank')
-  const card = (id: number, name: string, level: number) => ({id, name, level, group_type: 10102,
-    rarity: 'R', base_rarity: 'R', extra_exp: null, excluded: false, review: false, source: 'manual'})
-  const originals = [card(10, '杜威', 100), card(11, '杜威', 100)]
+test('safe batch excludes removals and unresolved duplicates', async ({page}, info) => {
+  const instance = `safe-${info.testId.replace(/[^a-z0-9]/gi, '').slice(-12)}-${info.retry}`
+  await page.goto('/'); await rpc(page, 'instances.create', {name: instance}); await page.goto('about:blank')
+  const card = (id: number, level: number) => ({id, name: '杜威', level, group_type: 10102, rarity: 'R', base_rarity: 'R', extra_exp: null, excluded: false, review: false, source: 'manual'})
   const decisions: any[] = []
-  const report: any = {instance, revision: 'a'.repeat(64), ships: originals,
-    legacy_imported: false, min_level: 1, max_level: 125, updated_at: '', complete: false,
-    review_count: 0, source: 'manual', pending_revision: 'b'.repeat(64), pending_changes: [
-      {id: 'ship:1', kind: 'ship', operation: 'resolve', source: 'scan', ship_id: null, group_type: 10102,
-        name: '杜威', before: null, after: card(0, '杜威', 110), fields: ['level'], candidates: originals},
-      {id: 'ship:2', kind: 'ship', operation: 'add', source: 'scan', ship_id: null, group_type: null,
-        name: '待拒绝', before: null, after: card(0, '待拒绝', 20), fields: ['name', 'level'], candidates: []},
-    ]}
+  const report: any = {instance, revision: 'a'.repeat(64), ships: [card(10, 100), card(11, 100)], legacy_imported: false, min_level: 1, max_level: 125, updated_at: '', complete: true, review_count: 0, source: 'manual', pending_revision: 'b'.repeat(64), pending_changes: [
+    {id: 'update', kind: 'ship', operation: 'update', ship_id: 10, name: '杜威', before: card(10, 100), after: card(10, 110), candidates: [], milestones: ['owned']},
+    {id: 'remove', kind: 'ship', operation: 'remove', ship_id: 11, name: '杜威', before: card(11, 100), after: null, candidates: []},
+    {id: 'resolve', kind: 'ship', operation: 'resolve', ship_id: null, name: '杜威', before: null, after: card(0, 120), candidates: [card(10, 100), card(11, 100)]},
+  ]}
   await page.routeWebSocket('**/api/v1/ws', socket => {
     const server = socket.connectToServer()
     socket.onMessage(message => {
       const request = JSON.parse(String(message))
       if (!['dock.report', 'dock.review'].includes(request.method)) {server.send(message); return}
       if (request.method === 'dock.review') {
-        decisions.push(request.params)
-        for (const decision of request.params.decisions) {
-          if (decision.accept && decision.ship_id) report.ships = report.ships.map((row: any) => row.id === decision.ship_id ? {...row, level: 110} : row)
-          report.pending_changes = report.pending_changes.filter((row: any) => row.id !== decision.id)
-        }
-        report.revision = 'c'.repeat(64)
+        decisions.push(request.params.decisions)
+        for (const decision of request.params.decisions) report.pending_changes = report.pending_changes.filter((row: any) => row.id !== decision.id)
       }
       socket.send(JSON.stringify({v: 1, type: 'response', id: request.id, ok: true, result: report}))
     })
     server.onMessage(message => socket.send(message))
   })
   await page.goto(`/#/i/${instance}/task/FleetAnalysis?tab=data`)
-  await expect(page.getByRole('button', {name: '接受 ship:1', exact: true})).toBeDisabled()
-  await page.getByRole('button', {name: '拒绝 ship:2', exact: true}).click()
-  await expect(page.getByRole('button', {name: '拒绝 ship:2', exact: true})).toHaveCount(0)
-  expect(decisions[0].decisions).toEqual([{id: 'ship:2', accept: false}])
-  await page.getByLabel('目标卡片 ship:1', {exact: true}).selectOption('11')
-  await page.getByRole('button', {name: '全部接受', exact: true}).click()
-  await expect(page.getByLabel('等级 · 杜威 #10', {exact: true})).toHaveValue('100')
-  await expect(page.getByLabel('等级 · 杜威 #11', {exact: true})).toHaveValue('110')
-  expect(decisions[1]).toMatchObject({instance, pending_revision: 'b'.repeat(64),
-    decisions: [{id: 'ship:1', accept: true, ship_id: 11}]})
-  await expect(page.getByRole('button', {name: '全部接受', exact: true})).toBeDisabled()
+  await expect(page.getByRole('button', {name: '接受 remove', exact: true})).toHaveCount(0)
+  await page.getByRole('tab', {name: '扫描更新', exact: true}).click()
+  await expect(page.getByRole('button', {name: '接受 resolve', exact: true})).toBeDisabled()
+  await page.getByRole('button', {name: /确认无歧义的新增和更新/}).click()
+  await expect(page.getByRole('button', {name: /确认无歧义的新增和更新/})).toBeDisabled()
+  expect(decisions).toEqual([[{id: 'update', accept: true}]])
+  await page.getByRole('button', {name: '接受 remove', exact: true}).click()
+  expect(decisions).toHaveLength(1)
+  await page.getByRole('button', {name: '接受 remove', exact: true}).click()
+  await expect(page.getByRole('button', {name: '接受 remove', exact: true})).toHaveCount(0)
+  expect(decisions[1]).toEqual([{id: 'remove', accept: true}])
+  await page.getByLabel('目标卡片 resolve', {exact: true}).selectOption('11')
+  await page.getByRole('button', {name: '接受 resolve', exact: true}).click()
+  expect(decisions[2]).toEqual([{id: 'resolve', accept: true, ship_id: 11}])
 })

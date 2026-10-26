@@ -228,7 +228,7 @@ def recognize(image, source='', *, name_ocr=None, level_ocr=None, row_origins=No
             location = f'第 {sorted({item.y for item in cards}).index(card.y) + 1} 行第 {card.col + 1} 列'
             card.ship.update(level=0, review=True,
                              source=f'{card.ship["source"]}；{location}等级未确认，待人工核对'[:200])
-    return highest_ships([card.ship for card in cards])
+    return [card.ship for card in cards]
 
 
 def detect_rows(image, ocr):

@@ -75,24 +75,21 @@ class DockDataTests(unittest.TestCase):
         self.assertEqual(result, before)
 
     def test_科技合并保留人工阵营且只读(self):
-        previous = snapshot([ship(10103, 125)])
-        current = snapshot([ship()], min_level=95, previous=previous)
-        options = dict(manual={'10102': {'owned': False}}, nations={'1': 3})
+        current = snapshot([dict(ship(), id=1)])
+        options = dict(progress={'10102': dict(owned=False, full_star=False, lv120=False)}, nations={'1': 3})
         data = dict(snapshot=current, technology=options, mind={})
         before = copy.deepcopy(data)
         record = dock.technology_record(data)
-        self.assertEqual(record['manual'], options['manual'])
         self.assertEqual(record['nations'], options['nations'])
-        self.assertEqual(record['observed']['10103'], 125)
         state = tech.progress(record, 10102)
-        self.assertTrue(state['owned'])
-        self.assertTrue(state['ledger']['owned'])
-        self.assertFalse(state['manual_state']['owned'])
-        self.assertFalse(tech.progress(record, 10103)['owned'])
+        self.assertFalse(state['owned'])
+        self.assertEqual(state['current_count'], 1)
+        self.assertEqual(state['conflicts']['owned'], [1])
+        self.assertIsNone(tech.progress(record, 10103)['owned'])
         self.assertEqual(data, before)
 
     def test_无快照仍读取独立人工设置且默认全范围(self):
-        data = dict(snapshot=None, mind={}, technology={'manual': {'10102': {'owned': True}}})
+        data = dict(snapshot=None, mind={}, technology={'progress': {'10102': {'owned': True}}})
         self.assertTrue(tech.progress(dock.technology_record(data), 10102)['owned'])
         report = dock.report_snapshot(data)
         self.assertEqual((report['min_level'], report['max_level'], report['source']), (1, 125, 'empty'))
@@ -102,7 +99,7 @@ class DockDataTests(unittest.TestCase):
         result = snapshot([ship(level=105)], min_level=95, previous=previous)
         self.assertEqual(result['history']['current']['10102'], 125)
         self.assertFalse({'manual', 'nations', 'last_scan'} & result['history'].keys())
-        self.assertEqual(dock.technology_record({'snapshot': result})['current']['10102'], 125)
+        self.assertIsNone(tech.progress(dock.technology_record({'snapshot': result}), 10102)['owned'])
 
     def test_心智合并确认副本而疑点卡位保持独立(self):
         rows = [ship(level=105), ship(level=120), ship(None, 0), ship(None, 0)]

@@ -10,7 +10,9 @@ CREATE TABLE ships (
     extra_exp INTEGER CHECK(extra_exp >= 0),
     excluded INTEGER NOT NULL DEFAULT 0 CHECK(excluded IN (0, 1)),
     review INTEGER NOT NULL CHECK(review IN (0, 1)),
-    source TEXT NOT NULL
+    source TEXT NOT NULL,
+    breakthrough INTEGER CHECK(breakthrough BETWEEN 0 AND 3),
+    form TEXT CHECK(form IN ('base', 'retrofit'))
 ) STRICT;
 
 -- Current revisions and a few application settings, without scan history.
@@ -22,7 +24,10 @@ CREATE TABLE fleet_info (
     technology_fields INTEGER NOT NULL DEFAULT 0,
     pending_revision TEXT,
     pending_source TEXT,
-    pending_updated_at TEXT
+    pending_updated_at TEXT,
+    reading_count INTEGER CHECK(reading_count >= 0),
+    reading_review_count INTEGER CHECK(reading_review_count >= 0),
+    reading_complete INTEGER CHECK(reading_complete IN (0, 1))
 ) STRICT;
 
 -- One row per ship TYPE. NULL manual columns may mean an explicit blank, so
@@ -59,7 +64,9 @@ CREATE TABLE pending_ships (
     extra_exp INTEGER CHECK(extra_exp >= 0),
     excluded INTEGER NOT NULL CHECK(excluded IN (0, 1)),
     review INTEGER NOT NULL CHECK(review IN (0, 1)),
-    source TEXT NOT NULL
+    source TEXT NOT NULL,
+    breakthrough INTEGER CHECK(breakthrough BETWEEN 0 AND 3),
+    form TEXT CHECK(form IN ('base', 'retrofit'))
 ) STRICT;
 
 CREATE TABLE pending_technology (
@@ -85,4 +92,28 @@ CREATE TABLE pending_targets (
 CREATE TABLE pending_nations (
     nation_key TEXT PRIMARY KEY NOT NULL,
     level INTEGER CHECK(level >= 0)
+) STRICT;
+
+-- Authoritative cumulative account milestones. NULL means unverified, not false.
+-- The old technology table remains intact as migration evidence only.
+CREATE TABLE technology_progress (
+    group_type TEXT PRIMARY KEY NOT NULL,
+    owned INTEGER CHECK(owned IN (0, 1)),
+    full_star INTEGER CHECK(full_star IN (0, 1)),
+    lv120 INTEGER CHECK(lv120 IN (0, 1)),
+    source TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+) STRICT;
+
+-- Milestone proof survives the retirement of the physical card. No ship FK:
+-- deleted card IDs must remain available as historical provenance.
+CREATE TABLE technology_evidence (
+    group_type TEXT NOT NULL,
+    milestone TEXT NOT NULL CHECK(milestone IN ('owned', 'full_star', 'lv120')),
+    ship_id INTEGER NOT NULL,
+    level INTEGER NOT NULL,
+    breakthrough INTEGER,
+    source TEXT NOT NULL,
+    confirmed_at TEXT NOT NULL,
+    PRIMARY KEY(group_type, milestone, ship_id)
 ) STRICT;

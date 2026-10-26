@@ -54,7 +54,7 @@ export function createMockState({ empty = false } = {}) {
   function fleetStatePython(action, params) {
     const output = mindPython(action, {...params, state: fleetStates.get(params.instance),
       config: get(params.instance).values})
-    if (['tech.patch', 'dock.patch', 'dock.review', 'dock.importLegacy'].includes(action)) fleetStates.set(params.instance, output.state)
+    if (['tech.patch', 'dock.patch', 'dock.review', 'dock.importLegacy', 'dock.stageImport'].includes(action)) fleetStates.set(params.instance, output.state)
     if (action === 'dock.importLegacy') get(params.instance).values = output.config
     return output.result
   }
@@ -473,9 +473,11 @@ export function createMockState({ empty = false } = {}) {
     }
   }
   function dispatch(method, input = {}) {
-    const params = structuredClone(input)
+    let params = structuredClone(input)
     if (!Object.hasOwn(validators, method)) fail('METHOD_NOT_FOUND', '未知 API 方法')
     if (!validators[method](params)) fail('INVALID_PARAMS', '请求参数不符合 API 契约')
+    // Optional ledger fields carry presence semantics, matching Pydantic exclude_unset.
+    if (['dock.patch', 'dock.review', 'dock.stageImport', 'fleetTech.patch', 'mind.plan'].includes(method)) params = structuredClone(input)
     const name = params.instance
     if (name != null) get(name)
     switch (method) {
@@ -560,6 +562,7 @@ export function createMockState({ empty = false } = {}) {
       case 'dock.importLegacy': return fleetStatePython('dock.importLegacy', params)
       case 'dock.patch': return fleetStatePython('dock.patch', params)
       case 'dock.review': return fleetStatePython('dock.review', params)
+      case 'dock.stageImport': return fleetStatePython('dock.stageImport', params)
       case 'mind.catalog': return mindPython('catalog', params)
       case 'fleetTech.catalog': return fleetPython('catalog', params)
       case 'fleetTech.report': return fleetPython('report', params)
@@ -568,6 +571,7 @@ export function createMockState({ empty = false } = {}) {
       case 'mind.calculate': return mindPython('calculate', params)
       case 'mind.report': return fleetStatePython('mind.report', params)
       case 'mind.save': return fleetStatePython('mind.save', params)
+      case 'mind.plan': return fleetStatePython('mind.plan', params)
       case 'mind.import': return mindPython('import', params)
       case 'mind.recognize': return mindPython('recognize', params)
       case 'mind.export': return fleetStatePython('mind.export', params)

@@ -18,7 +18,8 @@ export interface Parameters {
   "dock.report": { instance: string }
   "dock.importLegacy": { instance: string; revision: string }
   "dock.configure": { instance: string; min_level: number; max_level: number }
-  "dock.patch": { instance: string; revision: string; changes: Array<{ id?: number | null; delete?: boolean; group_type?: number | null; name?: string; level?: number; rarity?: "" | "N" | "R" | "SR" | "SSR" | "UR"; base_rarity?: "" | "N" | "R" | "SR" | "SSR" | "UR"; extra_exp?: number | null; excluded?: boolean; review?: boolean; source?: string }> }
+  "dock.patch": { instance: string; revision: string; changes: Array<{ id?: number | null; delete?: boolean; group_type?: number | null; name?: string; level?: number; rarity?: "" | "N" | "R" | "SR" | "SSR" | "UR"; base_rarity?: "" | "N" | "R" | "SR" | "SSR" | "UR"; extra_exp?: number | null; breakthrough?: number | null; form?: "base" | "retrofit" | null; excluded?: boolean; review?: boolean; source?: string }> }
+  "dock.stageImport": { instance: string; revision: string; ships: Array<{ name: string; level: number; rarity?: "" | "N" | "R" | "SR" | "SSR" | "UR"; base_rarity?: "" | "N" | "R" | "SR" | "SSR" | "UR"; excluded?: boolean; review?: boolean; source?: string; extra_exp?: number | null }> }
   "dock.review": { instance: string; revision: string; pending_revision: string; decisions: Array<{ id: string; accept: boolean; ship_id?: number | null }> }
   "mind.catalog": { instance: string }
   "fleetTech.catalog": { instance: string }
@@ -26,8 +27,9 @@ export interface Parameters {
   "fleetTech.syncMind": { instance: string }
   "fleetTech.patch": { instance: string; revision: string; changes?: Array<{ group_type: number; owned?: boolean | null; full_star?: boolean | null; lv120?: boolean | null; level?: number | null; restore?: boolean; toggle?: "owned" | "complete" | "star" | null; target?: boolean | null }>; nations?: Record<string, unknown> }
   "mind.report": { instance: string }
-  "mind.calculate": { instance: string; ships: Array<{ name: string; level: number; rarity?: "" | "N" | "R" | "SR" | "SSR" | "UR"; base_rarity?: "" | "N" | "R" | "SR" | "SSR" | "UR"; excluded?: boolean; review?: boolean; source?: string }> }
-  "mind.save": { instance: string; ships: Array<{ name: string; level: number; rarity?: "" | "N" | "R" | "SR" | "SSR" | "UR"; base_rarity?: "" | "N" | "R" | "SR" | "SSR" | "UR"; excluded?: boolean; review?: boolean; source?: string }>; revision: string }
+  "mind.plan": { instance: string; revision: string; ship_ids: Array<number>; target_level?: 120 | 125; assumptions?: Array<{ ship_id: number; level?: number | null; extra_exp?: number | null; awakened_to?: 100 | 105 | 110 | 115 | 120 | 125 | null }> }
+  "mind.calculate": { instance: string; ships: Array<{ name: string; level: number; rarity?: "" | "N" | "R" | "SR" | "SSR" | "UR"; base_rarity?: "" | "N" | "R" | "SR" | "SSR" | "UR"; excluded?: boolean; review?: boolean; source?: string; extra_exp?: number | null }> }
+  "mind.save": { instance: string; ships: Array<{ name: string; level: number; rarity?: "" | "N" | "R" | "SR" | "SSR" | "UR"; base_rarity?: "" | "N" | "R" | "SR" | "SSR" | "UR"; excluded?: boolean; review?: boolean; source?: string; extra_exp?: number | null }>; revision: string }
   "mind.import": { instance: string; filename: string; content: string }
   "mind.recognize": { instance: string; filename: string; content: string }
   "mind.export": { instance: string; format?: "json" | "csv" | "xlsx" }

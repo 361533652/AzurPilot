@@ -1,4 +1,4 @@
-"""舰队科技目录、累计扫描证据与人工校正，均不操作游戏设备。"""
+"""Static catalog and authoritative account milestones; no game-device operations."""
 import copy
 import hashlib
 import json
@@ -30,7 +30,10 @@ def catalog():
         base = shared[str(gid * 10 + 1)]
         row = dict(entry, name=base['name']['cn'], names=base['name'], nationality=base['nationality'],
                    rarity=('DR' if base['rarity_name'] in ('UR', 'DR') else 'PR') if entry['blueprint'] else base['rarity_name'],
-                   type=base['type'], variant='child' if base.get('is_child') else
+                   type=base['type'],
+                   full_star_rule='explicit_breakthrough' if entry['blueprint'] or base['nationality'] == 97
+                   or base['rarity_name'] == 'UR' else 'ordinary_level_cap',
+                   variant='child' if base.get('is_child') else
                    'mu' if 'μ兵装' in base['name']['cn'] else '', retrofit_names=[], scan_types=[base['type']])
         rows.append(row)
         if entry['technology']:
@@ -96,6 +99,65 @@ def merge_mind(record, ships):
     return output
 
 
+MILESTONES = ('owned', 'full_star', 'lv120')
+
+
+def positive_facts(ship):
+    """Only confirmed identity and applicable ship rules can prove a milestone.
+
+    Research, META and native UR ships can exceed level 100 before full development / limit
+    break, so their level never proves full stars. Explicit breakthrough stage 3
+    proves full stars for every supported type. A known lower breakthrough stage
+    takes precedence over the ordinary level-cap inference.
+    """
+    info = next((row for row in catalog()['ships'] if row['group_type'] == ship.get('group_type')), None)
+    if info is None or ship.get('review'):
+        return set()
+    level = ship.get('level', 0)
+    facts = {'owned'}
+    if type(level) is int and level >= 120:
+        facts.add('lv120')
+    breakthrough = ship.get('breakthrough')
+    if (breakthrough == 3 or breakthrough is None and type(level) is int
+            and level > 100 and info['full_star_rule'] == 'ordinary_level_cap'):
+        facts.add('full_star')
+    return facts
+
+
+def legacy_milestones(group_type, observed=None, manual=None):
+    """Convert evidence once; explicit unknown and negative corrections remain explicit."""
+    manual = manual or {}
+    level = manual.get('level', observed)
+    values = {key: None for key in MILESTONES}
+    if level:
+        for key in positive_facts(dict(group_type=int(group_type), level=level)):
+            values[key] = True
+    for key in MILESTONES:
+        if key in manual:
+            values[key] = manual[key]
+    if values['owned'] is False:
+        values.update(full_star=False, lv120=False)
+    if values['full_star'] is True or values['lv120'] is True:
+        values['owned'] = True
+    return values
+
+
+def _account_progress(record, group_type):
+    gid = str(group_type)
+    saved = record['progress'].get(gid, {})
+    cards = [row for row in record.get('holdings', []) if row.get('group_type') == group_type and not row.get('review')]
+    evidence = {key: [row['id'] for row in cards if 'id' in row and key in positive_facts(row)] for key in MILESTONES}
+    state = {key: saved.get(key) for key in MILESTONES}
+    status = ('complete' if all(state[key] is True for key in MILESTONES) else
+              'unowned' if state['owned'] is False else
+              'unknown' if any(state[key] is None for key in MILESTONES) else 'unfinished')
+    conflicts = {key: ids for key, ids in evidence.items() if ids and state[key] is not True}
+    return dict(group_type=group_type, **state, status=status, points=0,
+                current_count=len(cards), current_level=max((row['level'] for row in cards), default=None),
+                evidence=evidence, historical_evidence=record.get('evidence_history', {}).get(gid, {}),
+                conflicts=conflicts, source=saved.get('source', ''), updated_at=saved.get('updated_at', ''))
+
+
 def _source_progress(record, group_type):
     """兼容旧记录，分别推导获得、等级和满星；无证据默认未获得。"""
     gid = str(group_type)
@@ -121,7 +183,8 @@ def _source_progress(record, group_type):
     elif not lv120 and level and level >= 120:
         level = manual.get('level_toggle', {}).get('low', 100)
     # 仅按当前有效等级推导默认值；人工明确的满星/未满星仍优先，不回写历史。
-    if owned and full_star is None and level and level > 100:
+    if (owned and full_star is None and level and 'full_star' not in manual
+            and 'full_star' in positive_facts(dict(group_type=group_type, level=level))):
         full_star = True
     state = dict(group_type=group_type, owned=owned, level=level, full_star=full_star, lv120=lv120,
                  status='complete' if lv120 else 'unfinished' if owned else 'unowned',
@@ -145,25 +208,10 @@ def _manual_progress(record, group_type):
 
 
 def progress(record, group_type):
-    """获取及科技里程碑取底账与人工的正向并集，同一群组只计一次。"""
-    if 'ledger_levels' not in record:
-        return _source_progress(record, group_type)
-    gid = str(group_type)
-    ledger = _source_progress(dict(current=record['ledger_levels']), group_type)
-    manual = _manual_progress(record, group_type)
-    owned = ledger['owned'] or manual['owned']
-    lv120 = ledger['lv120'] or manual['lv120']
-    sources = [source for source in (ledger, manual) if source['owned']]
-    levels = [source['level'] for source in sources if source['level'] is not None]
-    full_star = (True if any(source['full_star'] is True for source in sources) else
-                 None if any(source['full_star'] is None for source in sources) else False)
-    fields = ('owned', 'level', 'full_star', 'lv120')
-    return dict(manual, owned=owned, lv120=lv120, level=max(levels) if levels else None,
-                full_star=full_star, status='complete' if lv120 else 'unfinished' if owned else 'unowned',
-                manual=bool(record.get('manual', {}).get(gid)), observed_level=record.get('observed', {}).get(gid),
-                ledger={field: ledger[field] for field in fields},
-                manual_state={**{field: manual[field] for field in fields},
-                              'completion_target': manual['completion_target']})
+    """Project account facts directly; old raw records are only migration diagnostics."""
+    if 'progress' in record:
+        return _account_progress(record, group_type)
+    return _source_progress(record, group_type)
 
 
 def completion_levels(record, group_type, state):
@@ -225,7 +273,7 @@ def merge_scan(record, ships, *, min_level, max_level, reached_bottom, filters_c
         if min_level <= level <= max_level:
             seen[str(gid)] = max(seen.get(str(gid), 0), level)
     complete = (min_level == 1 and max_level == 125 and reached_bottom and filters_clear
-                and type(expected_count) is int and physical_count == expected_count and not reviews)
+                and type(expected_count) is int and physical_count == expected_count == len(ships) and not reviews)
     observed = output.setdefault('observed', {})
     current = output.setdefault('current', {})
     for gid, level in seen.items():
@@ -252,9 +300,11 @@ def ship_type(value):
 
 
 def report(record):
-    """保留完整目录，以两份获取证据的并集计算科技及未获取的补集。"""
+    """Count confirmed account milestones against technology-bearing catalog types."""
     rows, bonuses = [], defaultdict(lambda: defaultdict(int))
     confirmed_points = completed = pending_star = 0
+    milestone_counts = {key: 0 for key in MILESTONES}
+    unknown_count = unknown_ships = 0
 
     def add(types, attr, value):
         for target in {ship_type(t) for t in types}:
@@ -263,6 +313,11 @@ def report(record):
     for info in catalog()['ships']:
         row = progress(record, info['group_type'])
         owned, full_star, lv120 = row['owned'], row['full_star'], row['lv120']
+        if info['technology']:
+            for key in MILESTONES:
+                milestone_counts[key] += row[key] is True
+                unknown_count += row[key] is None
+            unknown_ships += any(row[key] is None for key in MILESTONES)
         tech = info['technology']
         if tech:
             if owned:
@@ -274,15 +329,21 @@ def report(record):
             if lv120:
                 row['points'] += tech['pt_level']
                 add(tech['add_level_shiptype'], tech['add_level_attr'], tech['add_level_value'])
-                completed += 1
+            completed += all(row[key] is True for key in MILESTONES)
         confirmed_points += row['points']
         rows.append(row)
+    ship_bonuses = {t: dict(attrs) for t, attrs in bonuses.items()}
     levels = record.get('nations', {})
     for key, value in levels.items():
         if value and key in catalog()['nations']:
             for types, attr, amount in catalog()['nations'][key][value - 1]:
                 add(types, attr, amount)
-    return dict(revision=revision(record), ships=rows, nation_levels=levels,
+    nation_bonuses = {t: {a: n - ship_bonuses.get(t, {}).get(a, 0) for a, n in attrs.items()
+                          if n - ship_bonuses.get(t, {}).get(a, 0)} for t, attrs in bonuses.items()}
+    return dict(revision=revision(record), rules_version=1, data_version=record.get('snapshot_revision'),
+                ships=rows, nation_levels=levels,
+                milestone_counts=milestone_counts, unknown_count=unknown_count, unknown_ships=unknown_ships,
+                ship_bonuses=ship_bonuses, nation_bonuses=nation_bonuses,
                 bonuses={t: dict(attrs) for t, attrs in bonuses.items()}, confirmed_points=confirmed_points,
                 completed=completed, pending_star=pending_star, last_scan=record.get('last_scan'),
                 review_ships=record.get('review_ships', []))

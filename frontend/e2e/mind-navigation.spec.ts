@@ -22,7 +22,7 @@ test('资源管理位于资源趋势旁边，旧入口跳转且刷新保持选�
   await page.screenshot({path: test.info().outputPath('statistics-management-tabs.png'), fullPage: true})
 })
 
-test('舰队管理打开三标签数据分析与舰队信息，扫描开关只运行工具并刷新结果', async ({page}) => {
+test('舰队管理打开四页舰船数据与舰队信息，扫描开关只运行工具并刷新结果', async ({page}) => {
   const requests: string[] = []
   let finished = false
   await page.routeWebSocket('**/api/v1/ws', socket => {
@@ -42,14 +42,14 @@ test('舰队管理打开三标签数据分析与舰队信息，扫描开关只�
   })
   await page.goto('/#/i/demo-alt/mind-calculator')
   await expect(page).toHaveURL(/task\/FleetAnalysis\?tab=mind$/)
-  await expect(page.getByRole('heading', {name: '心智单元计算器', exact: true})).toBeVisible()
-  await expect(page.locator('.primary-nav').getByRole('link', {name: '心智单元计算器', exact: true})).toHaveCount(0)
+  await expect(page.getByRole('heading', {name: '养成计算', exact: true})).toBeVisible()
+  await expect(page.locator('.primary-nav').getByRole('link', {name: '养成计算', exact: true})).toHaveCount(0)
   await page.getByRole('button', {name: '舰队管理', exact: true}).hover()
   const menu = page.getByRole('menu', {name: '舰队管理', exact: true})
-  await expect(menu.getByRole('menuitem', {name: '舰队数据分析', exact: true})).toHaveAttribute('href', /\/task\/FleetAnalysis$/)
+  await expect(menu.getByRole('menuitem', {name: '舰船数据', exact: true})).toHaveAttribute('href', /\/task\/FleetAnalysis$/)
   await menu.getByRole('menuitem', {name: '舰队信息', exact: true}).click()
   await expect(page).toHaveURL(/task\/FleetInfo$/)
-  await expect(page.getByRole('tab', {name: '心智单元计算器', exact: true})).toHaveCount(0)
+  await expect(page.getByRole('tab', {name: '养成计算', exact: true})).toHaveCount(0)
   await expect(page.locator('.fleet-grid')).toContainText('原有舰船')
   const scan = page.getByRole('switch', {name: '舰队扫描', exact: true})
   await expect(scan).not.toBeChecked()
@@ -66,17 +66,18 @@ test('舰队管理打开三标签数据分析与舰队信息，扫描开关只�
   expect(requests.some(method => method === 'startup.set' || method === 'scheduler.start')).toBe(false)
   await page.screenshot({path: test.info().outputPath('fleet-info-scan-switch.png'), fullPage: true, animations: 'disabled'})
   await page.getByRole('button', {name: '舰队管理', exact: true}).hover()
-  await menu.getByRole('menuitem', {name: '舰队数据分析', exact: true}).click()
+  await menu.getByRole('menuitem', {name: '舰船数据', exact: true}).click()
   await expect(page).toHaveURL(/task\/FleetAnalysis$/)
-  await expect(page.getByRole('tab')).toHaveCount(3)
-  await page.getByRole('tab', {name: '心智分析', exact: true}).click()
+  await expect(page.getByRole('tab')).toHaveCount(4)
+  await page.getByRole('tab', {name: '养成计算', exact: true}).click()
   await expect(page).toHaveURL(/task\/FleetAnalysis\?tab=mind$/)
   await page.reload()
-  await expect(page.getByRole('heading', {name: '心智单元计算器', exact: true})).toBeVisible()
-  await expect(page.locator('.mind-add')).toBeVisible()
-  await expect(page.locator('.breadcrumb-current')).toHaveText('舰队数据分析')
+  await expect(page.getByRole('heading', {name: '养成计算', exact: true})).toBeVisible()
+  await expect(page.getByRole('button', {name: '选择全部舰船', exact: true})).toBeVisible()
+  await expect(page.locator('input[type=file]')).toHaveCount(0)
+  await expect(page.locator('.breadcrumb-current')).toHaveText('舰船数据')
   await page.getByRole('button', {name: '舰队管理', exact: true}).hover()
-  await expect(menu.getByRole('menuitem', {name: '舰队数据分析', exact: true})).toBeVisible()
+  await expect(menu.getByRole('menuitem', {name: '舰船数据', exact: true})).toBeVisible()
   await page.screenshot({path: test.info().outputPath('fleet-management-calculator.png'), fullPage: true, animations: 'disabled'})
 })
 

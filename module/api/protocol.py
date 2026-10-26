@@ -70,6 +70,7 @@ class MindShip(Params):
     excluded: StrictBool = False
     review: StrictBool = False
     source: StrictStr = Field(default='', max_length=200)
+    extra_exp: StrictInt | None = Field(default=None, ge=0)
 
 
 class Request(Params):
@@ -141,6 +142,8 @@ class DockCardChange(Params):
     rarity: Literal['', 'N', 'R', 'SR', 'SSR', 'UR'] = None
     base_rarity: Literal['', 'N', 'R', 'SR', 'SSR', 'UR'] = None
     extra_exp: StrictInt | None = Field(default=None, ge=0)
+    breakthrough: StrictInt | None = Field(default=None, ge=0, le=3)
+    form: Literal['base', 'retrofit'] | None = None
     excluded: StrictBool = None
     review: StrictBool = None
     source: StrictStr = Field(default=None, max_length=200)
@@ -149,6 +152,25 @@ class DockCardChange(Params):
 class DockPatchParams(InstanceParams):
     revision: StrictStr = Field(min_length=64, max_length=64)
     changes: list[DockCardChange] = Field(min_length=1, max_length=5000)
+
+
+class DockStageImportParams(InstanceParams):
+    revision: StrictStr = Field(min_length=64, max_length=64)
+    ships: list[MindShip] = Field(min_length=1, max_length=5000)
+
+
+class CultivationAssumption(Params):
+    ship_id: StrictInt = Field(ge=1)
+    level: StrictInt | None = Field(default=None, ge=1, le=125)
+    extra_exp: StrictInt | None = Field(default=None, ge=0)
+    awakened_to: Literal[100, 105, 110, 115, 120, 125] | None = None
+
+
+class CultivationParams(InstanceParams):
+    revision: StrictStr = Field(min_length=64, max_length=64)
+    ship_ids: list[StrictInt] = Field(max_length=5000)
+    target_level: Literal[120, 125] = 120
+    assumptions: list[CultivationAssumption] = Field(default_factory=list, max_length=5000)
 
 
 class DockReviewDecision(Params):

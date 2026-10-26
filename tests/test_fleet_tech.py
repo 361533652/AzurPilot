@@ -12,7 +12,6 @@ from module.api.config_service import ConfigService
 from module.api.fleet_tech_service import FleetTechService
 from module.api.protocol import ApiError, FleetTechChange, FleetTechPatchParams
 from module.runtime import fleet_tech as tech
-from module.runtime import dock_data
 from module.runtime.fleet_database import FleetDatabase
 from module.runtime.mind_recognition import ScanPolicy
 from tests.test_api import fixture
@@ -79,7 +78,7 @@ class FleetTechTests(unittest.TestCase):
             ({'manual': {'10102': {'level': 101}}}, True),
             ({'manual': {'10102': {'full_star': False}}}, False),
             ({'current': {'10102': 100}, 'manual': {'10102': {'full_star': True}}}, True),
-            ({'manual': {'10102': {'full_star': None}}}, True),
+            ({'manual': {'10102': {'full_star': None}}}, None),
         ]
         for values, expected in cases:
             with self.subTest(values=values):
@@ -128,37 +127,18 @@ class FleetTechTests(unittest.TestCase):
 
     def test_service_transactions_conflicts_restore_and_instance_isolation(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = fixture(directory)
-            configs = ConfigService(root)
-            (root / 'config/second.json').write_text(configs.path('testpilot').read_text(encoding='utf-8'), encoding='utf-8')
+            configs = ConfigService(fixture(directory))
+            (configs.path('testpilot').parent / 'second.json').write_bytes(configs.path('testpilot').read_bytes())
             service = FleetTechService(configs)
             initial = service.report('testpilot')
-            self.assertEqual((initial['min_level'], initial['max_level']), (1, 125))
             updated = service.patch('testpilot', initial['revision'], [FleetTechChange(group_type=10102, owned=False)], {})
             with self.assertRaises(ApiError) as error:
                 service.patch('testpilot', initial['revision'], [FleetTechChange(group_type=10102, owned=True)], {})
             self.assertEqual(error.exception.code, 'CONFLICT')
-            database = FleetDatabase(configs.path('testpilot'))
-            snapshot = dock_data.build_snapshot([dict(ship(), group_type=10102)], min_level=1, max_level=125,
-                reached_bottom=True, filters_clear=True, physical_count=1, expected_count=1, updated_at='fixture')
-            database.save_scan(snapshot, dock_data.read_snapshot(database.load())['revision'])
-            pending = database.load()
-            self.assertEqual(pending['snapshot']['ships'], [])
-            database.review([dict(id=row['id'], accept=True) for row in pending['pending_changes']],
-                            dock_data.read_snapshot(pending)['revision'], pending['pending_revision'])
-            service.sync_mind('testpilot')
-            row = next(row for row in service.report('testpilot')['ships'] if row['group_type'] == 10102)
-            self.assertTrue(row['owned'])
-            self.assertTrue(row['ledger']['owned'])
-            self.assertFalse(row['manual_state']['owned'])
-            self.assertNotEqual(updated['revision'], service.report('testpilot')['revision'])
+            updated = service.patch('testpilot', updated['revision'], [FleetTechChange(group_type=10102, owned=None)], {})
+            self.assertIsNone(next(row for row in updated['ships'] if row['group_type'] == 10102)['owned'])
             self.assertEqual(service.report('second')['completed'], 0)
-            current = service.report('testpilot')
-            restored = service.patch('testpilot', current['revision'], [FleetTechChange(group_type=10102, restore=True)], {'1': 0})
-            self.assertEqual(restored['completed'], 1)
-            self.assertTrue(next(row for row in restored['ships'] if row['group_type'] == 10102)['full_star'])
-            self.assertEqual(service.sync_mind('testpilot')['revision'], restored['revision'])
-            self.assertEqual(database.load()['snapshot']['ships'][0]['level'], 125)
+            self.assertEqual(service.sync_mind('testpilot'), updated)
 
     def test_invalid_patch_does_not_write_any_partial_change(self):
         schema = FleetTechChange.model_json_schema()
@@ -172,7 +152,8 @@ class FleetTechTests(unittest.TestCase):
                 service.patch('testpilot', initial['revision'], [FleetTechChange(group_type=10102, owned=True)], {'1': 100})
             self.assertEqual(before, configs.path('testpilot').read_bytes())
             for change in [{'group_type': 10102, 'level': 0}, {'group_type': True}, {'group_type': 10102, 'level': 126}]:
-                with self.assertRaises(ValidationError): FleetTechChange.model_validate(change)
+                with self.assertRaises(ValidationError):
+                    FleetTechChange.model_validate(change)
             with self.assertRaises(ValidationError):
                 FleetTechPatchParams.model_validate({'instance': 'testpilot', 'revision': 'a' * 64, 'nations': {'1': True}})
 
@@ -249,7 +230,7 @@ class FleetTechTests(unittest.TestCase):
             saved = FleetDatabase(path).load()
             self.assertEqual(saved['snapshot']['ships'], [])
             self.assertEqual(saved['pending_changes'], [])
-            self.assertFalse(saved['technology']['manual']['10102']['owned'])
+            self.assertFalse(saved['technology']['progress']['10102']['owned'])
 
     def test_extractor_parses_nested_faction_bonuses_and_rejects_duplicate_groups(self):
         from dev_tools.ship_data_extractor import extract_fleet_tech
@@ -266,10 +247,12 @@ class FleetTechTests(unittest.TestCase):
             result = extract_fleet_tech('fixture')
             self.assertEqual(result['nations']['1'][0], [[[6, 7], 5, 1]])
             fixtures['fleet_tech_template.lua'][1001]['add'] = ['{ {6, 7}, 5, "invalid" }']
-            with self.assertRaises(ValueError): extract_fleet_tech('fixture')
+            with self.assertRaises(ValueError):
+                extract_fleet_tech('fixture')
             fixtures['fleet_tech_template.lua'][1001]['add'] = ['{ {6, 7}, 5, 1 }']
             fixtures['ship_data_group.lua'][5] = dict(fixtures['ship_data_group.lua'][4])
-            with self.assertRaises(ValueError): extract_fleet_tech('fixture')
+            with self.assertRaises(ValueError):
+                extract_fleet_tech('fixture')
 
 
 if __name__ == '__main__':

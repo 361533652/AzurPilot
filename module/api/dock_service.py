@@ -20,6 +20,7 @@ class DockService:
         # 控制项显示下一次扫描的配置，快照覆盖范围另附在 scan_range 中。
         return dict(report, instance=instance, legacy_imported=state['legacy_imported'],
                     pending_revision=state.get('pending_revision'), pending_changes=state.get('pending_changes', []),
+                    pending_read=state.get('pending_read'),
                     scan_range=dict(min_level=report['min_level'], max_level=report['max_level']),
                     min_level=fields.get('MinLevel', 1), max_level=fields.get('MaxLevel', 125))
 
@@ -41,7 +42,7 @@ class DockService:
             try:
                 FleetDatabase(path).patch_cards(changes, expected_revision)
             except FleetDatabaseConflict as exc:
-                raise ApiError('CONFLICT', '舰船底账已更新，请重新载入后编辑') from exc
+                raise ApiError('CONFLICT', str(exc), getattr(exc, 'conflicts', None)) from exc
             except (ValueError, TypeError, KeyError) as exc:
                 raise ApiError('INVALID_PARAMS', f'舰船修改无效：{exc}') from exc
         return self.report(instance)
@@ -54,9 +55,22 @@ class DockService:
             try:
                 FleetDatabase(path).review(decisions, expected_revision, pending_revision)
             except FleetDatabaseConflict as exc:
-                raise ApiError('CONFLICT', '舰船底账或待审核变化已更新，请重新载入后审核') from exc
+                raise ApiError('CONFLICT', str(exc), getattr(exc, 'conflicts', None)) from exc
             except (ValueError, TypeError, KeyError) as exc:
                 raise ApiError('INVALID_PARAMS', f'审核决定无效：{exc}') from exc
+        return self.report(instance)
+
+    def stage_import(self, instance, expected_revision, ships):
+        """File and screenshot readings share the ordinary pending-review workflow."""
+        path = self.configs.path(instance)
+        with self.configs.lock, config_transaction(path):
+            self.configs.path(instance)
+            try:
+                FleetDatabase(path).stage_import(ships, expected_revision)
+            except FleetDatabaseConflict as exc:
+                raise ApiError('CONFLICT', str(exc)) from exc
+            except (ValueError, TypeError, KeyError) as exc:
+                raise ApiError('INVALID_PARAMS', f'导入数据无效：{exc}') from exc
         return self.report(instance)
 
     def import_legacy(self, instance, expected_revision):

@@ -63,10 +63,15 @@ def dispatch(request):
                 result = DockService(configs).patch(request['instance'], request['revision'],
                     [DockCardChange.model_validate(change).model_dump(exclude_unset=True)
                         for change in request.get('changes', [])])
+            elif action == 'dock.stageImport':
+                result = DockService(configs).stage_import(request['instance'], request['revision'], ships)
             elif action == 'dock.review':
                 result = DockService(configs).review(request['instance'], request['revision'],
                     request['pending_revision'], [DockReviewDecision.model_validate(change).model_dump(exclude_unset=True)
                         for change in request.get('decisions', [])])
+            elif action == 'mind.plan':
+                result = MindCalculatorService(configs).plan(request['instance'], request['revision'],
+                    request.get('ship_ids', []), request.get('target_level', 120), request.get('assumptions', []))
             elif action == 'mind.report':
                 result = MindCalculatorService(configs).report(request['instance'])
             elif action == 'mind.save':

@@ -34,7 +34,8 @@ def table_ships(rows):
     aliases = {'name': ('name', '船名', '舰船', '名称'), 'level': ('level', '等级'),
                'rarity': ('rarity', '稀有度'), 'base_rarity': ('base_rarity', '基础稀有度'),
                'excluded': ('excluded', '排除'), 'review': ('review', '需核对'), 'source': ('source', '来源'),
-               'status': ('status', '状态'), 'notes': ('notes', '备注')}
+               'status': ('status', '状态'), 'notes': ('notes', '备注'),
+               'extra_exp': ('extra_exp', '额外经验', '零散经验')}
     columns = None
     output = []
     for index, row in enumerate(rows):
@@ -74,7 +75,13 @@ def table_ships(rows):
             if raw not in ('', '0', '1', 'true', 'false', '是', '否'):
                 raise ValueError(f'第 {index + 1} 行 {key} 字段无效')
             return raw in ('1', 'true', '是')
-        output.append(input_ship(dict(name=name, level=int(raw_level), rarity=rarity,
+        raw_exp = value('extra_exp', '')
+        extra_exp = None
+        if raw_exp != '' and raw_exp is not None:
+            if isinstance(raw_exp, bool) or not str(raw_exp).strip().isdigit():
+                raise ValueError(f'第 {index + 1} 行额外经验必须为非负整数或留空')
+            extra_exp = int(raw_exp)
+        output.append(input_ship(dict(extra_exp=extra_exp, name=name, level=int(raw_level), rarity=rarity,
                                       base_rarity=base_rarity, excluded=boolean('excluded'),
                                       review=boolean('review') or value('status') in ('存疑', '等级未读到', '名字未匹配'),
                                       source=str(value('source') or value('notes'))[:200])))
@@ -141,6 +148,16 @@ class MindCalculatorService:
                     updated_at=snapshot.get('updated_at', ''),
                     min_level=min_level, max_level=max_level,
                     **calculate(mind_analysis.ships(data)))
+
+    def plan(self, instance, expected_revision, ship_ids, target_level, assumptions):
+        """Project selected card IDs against one confirmed revision without writing facts."""
+        from module.runtime.fleet_cultivation import project
+        data = FleetDatabase(self.configs.path(instance)).load()
+        snapshot = dock_data.read_snapshot(data)
+        if snapshot['revision'] != expected_revision:
+            raise ApiError('CONFLICT', '舰船数据已更新，请重新载入后计算')
+        return dict(instance=instance, revision=snapshot['revision'],
+                    **project(snapshot['ships'], ship_ids, target_level, assumptions))
 
     def save(self, instance, expected_revision, ships):
         """汇总清单没有稳定副本身份，禁止用它覆盖底账或删除同名副本。"""
