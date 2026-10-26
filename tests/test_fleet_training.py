@@ -18,10 +18,10 @@ from module.combat.emotion import Emotion
 from module.exception import CampaignEnd, FleetManagementError, GameStuckError, ScriptEnd
 from module.os.ship_exp import ShipLevel
 from module.awaken.assets import OCR_SHIP_LEVEL
-from module.retire.fleet_training import AffinityReader, FleetTrainingReader, parse_affinity
+from module.retire.fleet_training import AffinityReader, FleetTrainingReader, TrainingExp, parse_affinity
 from module.runtime.fleet_rotation import ROTATION_PATH
 from module.runtime.fleet_training import (LEVEL_PATH, AFFINITY_PATH, TRAINING_PATH, completed,
-                                           excluded, goals, due, observe, state)
+                                           excluded, goals, due, interval, observe, state)
 from module.runtime.mind_calculator import catalog
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -29,6 +29,52 @@ import tests.test_fleet_rotation as rotation_cases
 
 
 class TrainingRuleTests(unittest.TestCase):
+    def test_observe_keeps_confirmed_position_and_zero_morale_without_changing_completion(self):
+        saved = {'records': {}}
+        self.assertTrue(observe(saved, '舰船A', {'level': 120}, {'level': 120}, fleet=2, slot=6, emotion=0))
+        record = saved['records']['舰船A']
+        self.assertEqual((2, 6, 0), (record['fleet'], record['slot'], record['emotion']))
+        observe(saved, '舰船A', {'affinity': 50}, {'affinity': 100})
+        record = saved['records']['舰船A']
+        self.assertEqual((2, 6, 0), (record['fleet'], record['slot'], record['emotion']))
+        observe(saved, '舰船A', {'level': 120}, {'level': 120}, fleet=3, slot=6, emotion=None)
+        self.assertEqual(3, saved['records']['舰船A']['fleet'])
+        self.assertIsNone(saved['records']['舰船A']['emotion'])
+        self.assertEqual({'level': 120}, saved['records']['舰船A']['completed_for'])
+
+    def test_unbounded_hours_do_not_overflow_when_no_candidate_delays_the_task(self):
+        from datetime import datetime
+        from module.campaign.fleet_training import TrainingSession
+        session = TrainingSession.__new__(TrainingSession)
+        session.config = Mock()
+        session.config.cross_get.side_effect = lambda path, default: True if path.endswith('.Enabled') else 1e20
+        session.save = Mock()
+        with self.assertRaises(ScriptEnd):
+            session.delay('候补不足')
+        session.config.task_delay.assert_called_once_with(target=datetime.max)
+
+    def test_training_exp_distinguishes_unknown_from_actual_zero_without_changing_shared_reader(self):
+        from module.awaken.assets import OCR_SHIP_EXP
+        reader = TrainingExp(OCR_SHIP_EXP)
+        for text, expected in (('0/Max', 0), ('23456/120000', 23456), ('3000000/M', 3000000),
+                               ('无法识别', None), ('', None), ([], None)):
+            with self.subTest(text=text), patch('module.retire.fleet_training.Ocr.ocr', return_value=text):
+                self.assertEqual(expected, reader.ocr(None))
+
+    def test_observe_persists_exact_experience_without_changing_completion(self):
+        saved = {'records': {}}
+        self.assertFalse(observe(saved, '舰船A', {'level': 119, 'exp': 23456, 'affinity': 98},
+                                 {'level': 120, 'affinity': 100}))
+        self.assertEqual(23456, saved['records']['舰船A']['exp'])
+        self.assertTrue(observe(saved, '舰船A', {'level': 120, 'exp': 0, 'affinity': 100},
+                                {'level': 120, 'affinity': 100}))
+        self.assertEqual(0, saved['records']['舰船A']['exp'])
+        self.assertEqual({'level': 120, 'affinity': 100}, saved['records']['舰船A']['completed_for'])
+        observe(saved, '舰船A', {'affinity': 101}, {'affinity': 120})
+        self.assertEqual(0, saved['records']['舰船A']['exp'])
+        observe(saved, '舰船B', {'level': 99}, {'level': 120})
+        self.assertIsNone(saved['records']['舰船B']['exp'])
+
     def test_affinity_navigation_waits_for_two_fresh_matching_values(self):
         reader = FleetTrainingReader.__new__(FleetTrainingReader)
         reader.device = SimpleNamespace(image=None, click=Mock())
@@ -178,6 +224,16 @@ class TrainingIntegrationTests(unittest.TestCase):
                 if not level and not affinity:
                     self.assertNotIn('completed_for', saved)
 
+    def test_reading_keeps_position_and_existing_morale_without_extra_scan_or_swap(self):
+        self.configure()
+        self.live[1][4] = 77
+        preflight_rotation(self.runner, 5, 'normal')
+        record = state(self.config)['records'][self.names[1, 4]]
+        self.assertEqual((1, 4, 77), (record['fleet'], record['slot'], record['emotion']))
+        self.manager.run.assert_not_called()
+        self.manager.prepare_rotation.assert_not_called()
+        self.manager.rotate_slot.assert_not_called()
+
     def test_only_one_of_two_goals_does_not_swap(self):
         for level, affinity in ((119, 100), (120, 99), (80, 50)):
             self.configure(level=True, affinity=True)
@@ -324,16 +380,60 @@ class TrainingIntegrationTests(unittest.TestCase):
     def test_config_flags_targets_and_intervals_are_independent_and_state_is_read_only(self):
         changes = [ConfigChange(path=LEVEL_PATH + '.Enabled', value=True),
                    ConfigChange(path=LEVEL_PATH + '.Target', value=125),
-                   ConfigChange(path=LEVEL_PATH + '.CheckInterval', value=0),
+                   ConfigChange(path=LEVEL_PATH + '.CheckIntervalHours', value=0),
                    ConfigChange(path=AFFINITY_PATH + '.Enabled', value=True),
                    ConfigChange(path=AFFINITY_PATH + '.Target', value=200)]
         values = self.service.patch('testpilot', None, changes)['values']['FleetInfo']
         self.assertEqual(125, values['FleetLevelTraining']['Target'])
         self.assertEqual(200, values['FleetAffinityTraining']['Target'])
         for path, value in ((LEVEL_PATH + '.Target', 126), (AFFINITY_PATH + '.Target', 201),
-                            (LEVEL_PATH + '.CheckInterval', -1), (TRAINING_PATH, {'records': {}})):
+                            (LEVEL_PATH + '.CheckIntervalHours', -1), (TRAINING_PATH, {'records': {}})):
             with self.assertRaises(ApiError):
                 self.service.patch('testpilot', None, [ConfigChange(path=path, value=value)])
+
+    def test_hours_accept_fractional_and_large_intervals_and_due_uses_hours(self):
+        self.configure()
+        preflight_rotation(self.runner, 5, 'normal')
+        context = self.runner._fleet_rotation_context
+        for hours in (0, 0.25, 48, 1000000, 1e20):
+            values = self.service.patch('testpilot', None, [
+                ConfigChange(path=LEVEL_PATH + '.CheckIntervalHours', value=hours)])['values']
+            self.assertEqual(hours, values['FleetInfo']['FleetLevelTraining']['CheckIntervalHours'])
+        self.config.update()
+        self.assertEqual(1e20, interval(self.config))
+        self.assertFalse(due(self.config, context))
+        self.config.cross_set(LEVEL_PATH + '.CheckIntervalHours', 48)
+        context['training_checked_at'] -= timedelta(hours=47)
+        self.assertFalse(due(self.config, context))
+        context['training_checked_at'] -= timedelta(hours=1, seconds=1)
+        self.assertTrue(due(self.config, context))
+        self.config.cross_set_many({LEVEL_PATH + '.CheckIntervalHours': 48,
+                                   AFFINITY_PATH + '.Enabled': True,
+                                   AFFINITY_PATH + '.CheckIntervalHours': 0.25})
+        self.assertEqual(0.25, interval(self.config))
+
+    def test_old_minutes_migrate_in_read_only_api_and_runtime_without_losing_records(self):
+        from module.config.config_updater import ConfigUpdater
+        raw = self.service.read_json(self.path)
+        original_state = {'records': {'旧舰船': {'level': 119, 'affinity': 99, 'exp': 123}}}
+        raw['FleetInfo']['FleetTraining']['State'] = original_state
+        for group, minutes in (('FleetLevelTraining', 30), ('FleetAffinityTraining', 0)):
+            raw['FleetInfo'][group].pop('CheckIntervalHours', None)
+            raw['FleetInfo'][group]['CheckInterval'] = minutes
+        self.path.write_text(json.dumps(raw), encoding='utf-8')
+        before = self.path.read_bytes()
+        values = self.service.get('testpilot')['values']
+        self.assertEqual(0.5, values['FleetInfo']['FleetLevelTraining']['CheckIntervalHours'])
+        self.assertEqual(0, values['FleetInfo']['FleetAffinityTraining']['CheckIntervalHours'])
+        self.assertEqual(original_state, values['FleetInfo']['FleetTraining']['State'])
+        self.assertEqual(before, self.path.read_bytes())
+        migrated = ConfigUpdater().config_update(raw)
+        self.assertEqual(0.5, migrated['FleetInfo']['FleetLevelTraining']['CheckIntervalHours'])
+        self.assertEqual(original_state, migrated['FleetInfo']['FleetTraining']['State'])
+        raw['FleetInfo']['FleetLevelTraining']['CheckIntervalHours'] = 72
+        self.path.write_text(json.dumps(raw), encoding='utf-8')
+        self.assertEqual(72, self.service.get('testpilot')['values']['FleetInfo']['FleetLevelTraining']['CheckIntervalHours'])
+        self.assertEqual(72, ConfigUpdater().config_update(raw)['FleetInfo']['FleetLevelTraining']['CheckIntervalHours'])
 
     def test_recorded_reading_is_recovered_before_stage_navigation_even_after_disable(self):
         self.configure(level=False)
@@ -369,9 +469,38 @@ class TrainingIntegrationTests(unittest.TestCase):
             with self.assertRaises(ScriptEnd):
                 self.campaign.emotion.check_reduce(5)
 
-    def test_combined_training_keeps_fixed_red_confirmation_and_training_unknown_protection(self):
+    def test_selected_only_is_shared_with_level_affinity_and_both_without_enabling_morale_swaps(self):
         for level, affinity in ((True, False), (False, True), (True, True)):
-            self.configure(mood=True, level=level, affinity=affinity)
+            self.configure(level=level, affinity=affinity)
+            self.config.cross_set(ROTATION_PATH + '.SelectedOnly', True)
+            self.live[1][1] = 0
+            preflight_rotation(self.runner, 5, 'normal')
+            self.assertTrue(self.campaign.emotion.selected_only)
+            self.assertEqual(0, self.config.Emotion_Fleet1Value)
+            self.assertEqual(150, self.campaign.emotion.training_lower(1))
+            self.campaign.emotion.check_reduce(5)
+            self.manager.rotate_slot.assert_not_called()
+            self.campaign.emotion.calibrate_selected({1: {1: 0, 4: 2}})
+            with self.assertRaises(ScriptEnd):
+                self.campaign.emotion.check_reduce(5)
+            self.manager.rotate_slot.assert_not_called()
+
+    def test_enabling_shared_morale_option_before_training_interval_is_due_reads_morale(self):
+        self.configure()
+        preflight_rotation(self.runner, 5, 'normal')
+        self.assertFalse(due(self.config, self.runner._fleet_rotation_context))
+        self.manager.prepare_rotation.reset_mock()
+        self.config.cross_set(ROTATION_PATH + '.SelectedOnly', True)
+        self.live[1][1] = 0
+        preflight_rotation(self.runner, 5, 'normal')
+        self.manager.prepare_rotation.assert_called_once_with(1)
+        self.campaign.emotion.check_reduce(5)
+        self.manager.rotate_slot.assert_not_called()
+        self.assertFalse(preflight_rotation(self.runner, 5, 'normal'))
+
+    def test_combined_training_keeps_fixed_red_confirmation_and_training_unknown_protection(self):
+        for mood, (level, affinity) in product((False, True), ((True, False), (False, True), (True, True))):
+            self.configure(mood=mood, level=level, affinity=affinity)
             self.config.cross_set(ROTATION_PATH + '.SelectedOnly', True)
             self.live[1][1] = 0
             preflight_rotation(self.runner, 5, 'normal')

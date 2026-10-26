@@ -1,6 +1,7 @@
 """等级/好感培养联动既有同号舰位换船，不重新实现心情调度。"""
 
 from copy import deepcopy
+from datetime import datetime, timedelta
 
 from module.config.time_source import now
 from module.equipment.fleet_rotation import FleetRotationEquipment
@@ -34,7 +35,12 @@ class TrainingSession:
     def delay(self, message):
         logger.warning(message)
         self.save()
-        self.config.task_delay(minute=max(1, interval(self.config)))
+        try:
+            target = now() + timedelta(hours=max(1 / 60, interval(self.config)))
+        except OverflowError:
+            # 配置不限制小时数；超出日期表示范围时保留配置，等待到可表示的最晚时刻。
+            target = datetime.max
+        self.config.task_delay(target=target)
         raise ScriptEnd(message)
 
     def inspect(self, fleet, slots):
@@ -51,7 +57,7 @@ class TrainingSession:
             reading = readings.get(slot, {})
             if name is None or any(type(reading.get(metric)) is not int for metric in self.targets):
                 self.delay(f'第{fleet}舰队{slot}位培养身份或数据未确认，不记录完成')
-            observe(self.saved, name, reading, self.targets)
+            observe(self.saved, name, reading, self.targets, fleet=fleet, slot=slot, emotion=ship.get('emotion'))
             known[slot] = name
         self.save()
         return known
@@ -187,7 +193,9 @@ def training_only(runner, battle, mode):
     if context.get('task') != config.task.command:
         context.clear()
         context['task'] = config.task.command
-    if not due(config, context) and not state(config)['pending']:
+    selected_only = config.cross_get(ROTATION_PATH + '.SelectedOnly', False) is True
+    needs_morale = selected_only and (not context.get('training') or context.get('scanned') is False)
+    if not due(config, context) and not state(config)['pending'] and not needs_morale:
         return False
     rules = parse_rules(config.cross_get(ROTATION_PATH + '.Rules', '{}'))
     selected = {role: actual for role, actual in active_fleets(config).items()
@@ -208,6 +216,11 @@ def training_only(runner, battle, mode):
     # 确认后、保存前中断时两边旧记录都可能过时，恢复前必须实读双方。
     recovery_fleets = {job[side] for job in session.saved['pending'].values() for side in ('fleet', 'source')}
     session.reader.inventory(set(selected.values()) | recovery_fleets)
+    if selected_only:
+        # 三种调度共用勾选舰位心情，首次启用时实读，不能借用固定舰船的最低值。
+        for fleet in selected.values():
+            session.prepare(fleet)
+        context['scanned'] = True
     if config.cross_get(EQUIPMENT_PATH + '.Enabled', False) and config.cross_get(EQUIPMENT_PATH + '.State', {}):
         FleetRotationEquipment(manager).apply_pending()
     session.process(fresh=True)
