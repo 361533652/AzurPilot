@@ -12,6 +12,15 @@
 .fleet-analysis .button,
 .fleet-analysis input,
 .fleet-analysis select { font-size: var(--fleet-font-body); }
+.fleet-analysis .ft-savebar > .button.primary:disabled {
+  opacity: 1;
+  background: color-mix(in srgb, var(--theme-accent) 18%, var(--theme-surface));
+  border-color: var(--theme-accent);
+  color: var(--theme-text);
+  font-weight: 600;
+  box-shadow: none;
+  cursor: not-allowed;
+}
 .fleet-analysis small { font-size: var(--fleet-font-note); }
 .fleet-analysis h2 { font-size: var(--fleet-font-heading); font-weight: 600; }
 .fleet-analysis h3 { font-size: var(--fleet-font-body); font-weight: 600; }
