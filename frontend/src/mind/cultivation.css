@@ -5,7 +5,7 @@
 .cultivation-calculator .cultivation-review { margin: 8px 0 0; font-size: 13px; }
 .cultivation-calculator input[type=checkbox] { min-height: auto; accent-color: #286db6; }
 .cultivation-included { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-size: 13px; }
-.cultivation-table table { min-width: 760px; }
+.cultivation-table table { min-width: 900px; }
 .cultivation-table .ft-name { white-space: normal; }
 .cultivation-warning, .cultivation-note { display: block; margin-top: 4px; font-size: 12px; line-height: 1.6; }
 .cultivation-warning { color: #985315; }
