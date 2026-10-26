@@ -189,6 +189,16 @@ class FleetTechIdentityTests(unittest.TestCase):
     def setUpClass(cls):
         cls.identity = FleetTechIdentity()
 
+    def test_research_and_retrofit_rarity_match_ledger_without_changing_catalog(self):
+        for rarity, expected in [('PR', 'SSR'), ('DR', 'UR')]:
+            row = next(row for row in self.identity.ships.values() if row['rarity'] == rarity)
+            info, _ = self.identity.match([row['name']] * 3)
+            self.assertIsNotNone(info)
+            self.assertEqual((info['rarity'], info['base_rarity']), (expected, expected))
+            self.assertEqual(row['rarity'], rarity)
+        info, _ = self.identity.match(['约克.改'] * 3)
+        self.assertEqual((info['rarity'], info['base_rarity']), ('SSR', 'SR'))
+
     def test_same_name_requires_positive_type_evidence_and_same_type_is_manual(self):
         for name, surface_gid, aircraft_gid in [('加贺', 30507, 30702), ('天城', 30405, 30715)]:
             with self.subTest(name=name):

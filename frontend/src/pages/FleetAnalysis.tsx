@@ -20,9 +20,10 @@ export function FleetAnalysis() {
   const tab = params.get('tab') === 'technology' ? 'technology' : params.get('tab') === 'mind' ? 'mind' : 'data'
   const current = instances.find(item => item.name === instance)
   const scanning = current?.status === 'running' && ['DockScan', 'dock_scan'].includes(current.currentTask ?? '')
-  const reason = dirty ? ui('analysis.dirty') : connection !== 'ready' ? ui('mind.scanDisconnected') : !current || !report ? ui('mind.scanLoading')
+  const scanStatus = connection !== 'ready' ? ui('mind.scanDisconnected') : !current || !report ? ui('mind.scanLoading')
     : current.status === 'running' ? ui(scanning ? 'mind.scanInProgress' : 'mind.scanRunning')
     : current.status === 'updating' ? ui('mind.scanUpdating') : current.region && current.region !== 'cn' ? ui('mind.scanUnsupported') : ''
+  const reason = dirty ? ui('analysis.dirty') : scanStatus
   useEffect(() => {
     let active = true
     setReport(undefined); setError(''); setBusy(false); importing.current = false; epoch.current++
@@ -85,7 +86,7 @@ export function FleetAnalysis() {
         {scanning && <button className="button secondary" disabled={busy || connection !== 'ready'} onClick={() => void run(true)}>{ui('mind.stop')}</button>}
         <button className="button secondary" disabled={busy || connection !== 'ready' || !report || dirty || !!report.legacy_imported}
           onClick={() => void importLegacy()}>{ui(report?.legacy_imported ? 'analysis.legacyImported' : 'analysis.importLegacy')}</button>
-        {reason && <p role="status">{reason}</p>}
+        {scanStatus && <p role="status">{scanStatus}</p>}
       </div><p className="muted">{ui('analysis.legacyHint')}</p><p className="muted">{ui('analysis.scanHint')}</p>
     </section>
     <div className="ft-chips" role="tablist" aria-label={ui('analysis.title')}>

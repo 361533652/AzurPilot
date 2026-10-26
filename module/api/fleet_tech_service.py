@@ -20,9 +20,10 @@ class FleetTechService:
         fields = self.configs.read(instance)[0].get('DockScan', {}).get('Dock', {})
         min_level = snapshot['min_level'] if dock_data.has_snapshot(data) else fields.get('MinLevel', 1)
         max_level = snapshot['max_level'] if dock_data.has_snapshot(data) else fields.get('MaxLevel', 125)
+        record = dock_data.technology_record(data)
         return dict(instance=instance, min_level=min_level, max_level=max_level,
                     legacy_imported=data['legacy_imported'],
-                    **tech.report(dock_data.technology_record(data)))
+                    **tech.report(record))
 
     def patch(self, instance, expected_revision, changes, nations):
         path = self.configs.path(instance)

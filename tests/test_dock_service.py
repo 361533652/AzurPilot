@@ -256,7 +256,7 @@ class SharedAnalysisTests(unittest.TestCase):
         self.assertEqual(self.configs.path('testpilot').read_bytes(), before)
         self.assertEqual(self.dock.report('testpilot')['ships'], [])
 
-    def test_重载合并扫描与人工记录且保留显式否定(self):
+    def test_重载独立保留人工否定且不覆盖底账正向证据(self):
         cases = [
             dict(level=100, full_star=False, lv120=False),
             dict(level=125, full_star=True, lv120=True),
@@ -274,19 +274,28 @@ class SharedAnalysisTests(unittest.TestCase):
                 patched = self.tech.patch('testpilot', patched['revision'],
                     [FleetTechChange(group_type=10103, **values),
                      FleetTechChange(group_type=10102, **values)], {})
-                expected = {row['group_type']: {key: row[key] for key in fields}
+                expected = {row['group_type']: {key: row['manual_state'][key] for key in fields}
                             for row in patched['ships'] if row['group_type'] in (10102, 10103)}
                 for rows in (None, []):
                     self.scan(110, rows=rows)
                     reloaded = FleetTechService(ConfigService(self.configs.root)).report('testpilot')
                     for row in reloaded['ships']:
                         if row['group_type'] in expected:
-                            self.assertEqual({key: row[key] for key in fields}, expected[row['group_type']])
+                            self.assertEqual({key: row['manual_state'][key] for key in fields},
+                                             expected[row['group_type']])
+                            in_ledger = row['group_type'] == 10102 and rows is None
+                            self.assertEqual(row['ledger']['owned'], in_ledger)
+                            if in_ledger:
+                                self.assertTrue(row['owned'])
+                                self.assertGreaterEqual(row['level'], 110)
+                                self.assertTrue(row['full_star'])
+                            else:
+                                self.assertEqual({key: row[key] for key in fields}, expected[row['group_type']])
                     self.assertEqual(self.dock.report('testpilot')['ships'],
                                      FleetDatabase(self.configs.path('testpilot')).load()['snapshot']['ships'])
                     self.assertEqual(len(reloaded['last_scan']['ships']), 1 if rows is None else 0)
 
-    def test_累计科技保留历史最高而原始船坞与心智跟随本轮(self):
+    def test_历史最高只供诊断且科技随底账与人工证据变化(self):
         self.scan(105)
         self.scan(125)
         for rows in (None, []):
@@ -294,7 +303,8 @@ class SharedAnalysisTests(unittest.TestCase):
             report = self.tech.report('testpilot')
             row = next(row for row in report['ships'] if row['group_type'] == 10102)
             self.assertEqual((row['owned'], row['level'], row['full_star'], row['lv120']),
-                             (True, 125, True, True))
+                             (True, 110, True, False) if rows is None else (False, None, False, False))
+            self.assertEqual(row['observed_level'], 125)
             self.assertEqual(report['last_scan']['ships'], [(10102, 110)] if rows is None else [])
             self.assertEqual([row['level'] for row in self.mind.report('testpilot')['ships']],
                              [110] if rows is None else [])
@@ -310,7 +320,7 @@ class SharedAnalysisTests(unittest.TestCase):
             restored = self.tech.patch('testpilot', report['revision'],
                 [FleetTechChange(group_type=10102, restore=True)], {})
             row = next(row for row in restored['ships'] if row['group_type'] == 10102)
-            self.assertEqual((row['owned'], row['level'], row['lv120']), (True, 125, True))
+            self.assertEqual((row['owned'], row['level'], row['lv120']), (False, None, False))
 
     def test_反复读取与旧同步接口不写库不运行游戏(self):
         self.scan()

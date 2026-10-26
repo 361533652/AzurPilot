@@ -24,14 +24,16 @@ class MindCalculatorMockTest(unittest.TestCase):
         row = next(row for row in reloaded['result']['ships'] if row['group_type'] == 10102)
         self.assertEqual((row['level'], row['manual'], row['full_star']), (105, True, False))
 
-    def test_scan_fixture_is_seeded_in_database_and_keeps_manual_override(self):
+    def test_scan_fixture_keeps_independent_manual_and_ledger_evidence(self):
         snapshot = dock_data.build_snapshot([dict(group_type=10102, name='杜威', level=125)],
             min_level=1, max_level=125, reached_bottom=True, filters_clear=True,
             physical_count=1, expected_count=1, updated_at='2026-10-25T12:00:00')
         output = dispatch(dict(action='tech.report', instance='fixture', snapshot=snapshot,
                                record={'manual': {'10102': {'owned': False}}}))
         row = next(row for row in output['result']['ships'] if row['group_type'] == 10102)
-        self.assertFalse(row['owned'])
+        self.assertTrue(row['owned'])
+        self.assertFalse(row['manual_state']['owned'])
+        self.assertTrue(row['ledger']['owned'])
         self.assertTrue(row['manual'])
         self.assertEqual(output['result']['last_scan']['ships'], [(10102, 125)])
 
@@ -94,7 +96,9 @@ class MindCalculatorMockTest(unittest.TestCase):
         self.assertEqual((mind['ships'][0]['level'], mind['ships'][0]['excluded']), (125, True))
         tech = dispatch(dict(persisted, action='tech.report'))['result']
         rows = {row['group_type']: row for row in tech['ships']}
-        self.assertFalse(rows[10102]['owned'])
+        self.assertTrue(rows[10102]['owned'])
+        self.assertFalse(rows[10102]['manual_state']['owned'])
+        self.assertEqual(rows[10102]['ledger']['level'], 125)
         self.assertEqual(rows[10103]['observed_level'], 120)
         self.assertEqual(rows[10104]['observed_level'], 125)
         self.assertEqual(tech['nation_levels']['1'], 1)

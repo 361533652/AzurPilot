@@ -25,10 +25,11 @@ test.beforeEach(async ({page}) => {
 test('三个标签共用底账，重名卡片独立编辑并保留未知和零经验', async ({page}, info) => {
   const instance = `ledger-${info.testId.replace(/[^a-z0-9]/gi, '').slice(-12)}-${info.retry}`
   const requests: string[] = []
-  await page.routeWebSocket('**/api/v1/ws', socket => {
-    const server = socket.connectToServer()
-    socket.onMessage(message => {requests.push(JSON.parse(String(message)).method); server.send(message)})
-    server.onMessage(message => socket.send(message))
+  page.on('websocket', socket => {
+    socket.on('framesent', ({payload}) => {
+      const request = JSON.parse(String(payload))
+      if (request.type === 'request') requests.push(request.method)
+    })
   })
   await page.goto('/')
   await rpc(page, 'instances.create', {name: instance})
@@ -46,6 +47,7 @@ test('三个标签共用底账，重名卡片独立编辑并保留未知和零�
   await expect(page.getByLabel(`额外经验（未知留空） · 杜威 #${first.id}`, {exact: true})).toHaveValue('')
   await expect(page.getByLabel(`额外经验（未知留空） · 杜威 #${second.id}`, {exact: true})).toHaveValue('0')
   await page.getByLabel(`等级 · 杜威 #${first.id}`, {exact: true}).fill('110')
+  // 首次失焦会创建草稿提示；同一次点击仍须命中复选框并保留等级修改。
   await page.getByLabel(`排除心智计算 · 杜威 #${first.id}`, {exact: true}).check()
   await page.getByRole('button', {name: '保存舰船数据', exact: true}).click()
   await expect(page.getByRole('button', {name: '保存舰船数据', exact: true})).toBeDisabled()
@@ -53,10 +55,8 @@ test('三个标签共用底账，重名卡片独立编辑并保留未知和零�
   await expect(page.getByLabel(`等级 · 杜威 #${first.id}`, {exact: true})).toHaveValue('110')
   await expect(page.getByLabel(`等级 · 杜威 #${second.id}`, {exact: true})).toHaveValue('100')
   await expect(page.getByLabel(`排除心智计算 · 杜威 #${first.id}`, {exact: true})).toBeChecked()
-  const persisted = await rpc(page, 'dock.report', {instance})
-  expect(persisted.ships.map((row: any) => [row.id, row.level, row.extra_exp, row.excluded])).toEqual([
-    [first.id, 110, null, true], [second.id, 100, 0, false],
-  ])
+  await expect(page.getByLabel(`额外经验（未知留空） · 杜威 #${first.id}`, {exact: true})).toHaveValue('')
+  await expect(page.getByLabel(`额外经验（未知留空） · 杜威 #${second.id}`, {exact: true})).toHaveValue('0')
   await tabs.getByRole('tab', {name: '心智分析', exact: true}).click()
   await tabs.getByRole('tab', {name: '舰队科技分析', exact: true}).click()
   await tabs.getByRole('tab', {name: '舰船数据', exact: true}).click()

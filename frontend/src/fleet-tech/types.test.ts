@@ -1,11 +1,24 @@
 import {describe, expect, it} from 'vitest'
-import {matches, preview, scanRows, type Catalog, type Row, type ScanSummary} from './types'
+import {ledgerRows, matches, preview, scanRows, summarize, type Catalog, type Row, type ScanSummary} from './types'
 
 const row: Row = {group_type: 10102, code: 4, handbook_type: 0, blueprint: false, name: '杜威', names: {cn: '杜威', en: 'Dewey'}, nationality: 1, rarity: 'R', type: 20,
   owned: true, full_star: null, lv120: true, level: 125, observed_level: 125, status: 'complete', manual: false, points: 8,
   completion_target: 100, acquire_level: 125, acquire_lv120: true,
   technology: {pt_get: 3, pt_upgrage: 7, pt_level: 5, max_star: 5, add_get_shiptype: [1, 20, 21], add_get_attr: 1, add_get_value: 1, add_level_shiptype: [7], add_level_attr: 5, add_level_value: 1}}
 describe('科技联合筛选', () => {
+  it('底账保留完整目录与未获得补集，统计不混入人工等级或重复舰种加成', () => {
+    const catalog: Catalog = {ships: [row, {...row, group_type: 10103, name: '卡辛', code: 5}],
+      nations: {'1': [[[[7], 5, 2]]]}, updated_at: '', source_commit: '', max_points: 30, nation_points: {}}
+    const progress = [{...row, ledger: {owned: true, full_star: null, lv120: false, level: 100}}]
+    const ledger = ledgerRows(catalog, progress)
+    expect(ledger.map(ship => [ship.group_type, ship.level, ship.status, ship.points]))
+      .toEqual([[10102, 100, 'unfinished', 3], [10103, null, 'unowned', 0]])
+    expect(matches(ledger[1]!, {status: ['unowned']}, '', 'all', 'all')).toBe(true)
+    expect(summarize(catalog, ledger, {'1': 1})).toEqual({confirmed_points: 3, completed: 0,
+      pending_star: 1, bonuses: {'1': {'1': 1}, '7': {'5': 2}}})
+    expect(ledgerRows(catalog, []).every(ship => ship.status === 'unowned')).toBe(true)
+    expect(preview(progress[0]!, {group_type: 10102, toggle: 'owned', target: false})).toBe(progress[0])
+  })
   it('本轮快照不混入历史等级、人工覆盖或上轮多余舰船，空快照保持为空', () => {
     const catalog: Catalog = {ships: [row, {...row, group_type: 10103, name: '卡辛', code: 5}], nations: {},
       updated_at: '', source_commit: '', max_points: 0, nation_points: {}}

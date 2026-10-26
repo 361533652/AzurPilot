@@ -66,7 +66,7 @@ test('侵蚀一资源检查配置位于献祭流下方且通用页不再显示',
   await expect(page.locator('label[for$=".SkipStrategicSearchCheck"]')).toHaveCount(0)
 })
 
-test('舰队科技本轮快照缩小和清空不混入累计记录，人工历史仍可查看', async ({page}) => {
+test('舰队科技底账保留完整目录与独立统计，人工证据仅进入合并视图', async ({page}) => {
   let pairs: [number, number][] = [[10102, 100], [10103, 105], [10104, 120]]
   await page.routeWebSocket('**/api/v1/ws', socket => {
     const server = socket.connectToServer()
@@ -80,9 +80,13 @@ test('舰队科技本轮快照缩小和清空不混入累计记录，人工历�
       const response = JSON.parse(String(message))
       if (response.ok && methods.get(response.id) === 'fleetTech.report') {
         const report = response.result
-        report.ships = report.ships.map((ship: any) => [10102, 10103, 10104].includes(ship.group_type)
-          ? {...ship, owned: true, level: 125, observed_level: 125, lv120: true, status: 'complete', manual: true}
-          : ship)
+        report.ships = report.ships.map((ship: any) => {
+          const level = pairs.find(([gid]) => gid === ship.group_type)?.[1]
+          const ledger = {owned: level !== undefined, level: level ?? null,
+            full_star: level === undefined ? false : level > 100 ? true : null, lv120: (level ?? 0) >= 120}
+          return {...ship, ledger, ...([10102, 10103, 10104].includes(ship.group_type)
+            ? {owned: true, level: 125, observed_level: 125, lv120: true, status: 'complete', manual: true} : {})}
+        })
         report.completed = 3
         report.last_scan = {min_level: 95, max_level: 125, complete: false, reached_bottom: false,
           physical_count: pairs.length, expected_count: 100, matched_count: pairs.length,
@@ -100,14 +104,18 @@ test('舰队科技本轮快照缩小和清空不混入累计记录，人工历�
   const table = page.locator('.ft-table-wrap')
   await views.getByRole('button', {name: '舰船底账', exact: true}).click()
   await expect(views.getByRole('button', {name: '舰船底账', exact: true})).toHaveAttribute('aria-pressed', 'true')
+  await expect(table.locator('tbody tr')).toHaveCount(50)
+  await expect(page.locator('.ft-summary')).toContainText('底账科技统计')
+  await page.getByRole('button', {name: '已获得', exact: true}).click()
   await expect(table.locator('tbody tr')).toHaveCount(3)
   await expect(table.locator('tr[data-group="10102"]')).toContainText('Lv.100')
   await expect(table.locator('tr[data-group="10102"]')).toHaveClass('ft-unfinished')
   pairs = [[10102, 100]]
   await page.reload()
   await views.getByRole('button', {name: '舰船底账', exact: true}).click()
-  await expect(table.locator('tbody tr')).toHaveCount(1)
-  await expect(table.locator('tr[data-group="10103"]')).toHaveCount(0)
+  await expect(table.locator('tbody tr')).toHaveCount(50)
+  await expect(table.locator('tr[data-group="10103"]')).toHaveClass('ft-unowned')
+  await expect(page.locator('.ft-summary')).toContainText('0 /')
   await views.getByRole('button', {name: '合并记录', exact: true}).click()
   await page.getByLabel('搜索舰名或编号').fill('杜威')
   await expect(table.locator('tr[data-group="10102"]')).toHaveClass('ft-complete')
@@ -128,7 +136,12 @@ test('舰队科技本轮快照缩小和清空不混入累计记录，人工历�
   await page.reload()
   await views.getByRole('button', {name: '舰船底账', exact: true}).click()
   await expect(views.getByRole('button', {name: '舰船底账', exact: true})).toHaveAttribute('aria-pressed', 'true')
+  await expect(table.locator('tbody tr')).toHaveCount(50)
+  await expect(table.locator('tr[data-group="10102"]')).toHaveClass('ft-unowned')
+  await expect(page.locator('.ft-summary')).toContainText('0 /')
+  await page.getByRole('button', {name: '已获得', exact: true}).click()
   await expect(table.locator('tbody tr')).toHaveCount(0)
+  await page.getByRole('button', {name: '已获得', exact: true}).click()
   await views.getByRole('button', {name: '合并记录', exact: true}).click()
   await page.getByLabel('搜索舰名或编号').fill('卡辛')
   await expect(table.locator('tr[data-group="10103"]')).toHaveClass('ft-complete')
@@ -1281,13 +1294,12 @@ test('关闭背景后切回填写 URL 直接铺上，不必再点应用背景', 
 
 test('舰队数据分析统一扫描入口与旧路由兼容，查看分析不启动任务', async ({page}) => {
   const requests: string[] = [], tasks: string[] = []
-  await page.routeWebSocket('**/api/v1/ws', socket => {
-    const server = socket.connectToServer()
-    socket.onMessage(message => {
-      const request = JSON.parse(String(message))
+  page.on('websocket', socket => {
+    socket.on('framesent', ({payload}) => {
+      const request = JSON.parse(String(payload))
+      if (request.type !== 'request') return
       requests.push(request.method)
       if (request.method === 'tasks.run') tasks.push(request.params.task)
-      server.send(message)
     })
   })
   await page.addInitScript(() => {
@@ -1300,17 +1312,16 @@ test('舰队数据分析统一扫描入口与旧路由兼容，查看分析不�
   await expect(source.getByRole('button', {name: '扫描船坞', exact: true})).toBeVisible()
   await expect(source.getByLabel('最低扫描等级')).toHaveValue('1')
   await expect(source.getByLabel('最高扫描等级')).toHaveValue('125')
-  await expect(source).toContainText('识别待核对')
+  await expect(source).toContainText('待确认差异')
   await expect(page.getByRole('tab', {name: '心智分析'})).toHaveAttribute('aria-selected', 'true')
-  await page.getByRole('tab', {name: '舰船科技分析'}).click()
-  await expect(page.getByRole('tab', {name: '舰船科技分析'})).toHaveAttribute('aria-selected', 'true')
+  await page.getByRole('tab', {name: '舰队科技分析'}).click()
+  await expect(page.getByRole('tab', {name: '舰队科技分析'})).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByRole('button', {name: '扫描船坞', exact: true})).toHaveCount(1)
   await expect(page.getByRole('button', {name: '同步已有心智数据'})).toHaveCount(0)
   expect(requests).not.toContain('tasks.run')
   expect(requests).not.toContain('dock.configure')
-  await page.goto('/#/i/demo-main/task/FleetTechnology')
   await expect(page).toHaveURL(/task\/FleetAnalysis\?tab=technology/)
-  await expect(source).toContainText('识别待核对')
+  await expect(source).toContainText('待确认差异')
   await expect(page.getByRole('region', {name: '结果视图'})).toBeVisible()
   await page.screenshot({path: test.info().outputPath('fleet-analysis-desktop.png'), fullPage: true, animations: 'disabled'})
   await page.setViewportSize({width: 412, height: 950})
@@ -1320,4 +1331,12 @@ test('舰队数据分析统一扫描入口与旧路由兼容，查看分析不�
   await source.getByRole('button', {name: '扫描船坞', exact: true}).click()
   await expect.poll(() => tasks).toEqual(['DockScan'])
   expect(requests).toContain('dock.configure')
+})
+
+test('旧舰队科技入口直接跳转到统一分析的科技标签', async ({page}) => {
+  await page.addInitScript(() => localStorage.setItem('azurpilot.language', 'zh-CN'))
+  await page.goto('/#/i/demo-main/task/FleetTechnology')
+  await expect(page).toHaveURL(/task\/FleetAnalysis\?tab=technology/)
+  await expect(page.getByRole('tab', {name: '舰队科技分析', exact: true})).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('region', {name: '结果视图'})).toBeVisible()
 })

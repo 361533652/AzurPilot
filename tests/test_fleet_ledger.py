@@ -138,7 +138,10 @@ class FleetLedgerTest(unittest.TestCase):
         self.assertEqual(self.db.load()['technology'], manual)
         reloaded = service.report('pilot')
         row = next(item for item in reloaded['ships'] if item['group_type'] == 10102)
-        self.assertFalse(row['owned'])
+        self.assertTrue(row['owned'])
+        self.assertTrue(row['ledger']['owned'])
+        self.assertFalse(row['manual_state']['owned'])
+        self.assertEqual(row['level'], 125)
         self.assertEqual(reloaded['nation_levels']['1'], 3)
 
     def test_local_legacy_read_stages_without_mutating_ledger_or_source_json(self):

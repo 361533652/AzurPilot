@@ -84,7 +84,11 @@ class DockDataTests(unittest.TestCase):
         self.assertEqual(record['manual'], options['manual'])
         self.assertEqual(record['nations'], options['nations'])
         self.assertEqual(record['observed']['10103'], 125)
-        self.assertFalse(tech.progress(record, 10102)['owned'])
+        state = tech.progress(record, 10102)
+        self.assertTrue(state['owned'])
+        self.assertTrue(state['ledger']['owned'])
+        self.assertFalse(state['manual_state']['owned'])
+        self.assertFalse(tech.progress(record, 10103)['owned'])
         self.assertEqual(data, before)
 
     def test_无快照仍读取独立人工设置且默认全范围(self):
