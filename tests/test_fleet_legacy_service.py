@@ -113,15 +113,15 @@ class LocalLegacyImportTests(unittest.TestCase):
         self.database.patch_cards(snapshot['ships'], dock_data.read_snapshot(self.database.load())['revision'])
         stored_cards = self.database.load()['snapshot']['ships']
         with self.database.edit() as state:
-            state['technology'] = {'manual': {'10102': {'owned': False, 'level': None}}, 'nations': {'1': 0}}
+            state['technology'] = {'progress': {'10102': {'owned': False}}, 'nations': {'1': 0}}
         self.migrate()
         state = self.database.load()
         self.assertEqual(state['snapshot']['ships'], stored_cards)
         self.assertEqual(len(stored_cards), 1)
         self.assertEqual(stored_cards[0]['level'], 125)
         self.assertIsNone(stored_cards[0]['extra_exp'])
-        self.assertEqual(state['technology']['manual']['10102']['owned'], False)
-        self.assertIsNone(state['technology']['manual']['10102']['level'])
+        self.assertEqual(state['technology']['progress']['10102']['owned'], False)
+        self.assertNotIn('manual', state['technology'])
         self.assertEqual(state['technology']['nations']['1'], 0)
 
     def test_invalid_source_and_stale_revision_do_not_consume_import(self):

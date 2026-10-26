@@ -21,7 +21,6 @@ CREATE TABLE fleet_info (
     revision TEXT,
     updated_at TEXT NOT NULL DEFAULT '',
     imported_at TEXT,
-    technology_fields INTEGER NOT NULL DEFAULT 0,
     technology_initialized INTEGER NOT NULL DEFAULT 0 CHECK(technology_initialized IN (0, 1)),
     pending_revision TEXT,
     pending_source TEXT,
@@ -29,21 +28,6 @@ CREATE TABLE fleet_info (
     reading_count INTEGER CHECK(reading_count >= 0),
     reading_review_count INTEGER CHECK(reading_review_count >= 0),
     reading_complete INTEGER CHECK(reading_complete IN (0, 1))
-) STRICT;
-
--- One row per ship TYPE. NULL manual columns may mean an explicit blank, so
--- manual_fields records which overrides are present: bit 0 = manual row exists,
--- bits 1..5 = owned, full_star, lv120, level, level_toggle.
-CREATE TABLE technology (
-    group_type TEXT PRIMARY KEY NOT NULL,
-    max_observed_level INTEGER CHECK(max_observed_level BETWEEN 1 AND 125),
-    manual_fields INTEGER NOT NULL DEFAULT 0,
-    owned INTEGER CHECK(owned IN (0, 1)),
-    full_star INTEGER CHECK(full_star IN (0, 1)),
-    lv120 INTEGER CHECK(lv120 IN (0, 1)),
-    level INTEGER CHECK(level BETWEEN 1 AND 125),
-    low_level INTEGER CHECK(low_level BETWEEN 1 AND 119),
-    high_level INTEGER CHECK(high_level BETWEEN 120 AND 125)
 ) STRICT;
 
 CREATE TABLE nation_technology (
@@ -70,16 +54,13 @@ CREATE TABLE pending_ships (
     form TEXT CHECK(form IN ('base', 'retrofit'))
 ) STRICT;
 
+-- JSON imports are normalized before staging. NULL means this import does not
+-- propose a change to the milestone, not an unknown saved milestone state.
 CREATE TABLE pending_technology (
     group_type TEXT PRIMARY KEY NOT NULL,
-    max_observed_level INTEGER CHECK(max_observed_level BETWEEN 1 AND 125),
-    manual_fields INTEGER NOT NULL DEFAULT 0,
     owned INTEGER CHECK(owned IN (0, 1)),
     full_star INTEGER CHECK(full_star IN (0, 1)),
-    lv120 INTEGER CHECK(lv120 IN (0, 1)),
-    level INTEGER CHECK(level BETWEEN 1 AND 125),
-    low_level INTEGER CHECK(low_level BETWEEN 1 AND 119),
-    high_level INTEGER CHECK(high_level BETWEEN 120 AND 125)
+    lv120 INTEGER CHECK(lv120 IN (0, 1))
 ) STRICT;
 
 -- Eligible unmatched copies for a duplicate-identity decision. Consumed targets
@@ -96,7 +77,6 @@ CREATE TABLE pending_nations (
 ) STRICT;
 
 -- Authoritative cumulative account milestones: completed or incomplete.
--- The old technology table remains intact as migration evidence only.
 CREATE TABLE technology_progress (
     group_type TEXT PRIMARY KEY NOT NULL,
     owned INTEGER NOT NULL DEFAULT 0 CHECK(owned IN (0, 1)),

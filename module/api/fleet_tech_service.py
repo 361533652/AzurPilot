@@ -4,7 +4,7 @@ from module.api.protocol import ApiError
 from module.runtime import fleet_tech as tech
 from module.runtime import dock_data
 from module.runtime.fleet_cultivation import mind_costs_100_to_120
-from module.runtime.fleet_database import FleetDatabase, FleetDatabaseConflict, FleetTechnologyConflict
+from module.runtime.fleet_database import FleetDatabase, FleetDatabaseConflict
 
 
 class FleetTechService:
@@ -33,8 +33,6 @@ class FleetTechService:
             try:
                 FleetDatabase(path).patch_technology(
                     [change.model_dump(exclude_unset=True) for change in changes], nations, expected_revision)
-            except FleetTechnologyConflict as exc:
-                raise ApiError('CONFLICT', str(exc), dict(conflicts=exc.conflicts)) from exc
             except FleetDatabaseConflict as exc:
                 raise ApiError('CONFLICT', str(exc)) from exc
             except (ValueError, TypeError, KeyError) as exc:

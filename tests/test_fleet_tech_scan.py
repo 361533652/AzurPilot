@@ -68,7 +68,7 @@ class FleetTechRecordTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             configs = ConfigService(fixture(directory))
             service = FleetTechService(configs)
-            for target in (True, False, None):
+            for target in (True, False):
                 service.patch('testpilot', service.report('testpilot')['revision'],
                               [FleetTechChange(group_type=10220, lv120=target)], {})
                 service = FleetTechService(ConfigService(configs.root))
@@ -76,28 +76,6 @@ class FleetTechRecordTests(unittest.TestCase):
                 self.assertIs(row['lv120'], target)
                 self.assertIsNone(row['current_level'])
                 self.assertEqual(row['current_count'], 0)
-
-    def test_owned_and_completion_targets_are_independent_and_idempotent(self):
-        record = {}
-        tech.toggle(record, 10102, 'owned', True)
-        self.assertEqual((tech.progress(record, 10102)['owned'], tech.progress(record, 10102)['lv120']), (True, False))
-        tech.toggle(record, 10102, 'complete', True)
-        saved = copy.deepcopy(record)
-        tech.toggle(record, 10102, 'complete', True)
-        self.assertEqual(record, saved)
-        tech.toggle(record, 10102, 'owned', False)
-        self.assertEqual((tech.progress(record, 10102)['owned'], tech.progress(record, 10102)['lv120']), (False, False))
-        tech.toggle(record, 10102, 'owned', True)
-        self.assertEqual(tech.progress(record, 10102)['level'], 120)
-        self.assertFalse(tech.progress(record, 10103)['owned'])
-
-    def test_completion_on_unowned_ship_confirms_ownership_without_contradiction(self):
-        record = {}
-        tech.toggle(record, 10224, 'complete', True)
-        state = tech.progress(record, 10224)
-        self.assertEqual((state['owned'], state['lv120'], state['level']), (True, True, 120))
-        tech.toggle(record, 10224, 'complete', False)
-        self.assertEqual(tech.progress(record, 10224)['level'], 100)
 
     def test_legacy_record_is_ignored_and_patch_does_not_rewrite_config(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -129,8 +107,8 @@ class FleetTechRecordTests(unittest.TestCase):
             with self.subTest(params=params):
                 result = merge(original, ships, **params)
                 self.assertFalse(result['last_scan']['complete'])
-                self.assertTrue(tech.progress(result, 10103)['owned'])
-                self.assertTrue(tech.progress(result, 10102)['owned'])
+                self.assertEqual(result['observed']['10103'], 125)
+                self.assertEqual(result['current']['10102'], 120)
         self.assertEqual(original, dict(observed={'10103': 125}))
 
     def test_known_outside_range_review_is_not_imported_but_unknown_level_is_retained(self):
@@ -140,23 +118,23 @@ class FleetTechRecordTests(unittest.TestCase):
     def test_partial_scan_of_lower_copy_preserves_existing_highest_level(self):
         original = dict(observed={'10102': 125}, current={'10102': 125})
         partial = merge(original, [observed(10102, 105)], max_level=115)
-        self.assertEqual(tech.progress(partial, 10102)['level'], 125)
+        self.assertEqual(partial['current']['10102'], 125)
         self.assertEqual(partial['last_scan']['ships'], [(10102, 105)])
         uncertain = merge(original, [observed(10102, 105)], min_level=1, reached_bottom=True, expected_count=None)
-        self.assertEqual(tech.progress(uncertain, 10102)['level'], 125)
+        self.assertEqual(uncertain['current']['10102'], 125)
         complete = merge(original, [observed(10102, 105)], min_level=1, reached_bottom=True)
-        self.assertEqual(tech.progress(complete, 10102)['level'], 105)
+        self.assertEqual(complete['current']['10102'], 105)
 
     def test_complete_scan_confirms_absence_but_preserves_manual_override_and_history(self):
         record = dict(observed={'10103': 125, '10104': 105}, manual={'10104': dict(owned=True, level=105)})
         result = merge(record, [observed(10102, 120)], min_level=1, reached_bottom=True)
         self.assertTrue(result['last_scan']['complete'])
-        self.assertFalse(tech.progress(result, 10103)['owned'])
-        self.assertTrue(tech.progress(result, 10104)['owned'])
+        self.assertIn('10103', result['absent'])
+        self.assertEqual(result['manual']['10104'], record['manual']['10104'])
         self.assertEqual(result['observed']['10103'], 125)
         again = merge(result, [observed(10103, 99)])
-        self.assertTrue(tech.progress(again, 10103)['owned'])
-        self.assertEqual(tech.progress(again, 10103)['level'], 99)
+        self.assertNotIn('10103', again['absent'])
+        self.assertEqual(again['current']['10103'], 99)
         self.assertEqual(again['observed']['10103'], 125)
 
     def test_scan_fingerprint_is_stable_by_group_and_highest_current_copy(self):

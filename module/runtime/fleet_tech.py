@@ -79,26 +79,6 @@ def revision(record):
     return hashlib.sha256(json.dumps(record, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
-def merge_mind(record, ships):
-    """累计已确认的正向证据；删除、排除计费及范围外缺失不会撤销历史。"""
-    output = copy.deepcopy(record)
-    observed = output.setdefault('observed', {})
-    aliases = catalog()['aliases']
-    from module.runtime.mind_calculator import find_ship
-    for ship in ships:
-        level = ship.get('level')
-        if ship.get('review') or type(level) is not int or not 1 <= level <= 125:
-            continue
-        name = ship.get('name', '')
-        info = find_ship(name)
-        gid = info['group_type'] if info else aliases.get(normalize_name(name))
-        if gid is None:
-            continue
-        key = str(gid)
-        observed[key] = max(observed.get(key, 0), level)
-    return output
-
-
 MILESTONES = ('owned', 'full_star', 'lv120')
 
 
@@ -115,15 +95,11 @@ def fixed_full_star_state(ship):
 
 
 def full_star_state(ship):
-    """Apply fixed game constraints on writes, or once when migrating legacy data."""
+    """Apply fixed game constraints when writing current ship data."""
     forced = fixed_full_star_state(ship)
     if forced is not None:
         return forced
-    if 'full_star' in ship:
-        return ship['full_star']
-    # Old databases stored 0..3. Convert once without inventing an exact stage.
-    stage = ship.get('breakthrough')
-    return stage == 3 if stage is not None else None
+    return ship.get('full_star')
 
 
 def positive_facts(ship):
@@ -140,27 +116,9 @@ def positive_facts(ship):
     return facts
 
 
-def legacy_milestones(group_type, observed=None, manual=None):
-    """Convert evidence once; legacy unknown corrections become incomplete."""
-    manual = manual or {}
-    level = manual.get('level', observed)
-    values = {key: False for key in MILESTONES}
-    if level:
-        for key in positive_facts(dict(group_type=int(group_type), level=level)):
-            values[key] = True
-    for key in MILESTONES:
-        if key in manual:
-            values[key] = manual[key] is True
-    if 'owned' in manual and manual['owned'] is not True:
-        values.update(owned=False, full_star=False, lv120=False)
-    if values['full_star'] is True or values['lv120'] is True:
-        values['owned'] = True
-    return values
-
-
-def _account_progress(record, group_type):
+def progress(record, group_type):
     gid = str(group_type)
-    saved = record['progress'].get(gid, {})
+    saved = record.get('progress', {}).get(gid, {})
     cards = [row for row in record.get('holdings', []) if row.get('group_type') == group_type and not row.get('review')]
     evidence = {key: [row['id'] for row in cards if 'id' in row and key in positive_facts(row)] for key in MILESTONES}
     state = {key: saved.get(key) is True for key in MILESTONES}
@@ -171,104 +129,6 @@ def _account_progress(record, group_type):
                 current_count=len(cards), current_level=max((row['level'] for row in cards), default=None),
                 evidence=evidence, historical_evidence=record.get('evidence_history', {}).get(gid, {}),
                 conflicts={}, source=saved.get('source', ''), updated_at=saved.get('updated_at', ''))
-
-
-def _source_progress(record, group_type):
-    """兼容旧记录，分别推导获得、等级和满星；无证据默认未获得。"""
-    gid = str(group_type)
-    manual = record.get('manual', {}).get(gid, {})
-    observed = record.get('observed', {}).get(gid)
-    automatic_level = record.get('current', {}).get(gid, observed)
-    level = manual.get('level', automatic_level)
-    acquire_level = manual.get('level') or automatic_level or 100
-    acquire_lv120 = manual.get('lv120', acquire_level >= 120) if manual.get('level') else acquire_level >= 120
-    if acquire_lv120 and acquire_level < 120:
-        acquire_level = 120
-    elif not acquire_lv120 and acquire_level >= 120:
-        acquire_level = manual.get('level_toggle', {}).get('low', 100)
-    automatic_owned = bool(automatic_level) and gid not in record.get('absent', [])
-    owned = manual.get('owned', automatic_owned) is True
-    full_star = manual.get('full_star')
-    lv120 = owned and manual.get('lv120', bool(level and level >= 120)) is True
-    if not owned:
-        level, full_star, lv120 = None, False, False
-    elif lv120 and (not level or level < 120):
-        # 旧版允许单独录入 Lv.120；保留原始记录，同时消除显示矛盾。
-        level = 120
-    elif not lv120 and level and level >= 120:
-        level = manual.get('level_toggle', {}).get('low', 100)
-    # 仅按当前有效等级推导默认值；人工明确的满星/未满星仍优先，不回写历史。
-    if (owned and full_star is None and level and 'full_star' not in manual
-            and 'full_star' in positive_facts(dict(group_type=group_type, level=level))):
-        full_star = True
-    state = dict(group_type=group_type, owned=owned, level=level, full_star=full_star is True, lv120=lv120,
-                 status='complete' if lv120 else 'unfinished' if owned else 'unowned',
-                 manual=bool(manual), observed_level=observed, points=0)
-    state.update(acquire_level=acquire_level, acquire_lv120=bool(acquire_lv120))
-    pair = completion_levels(record, group_type, state)
-    state['completion_target'] = pair['low'] if lv120 else pair['high']
-    return state
-
-
-def _manual_progress(record, group_type):
-    """仅归一化人工证据；显式未获取屏蔽其遗留等级与里程碑。"""
-    gid = str(group_type)
-    values = copy.deepcopy(record.get('manual', {}).get(gid, {}))
-    if values.get('lv120') is None:
-        values.pop('lv120', None)
-    if values.get('owned') is not False and (values.get('level') or values.get('lv120') is True
-                                            or values.get('full_star') is True):
-        values['owned'] = True
-    return _source_progress(dict(manual={gid: values}), group_type)
-
-
-def progress(record, group_type):
-    """Project account facts directly; old raw records are only migration diagnostics."""
-    if 'progress' in record:
-        return _account_progress(record, group_type)
-    return _source_progress(record, group_type)
-
-
-def completion_levels(record, group_type, state):
-    """旧版单独设置满级时也保留可用的原等级，不丢失人工历史。"""
-    gid = str(group_type)
-    manual = record.get('manual', {}).get(gid, {})
-    pair = manual.get('level_toggle', {})
-    level = state['level'] or 100
-    if (type(pair.get('low')) is int and 1 <= pair['low'] < 120
-            and type(pair.get('high')) is int and 120 <= pair['high'] <= 125
-            and (not state['owned'] or level in pair.values())):
-        return pair
-    previous = manual.get('level', record.get('current', {}).get(gid, record.get('observed', {}).get(gid)))
-    low = previous if type(previous) is int and 1 <= previous < 120 else 100
-    return dict(low=low if state['lv120'] else level, high=level if state['lv120'] else 120)
-
-
-def toggle(record, group_type, field, target):
-    """事务内处理单击；等级切换的两个端点随人工记录持久化。"""
-    independent = 'ledger_levels' in record
-    state = _manual_progress(record, group_type) if independent else progress(record, group_type)
-    state_key = 'lv120' if field == 'complete' else 'full_star' if field == 'star' else 'owned'
-    if bool(state[state_key]) == target:
-        return
-    entry = record.setdefault('manual', {}).setdefault(str(group_type), {})
-    if field == 'owned':
-        entry['owned'] = target
-        if entry['owned'] and not entry.get('level') and not independent:
-            entry['level'] = record.get('current', {}).get(str(group_type),
-                                record.get('observed', {}).get(str(group_type), 100))
-            entry['lv120'] = entry['level'] >= 120
-    elif field == 'complete':
-        manual_record = dict(manual=record.get('manual', {})) if independent else record
-        pair = completion_levels(manual_record, group_type, state)
-        level = pair['high'] if target else pair['low']
-        entry.update(owned=True, level=level, lv120=target, level_toggle=pair)
-    elif field == 'star':
-        entry['full_star'] = target
-        if entry['full_star']:
-            entry['owned'] = True
-    else:
-        raise ValueError('未知的科技记录切换操作')
 
 
 def merge_scan(record, ships, *, min_level, max_level, reached_bottom, filters_clear,

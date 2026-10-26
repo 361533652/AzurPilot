@@ -3,7 +3,6 @@ import copy
 from collections import Counter
 
 CARD_FIELDS = ('group_type', 'name', 'level', 'rarity', 'base_rarity', 'extra_exp', 'excluded', 'review', 'source', 'full_star', 'form')
-MANUAL_FIELDS = ('owned', 'full_star', 'lv120', 'level', 'level_toggle')
 RARITIES = ('', 'N', 'R', 'SR', 'SSR', 'UR')
 
 
@@ -98,42 +97,3 @@ def proposals(current, incoming, *, complete):
             if row['group_type'] is not None and row['group_type'] not in unresolved and not row['review']:
                 output.append(dict(operation='remove', ship_id=row['id'], values=card(row), fields=()))
     return output
-
-
-def legacy_cards(converted):
-    """Fold old calculator edits into proposed ordinary card fields, never a shadow store."""
-    from module.runtime import fleet_tech, mind_calculator, mind_analysis
-
-    snapshot = copy.deepcopy(converted.get('snapshot'))
-    rows = copy.deepcopy(snapshot.get('ships', [])) if snapshot else []
-    aliases = fleet_tech.catalog()['aliases']
-    for row in rows:
-        row.setdefault('name', '未识别舰船')
-        row.setdefault('group_type', aliases.get(mind_calculator.normalize_name(row['name'])))
-    options = converted.get('mind', {})
-    for key, override in options.get('overrides', {}).items():
-        if key.startswith('group:'):
-            gid = int(key.split(':')[1])
-            matches = [row for row in rows if row.get('group_type') == gid]
-            if matches:
-                target = max(matches, key=lambda row: row.get('level', 0))
-                target.update({field: value for field, value in override.items() if field in CARD_FIELDS})
-    for key in options.get('removed', []):
-        if key.startswith('group:'):
-            gid = int(key.split(':')[1])
-            for row in rows:
-                if row.get('group_type') == gid:
-                    row['excluded'] = True
-    for raw in options.get('extra', []):
-        row = copy.deepcopy(raw)
-        info = mind_calculator.find_ship(row.get('name', ''))
-        row['group_type'] = info['group_type'] if info else aliases.get(mind_calculator.normalize_name(row.get('name', '')))
-        rows.append(row)
-    # Review-specific fixes only bind to the exact old snapshot they were made against.
-    if snapshot and options.get('snapshot_revision') == snapshot.get('revision'):
-        for key, override in options.get('overrides', {}).items():
-            if key.startswith('review:'):
-                for row in rows:
-                    if mind_analysis.ship_key(row) == key:
-                        row.update({field: value for field, value in override.items() if field in CARD_FIELDS})
-    return rows

@@ -44,42 +44,19 @@ class AccountProgressTests(unittest.TestCase):
             connection.execute('PRAGMA user_version=3')
             return connection.execute('SELECT * FROM ships ORDER BY id').fetchall()
 
-    def test_migration_retains_991_card_ids_fields_and_combines_duplicate_evidence(self):
-        before = self.v3([(10102, 50), (10102, 120)] + [(10103, 100)] * 989)
-        state = self.database.load()
-        self.assertEqual(len(state['snapshot']['ships']), 991)
-        with closing(sqlite3.connect(self.database.path)) as connection:
-            after = connection.execute('SELECT id, position, group_type, name, level, rarity, base_rarity, '
-                'extra_exp, excluded, review, source FROM ships ORDER BY id').fetchall()
-            self.assertEqual(before, after)
-            self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0], FleetDatabase.SCHEMA_VERSION)
-            self.assertEqual(connection.execute('PRAGMA integrity_check').fetchone()[0], 'ok')
-        self.assertTrue(self.row()['lv120'])
-        self.assertTrue(self.row()['full_star'])
-        self.assertEqual(self.row()['current_count'], 2)
-        migrated_bytes = self.database.path.read_bytes()
-        self.database.load()
-        self.assertEqual(self.database.path.read_bytes(), migrated_bytes)
-
-    def test_migration_failure_rolls_back_schema_cards_and_evidence(self):
-        before = self.v3([(10102, 120)])
-        with patch.object(self.database, '_set_progress', side_effect=RuntimeError('storage failed')):
-            with self.assertRaisesRegex(RuntimeError, 'storage failed'):
-                self.database.load()
-        with closing(sqlite3.connect(self.database.path)) as connection:
-            self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0], 3)
-            self.assertEqual(connection.execute('SELECT * FROM ships ORDER BY id').fetchall(), before)
-            self.assertIsNone(connection.execute("SELECT name FROM sqlite_master WHERE name='technology_progress'").fetchone())
-        self.assertTrue(self.row()['lv120'])
-
-    def test_explicit_migrated_unknown_becomes_incomplete_and_is_not_restored(self):
-        self.v3([(10102, 120)], [('10102', 120, 1 | (1 << 2), None)])
-        self.assertFalse(self.row()['full_star'])
-        self.assertEqual(self.row()['conflicts'], {})
-        self.database.patch_cards([dict(id=1, extra_exp=10)], self.revision())
-        self.assertFalse(self.row()['full_star'])
-        self.database.patch_cards([dict(id=1, excluded=True)], self.revision())
-        self.assertFalse(self.row()['full_star'])
+    def test_old_sqlite_versions_are_rejected_without_modifying_data(self):
+        self.v3([(10102, 120)])
+        for version in (3, 4, 5, 6, 7, 8):
+            with self.subTest(version=version):
+                with closing(sqlite3.connect(self.database.path)) as connection, connection:
+                    connection.execute(f'PRAGMA user_version={version}')
+                before = self.database.path.read_bytes()
+                with self.assertRaisesRegex(ValueError, f'version: {version}'):
+                    self.database.load()
+                with self.assertRaisesRegex(ValueError, f'version: {version}'):
+                    with self.database.edit():
+                        pass
+                self.assertEqual(self.database.path.read_bytes(), before)
 
     def test_research_and_meta_levels_do_not_prove_full_stars(self):
         self.database.patch_cards([dict(group_type=29901, name='海王星', level=125),
@@ -251,48 +228,6 @@ class AccountProgressTests(unittest.TestCase):
         self.database.review([dict(id=row['id'], accept=True) for row in state['pending_changes']],
                              self.revision(), state['pending_revision'])
         self.assertTrue(all(self.row()[key] is False for key in tech.MILESTONES))
-
-    def test_v5_upgrade_preserves_saved_incomplete_without_reseeding(self):
-        self.database.patch_cards([dict(group_type=10102, name='杜威', level=120)], self.revision())
-        self.patch_tech([dict(group_type=10102, full_star=False, lv120=False)])
-        before = self.record()['progress']
-        with closing(sqlite3.connect(self.database.path)) as connection, connection:
-            connection.execute('ALTER TABLE fleet_info DROP COLUMN technology_initialized')
-            connection.execute('PRAGMA user_version=5')
-        self.assertEqual(self.record()['progress'], before)
-        self.database.patch_cards([dict(id=1, extra_exp=3)], self.revision())
-        self.assertEqual(self.record()['progress'], before)
-
-    def test_v6_upgrade_normalizes_only_account_milestones_and_preserves_proof(self):
-        self.database.patch_cards([dict(group_type=10102, name='杜威', level=100)], self.revision())
-        before = self.database.load()
-        with closing(sqlite3.connect(self.database.path)) as connection, connection:
-            connection.execute('ALTER TABLE technology_progress RENAME TO saved_progress')
-            connection.execute('CREATE TABLE technology_progress (group_type TEXT PRIMARY KEY NOT NULL, '
-                               'owned INTEGER CHECK(owned IN (0, 1)), '
-                               'full_star INTEGER CHECK(full_star IN (0, 1)), '
-                               'lv120 INTEGER CHECK(lv120 IN (0, 1)), '
-                               'source TEXT NOT NULL, updated_at TEXT NOT NULL) STRICT')
-            connection.execute('INSERT INTO technology_progress SELECT * FROM saved_progress')
-            connection.execute('DROP TABLE saved_progress')
-            connection.execute('UPDATE technology_progress SET owned=NULL, full_star=NULL, lv120=1')
-            connection.execute('PRAGMA user_version=6')
-        after = self.database.load()
-        self.assertNotEqual(after['snapshot']['revision'], before['snapshot']['revision'])
-        self.assertEqual(after['snapshot']['ships'], before['snapshot']['ships'])
-        self.assertIsNone(after['snapshot']['ships'][0]['full_star'])
-        self.assertEqual(after['technology']['evidence'], before['technology']['evidence'])
-        progress = after['technology']['progress']['10102']
-        self.assertEqual([progress[key] for key in tech.MILESTONES], [True, False, True])
-        original = before['technology']['progress']['10102']
-        self.assertEqual((progress['source'], progress['updated_at']), (original['source'], original['updated_at']))
-        with closing(sqlite3.connect(self.database.path)) as connection:
-            self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0], 7)
-            fields = {row[1]: row for row in connection.execute('PRAGMA table_info(technology_progress)')}
-            for key in tech.MILESTONES:
-                self.assertEqual((fields[key][3], fields[key][4]), (1, '0'))
-                with self.assertRaises(sqlite3.IntegrityError):
-                    connection.execute(f'UPDATE technology_progress SET {key}=NULL')
 
     def test_explicit_union_only_adds_confirmed_current_facts_and_is_idempotent(self):
         self.patch_tech([dict(group_type=10102, owned=False),

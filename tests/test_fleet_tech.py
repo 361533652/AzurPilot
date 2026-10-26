@@ -42,71 +42,13 @@ class FleetTechTests(unittest.TestCase):
                     self.assertIsInstance(value, int)
 
     def test_missing_evidence_defaults_to_not_obtained(self):
-        row = tech.report({})['ships'][0]
+        row = tech.report({'observed': {'10102': 125}, 'manual': {'10102': {'owned': True}}})['ships'][0]
         self.assertFalse(row['owned'])
         self.assertEqual(row['status'], 'unowned')
-
-    def test_partial_scan_retirement_and_125_keep_history(self):
-        record = tech.merge_mind({}, [ship(), ship('卡辛', 95)])
-        record = tech.merge_mind(record, [ship('杜威', 100)])
-        record = tech.merge_mind(record, [])
-        self.assertEqual(record['observed']['10102'], 125)
-        row = next(row for row in tech.report(record)['ships'] if row['group_type'] == 10102)
-        self.assertEqual(row['status'], 'complete')
-        self.assertTrue(row['full_star'])
-        self.assertEqual(row['points'], 15)
-
-    def test_full_star_default_is_strictly_above_100_and_does_not_write_records(self):
-        for level, star, points, pending in [(99, False, 3, 0), (100, False, 3, 0),
-                                             (101, True, 10, 0), (120, True, 15, 0), (125, True, 15, 0)]:
-            with self.subTest(level=level):
-                record = {'observed': {'10102': level}}
-                original = copy.deepcopy(record)
-                result = tech.report(record)
-                row = next(row for row in result['ships'] if row['group_type'] == 10102)
-                self.assertIs(row['full_star'], star)
-                self.assertEqual(result['confirmed_points'], points)
-                self.assertEqual(result['pending_star'], pending)
-                self.assertEqual(record, original)
-
-    def test_full_star_default_respects_current_level_absence_and_manual_values(self):
-        cases = [
-            ({'current': {'10102': 100}}, False),
-            ({'absent': ['10102']}, False),
-            ({'manual': {'10102': {'owned': False}}}, False),
-            ({'manual': {'10102': {'level': 100}}}, False),
-            ({'manual': {'10102': {'level': 101}}}, True),
-            ({'manual': {'10102': {'full_star': False}}}, False),
-            ({'current': {'10102': 100}, 'manual': {'10102': {'full_star': True}}}, True),
-            ({'manual': {'10102': {'full_star': None}}}, False),
-        ]
-        for values, expected in cases:
-            with self.subTest(values=values):
-                record = {'observed': {'10102': 125}, **values}
-                row = tech.progress(record, 10102)
-                self.assertIs(row['full_star'], expected)
-
-    def test_uncertain_unknown_and_zero_are_ignored_but_cost_exclusion_is_not(self):
-        record = tech.merge_mind({}, [dict(ship(), review=True), ship('未来舰'), ship('卡辛', 0), dict(ship('唐斯', 95), excluded=True)])
-        self.assertEqual(record['observed'], {'10104': 95})
-
-    def test_retrofit_merges_but_ii_and_meta_are_independent(self):
-        record = tech.merge_mind({}, [ship('拉菲', 95), ship('拉菲.改', 120), ship('拉菲II'), ship('海伦娜·META')])
-        self.assertEqual(len(record['observed']), 3)
-        self.assertEqual(record['observed']['10117'], 120)
-
-    def test_manual_override_survives_sync_and_can_restore(self):
-        record = {'manual': {'10102': {'owned': False}}}
-        original = copy.deepcopy(record)
-        merged = tech.merge_mind(record, [ship()])
-        row = next(row for row in tech.report(merged)['ships'] if row['group_type'] == 10102)
-        self.assertFalse(row['owned'])
-        self.assertEqual(record, original)
-        merged['manual'].pop('10102')
-        self.assertEqual(tech.report(merged)['completed'], 1)
+        self.assertFalse(tech.progress({'observed': {'10102': 125}}, 10102)['owned'])
 
     def test_multiple_target_subtypes_do_not_triple_bonus(self):
-        record = tech.merge_mind({}, [ship()])
+        record = {'progress': {'10102': {'owned': True, 'full_star': True, 'lv120': True}}}
         result = tech.report(record)
         self.assertEqual(result['bonuses']['1']['1'], 2)
         record['nations'] = {'1': 1}
@@ -116,7 +58,7 @@ class FleetTechTests(unittest.TestCase):
         self.assertEqual(tech.report(record)['bonuses']['7']['5'], 1)
 
     def test_new_catalog_ships_start_incomplete_without_mutating_records(self):
-        record = tech.merge_mind({}, [ship()])
+        record = {'progress': {'10102': {'owned': True, 'full_star': True, 'lv120': True}}}
         original = copy.deepcopy(record)
         data = copy.deepcopy(tech.catalog())
         row = dict(data['ships'][0], group_type=99999999)

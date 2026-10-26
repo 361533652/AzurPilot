@@ -28,7 +28,7 @@ class FleetDatabaseLifecycleTest(unittest.TestCase):
         self.configs.create('pilot')
         self.database = FleetDatabase(self.configs.path('pilot'))
         with self.database.edit() as state:
-            state['technology'] = {'manual': {'10102': {'owned': True}}, 'nations': {'1': 3}}
+            state['technology'] = {'progress': {'10102': {'owned': True}}, 'nations': {'1': 3}}
         from module.runtime import dock_data
         self.database.patch_cards([dict(name='杜威', group_type=10102, level=100, excluded=True)],
                                   dock_data.read_snapshot(self.database.load())['revision'])
@@ -42,7 +42,7 @@ class FleetDatabaseLifecycleTest(unittest.TestCase):
         self.assertIn('Alas', json.loads(json_backup.read_text()))
         with closing(sqlite3.connect(fleet_backup)) as connection:
             self.assertEqual(connection.execute(
-                "SELECT owned FROM technology WHERE group_type='10102'").fetchone()[0], 1)
+                "SELECT owned FROM technology_progress WHERE group_type='10102'").fetchone()[0], 1)
             self.assertEqual(connection.execute(
                 "SELECT COUNT(*) FROM ships WHERE excluded=1").fetchone()[0], 1)
         self.assertFalse(self.database.path.exists())
@@ -55,7 +55,7 @@ class FleetDatabaseLifecycleTest(unittest.TestCase):
         clone = FleetDatabase(self.configs.path('clone'))
         self.assertEqual(clone.load(), {'snapshot': None, 'mind': {}, 'technology': {}, 'pending_revision': None, 'pending_changes': []})
         self.assertFalse(clone.path.exists())
-        self.assertTrue(self.database.load()['technology']['manual']['10102']['owned'])
+        self.assertTrue(self.database.load()['technology']['progress']['10102']['owned'])
 
     def test_create_refuses_orphan_database_without_changing_it(self):
         self.configs.path('pilot').unlink()

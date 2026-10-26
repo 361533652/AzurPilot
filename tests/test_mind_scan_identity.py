@@ -9,7 +9,6 @@ from PIL import Image
 from module.api.config_service import ConfigService
 from module.api.dock_service import DockService
 from module.api.mind_calculator_service import MindCalculatorService, import_ships
-from module.runtime import fleet_tech
 from module.runtime.mind_calculator import calculate, find_ship, find_ships, highest_ships
 from module.runtime.mind_name import match_lua_name
 from module.runtime.mind_recognition import _match_name, recognize_cards
@@ -95,7 +94,9 @@ class SameNameTests(unittest.TestCase):
             exported = service.export('testpilot', 'json')
             imported = import_ships('ships.json', exported['content'])
             self.assertEqual([row['name'] for row in imported], [row['name'] for row in rows])
-            observed = fleet_tech.merge_mind({}, imported)['observed']
+            from module.runtime.fleet_ledger import card
+            observed = {str(value['group_type']): value['level']
+                        for row in imported if not row.get('review') for value in [card(row)]}
             self.assertEqual(observed, {'20109': 106, '30156': 110, '20307': 100, '40311': 100,
                                         '30507': 100, '30702': 100})
 

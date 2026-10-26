@@ -5,7 +5,7 @@ from functools import lru_cache
 
 from module.config.deep import deep_get
 from module.config.fleet_legacy import LEGACY_PATHS
-from module.runtime import dock_data, fleet_tech as tech, mind_analysis, mind_calculator as mind
+from module.runtime import dock_data, fleet_ledger as ledger, fleet_tech as tech, mind_analysis, mind_calculator as mind
 
 
 @lru_cache(maxsize=1)
@@ -58,6 +58,11 @@ def _row(value):
     if value.get('group_type') is not None and (type(value['group_type']) is not int
             or str(value['group_type']) not in _known()):
         raise ValueError('舰船群组无效')
+    if 'full_star' not in value and 'breakthrough' in value:
+        stage = value.pop('breakthrough')
+        if stage is not None and not _integer(stage, 0, 3):
+            raise ValueError('旧突破状态无效')
+        value['full_star'] = stage == 3 if stage is not None else None
     info = mind.find_ship(value['name'])
     if value.get('group_type') is None and info and not value.get('review'):
         value['group_type'] = info['group_type']
@@ -246,67 +251,74 @@ def convert_legacy(data):
     return dict(snapshot=state['snapshot'], mind=options, technology=technology)
 
 
-def merge_legacy(state, converted):
-    """Merge missing settings and positive evidence; keep the current physical snapshot active."""
-    result = copy.deepcopy(state)
-    _merge_options(result.setdefault('technology', {}), converted['technology'])
-    current = result.setdefault('mind', {})
-    incoming = converted['mind']
-    original_extras = copy.deepcopy(current.get('extra', []))
-    original_overrides = copy.deepcopy(current.get('overrides', {}))
-    source_snapshot = converted['snapshot']
-    previous_snapshot = result.get('snapshot')
-    valid_review_source = bool(source_snapshot and incoming.get('snapshot_revision') == source_snapshot['revision'])
-    if previous_snapshot:
-        original_revision = source_snapshot.get('legacy_revision') if source_snapshot else None
-        same_source = bool(source_snapshot and (previous_snapshot.get('revision') == source_snapshot['revision']
-            or original_revision and original_revision in (previous_snapshot.get('revision'), previous_snapshot.get('legacy_revision'))))
-        current_binding = current.get('snapshot_revision')
-        valid_review_source = valid_review_source and same_source and current_binding in (None, previous_snapshot['revision'])
-    removed = set(current.get('removed', []))
-    preferred = set(current.get('overrides', {})) | {key for key, _ in mind_analysis.keyed(current.get('extra', []))}
-    for key, value in incoming.items():
-        if key == 'overrides':
-            for ship, fields in value.items():
-                if ship in removed or ship.startswith('review:') and not valid_review_source:
-                    continue
-                target = current.setdefault(key, {}).setdefault(ship, {})
-                for field, item in fields.items():
-                    target.setdefault(field, copy.deepcopy(item))
-        elif key in ('extra', 'removed'):
-            target = current.setdefault(key, [])
-            if key == 'extra':
-                existing = {ship for ship, _ in mind_analysis.keyed(target)}
-                target.extend(copy.deepcopy(row) for ship, row in mind_analysis.keyed(value) if ship not in existing and ship not in removed)
-            else:
-                target.extend(item for item in value if item not in target and item not in preferred
-                              and (not item.startswith('review:') or valid_review_source))
-        else:
-            current.setdefault(key, copy.deepcopy(value))
-    active = result.get('snapshot')
-    if active:
-        active = copy.deepcopy(active)
-        observed = active.setdefault('history', {}).setdefault('observed', {})
-        if source_snapshot:
-            for gid, level in source_snapshot.get('history', {}).get('observed', {}).items():
-                observed[gid] = max(observed.get(gid, 0), level)
-        old_revision = active.get('revision')
-        _revision(active)
-        if (current.get('snapshot_revision') == old_revision
-                or valid_review_source and current.get('snapshot_revision') == incoming.get('snapshot_revision')):
-            current['snapshot_revision'] = active['revision']
-    elif source_snapshot:
-        active = copy.deepcopy(source_snapshot)
-    result['snapshot'] = active
-    # Manual extra rows predate the imported base and keep their effective values.
-    base = dict(mind_analysis.keyed(mind_analysis.base_ships(result)))
-    for (key, _), row in zip(mind_analysis.keyed(original_extras), original_extras):
-        if not key.startswith('group:') or key not in base:
-            continue
-        target = current.setdefault('overrides', {}).setdefault(key, {})
-        for field in mind_analysis.FIELDS:
-            if field in row and row[field] != base[key].get(field):
-                if field not in original_overrides.get(key, {}):
-                    target[field] = copy.deepcopy(row[field])
-    result['legacy_snapshot'] = active
-    return result
+def _cards(converted):
+    """Fold old calculator edits into proposed ordinary card fields, never a shadow store."""
+    snapshot = copy.deepcopy(converted.get('snapshot'))
+    rows = copy.deepcopy(snapshot.get('ships', [])) if snapshot else []
+    aliases = tech.catalog()['aliases']
+    for row in rows:
+        row.setdefault('name', '未识别舰船')
+        row.setdefault('group_type', aliases.get(mind.normalize_name(row['name'])))
+    options = converted.get('mind', {})
+    for key, override in options.get('overrides', {}).items():
+        if key.startswith('group:'):
+            gid = int(key.split(':')[1])
+            matches = [row for row in rows if row.get('group_type') == gid]
+            if matches:
+                target = max(matches, key=lambda row: row.get('level', 0))
+                target.update({field: value for field, value in override.items() if field in ledger.CARD_FIELDS})
+    for key in options.get('removed', []):
+        if key.startswith('group:'):
+            gid = int(key.split(':')[1])
+            for row in rows:
+                if row.get('group_type') == gid:
+                    row['excluded'] = True
+    for raw in options.get('extra', []):
+        row = copy.deepcopy(raw)
+        info = mind.find_ship(row.get('name', ''))
+        row['group_type'] = info['group_type'] if info else aliases.get(mind.normalize_name(row.get('name', '')))
+        rows.append(row)
+    # Review-specific fixes only bind to the exact old snapshot they were made against.
+    if snapshot and options.get('snapshot_revision') == snapshot.get('revision'):
+        for key, override in options.get('overrides', {}).items():
+            if key.startswith('review:'):
+                for row in rows:
+                    if mind_analysis.ship_key(row) == key:
+                        row.update({field: value for field, value in override.items() if field in ledger.CARD_FIELDS})
+    return rows
+
+
+def _milestones(group_type, observed=None, manual=None):
+    """Convert evidence once; legacy unknown corrections become incomplete."""
+    manual = manual or {}
+    level = manual.get('level', observed)
+    values = {key: False for key in tech.MILESTONES}
+    if level:
+        for key in tech.positive_facts(dict(group_type=int(group_type), level=level)):
+            values[key] = True
+    for key in tech.MILESTONES:
+        if key in manual:
+            values[key] = manual[key] is True
+    if 'owned' in manual and manual['owned'] is not True:
+        values.update(owned=False, full_star=False, lv120=False)
+    if values['full_star'] is True or values['lv120'] is True:
+        values['owned'] = True
+    return values
+
+
+def sqlite_payload(converted):
+    """Normalize old JSON fields once, before they enter SQLite's review tables."""
+    rows = _cards(converted)
+    observed = copy.deepcopy((converted.get('snapshot') or {}).get('history', {}).get('observed', {}))
+    for row in rows:
+        if row.get('group_type') and not row.get('review') and 1 <= row.get('level', 0) <= 125:
+            gid = str(row['group_type'])
+            observed[gid] = max(observed.get(gid, 0), row['level'])
+    options = converted.get('technology', {})
+    manual = options.get('manual', {})
+    technology = {}
+    for gid in observed.keys() | manual.keys():
+        entry = manual.get(gid, {})
+        values = _milestones(gid, observed.get(gid), entry)
+        technology[gid] = {key: value for key, value in values.items() if value is True or key in entry}
+    return dict(ships=rows, technology=technology, nations=copy.deepcopy(options.get('nations', {})))

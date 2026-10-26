@@ -62,15 +62,15 @@ def crash_editor_worker(config_path):
     database = FleetDatabase(Path(config_path))
     original = database._write_options
 
-    def crash_after_spilling(connection, scope, options):
+    def crash_after_spilling(connection, options):
         connection.execute('PRAGMA cache_size=2')
         connection.execute('PRAGMA cache_spill=ON')
-        original(connection, scope, options)
+        original(connection, options)
         os._exit(23)
 
     database._write_options = crash_after_spilling
     with database.edit() as state:
-        state['technology'] = {'manual': {str(index): {'owned': False, 'level': 100}
+        state['technology'] = {'progress': {str(index): {'owned': False}
             for index in range(10000, 14000)}, 'nations': {'1': 99}}
 
 
@@ -122,12 +122,12 @@ class FleetDatabaseTest(unittest.TestCase):
         with closing(sqlite3.connect(self.db.path)) as connection:
             tables = {row[0] for row in connection.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
-            self.assertEqual(tables, {'ships', 'fleet_info', 'technology', 'nation_technology',
+            self.assertEqual(tables, {'ships', 'fleet_info', 'nation_technology',
                                      'pending_ships', 'pending_technology', 'pending_nations',
                                      'pending_targets', 'technology_progress', 'technology_evidence'})
             columns = {row[1]: row for row in connection.execute('PRAGMA table_info(ships)')}
             self.assertEqual(set(columns), {'id', 'position', 'group_type', 'name', 'level',
-                'rarity', 'base_rarity', 'extra_exp', 'excluded', 'review', 'source', 'breakthrough', 'form'})
+                'rarity', 'base_rarity', 'extra_exp', 'excluded', 'review', 'source', 'full_star', 'form'})
             self.assertEqual(columns['id'][2], 'INTEGER')
             self.assertEqual(columns['id'][5], 1)
             self.assertEqual(columns['extra_exp'][2], 'INTEGER')
@@ -138,7 +138,7 @@ class FleetDatabaseTest(unittest.TestCase):
                 for column in connection.execute(f'PRAGMA table_info({table})'):
                     self.assertNotIn(column[1], {'payload', 'metadata', 'json'})
                     self.assertNotIn('json', column[1].lower())
-            self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0], 4)
+            self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0], FleetDatabase.SCHEMA_VERSION)
 
     def test_deleted_card_ids_are_not_reused_and_scan_does_not_replace_existing_ids(self):
         first = self.seed()['snapshot']['ships']
@@ -165,19 +165,18 @@ class FleetDatabaseTest(unittest.TestCase):
         self.assertEqual(self.db.load()['snapshot'], active['snapshot'])
         self.assertIsNone(self.db.load()['pending_revision'])
 
-    def test_manual_technology_and_nations_preserve_null_false_and_toggle_presence(self):
+    def test_saved_milestones_and_nations_survive_unreviewed_scans(self):
         self.seed()
-        options = {'manual': {'10102': {'owned': None, 'full_star': False, 'lv120': None,
-            'level': None, 'level_toggle': {}}, '10103': {'owned': True,
-            'level_toggle': {'low': 100, 'high': 125}}}, 'nations': {'1': 0, '3': None}}
+        options = {'progress': {'10102': {'owned': True, 'full_star': False, 'lv120': False,
+                                        'awakening_pending': True}}, 'nations': {'1': 0, '3': None}}
         with self.db.edit() as state:
             state['technology'] = copy.deepcopy(options)
-        self.assertEqual({key: self.db.load()['technology'][key] for key in options}, options)
+        saved = self.db.load()['technology']
         self.db.save_scan(snapshot('next'), self.current_revision())
-        self.assertEqual({key: self.db.load()['technology'][key] for key in options}, options)
-        with self.db.edit() as state:
-            state['technology']['manual']['10102'] = {'owned': False}
-        self.assertEqual(self.db.load()['technology']['manual']['10102'], {'owned': False})
+        self.assertEqual(self.db.load()['technology'], saved)
+        self.assertEqual(saved['nations'], options['nations'])
+        self.assertTrue(saved['progress']['10102']['awakening_pending'])
+        self.assertFalse(saved['progress']['10102']['full_star'])
         self.assert_counts(ships=3, nation_technology=2)
 
     def test_old_mind_overlays_and_ordinary_snapshot_mutations_are_ignored(self):
@@ -276,7 +275,7 @@ class FleetDatabaseTest(unittest.TestCase):
     def test_edit_exception_and_partial_write_failure_roll_back(self):
         self.seed()
         with self.db.edit() as state:
-            state['technology'] = {'manual': {'10102': {'owned': True}}, 'nations': {'1': 2}}
+            state['technology'] = {'progress': {'10102': {'owned': True}}, 'nations': {'1': 2}}
         committed = self.db.load()
         with self.assertRaisesRegex(RuntimeError, 'cancelled'):
             with self.db.edit() as state:
@@ -285,8 +284,8 @@ class FleetDatabaseTest(unittest.TestCase):
         self.assertEqual(self.db.load(), committed)
         original = self.db._write_options
 
-        def fail_after_write(connection, scope, options):
-            original(connection, scope, options)
+        def fail_after_write(connection, options):
+            original(connection, options)
             raise RuntimeError('storage failure')
 
         with patch.object(self.db, '_write_options', side_effect=fail_after_write):
@@ -295,18 +294,13 @@ class FleetDatabaseTest(unittest.TestCase):
                     state['technology']['nations']['1'] = 4
         self.assertEqual(self.db.load(), committed)
 
-    def test_invalid_manual_toggle_rolls_back_and_later_edits_still_work(self):
-        with self.db.edit() as state:
-            state['technology'] = {'manual': {'10102': {'level_toggle': {}}}}
+    def test_old_manual_storage_is_rejected_without_changing_saved_data(self):
+        self.seed()
         committed = self.db.load()
-        for pair in ({'low': 100}, {'high': 120}, {'low': None, 'high': None}):
-            with self.subTest(pair=pair):
-                with self.assertRaises(ValueError):
-                    with self.db.edit() as state:
-                        state['technology']['manual']['10102']['level_toggle'] = pair
-                self.assertEqual(self.db.load(), committed)
-        self.db.patch_cards([dict(name='manual', level=100)], self.current_revision())
-        self.assertEqual(self.db.load()['technology'], committed['technology'])
+        with self.assertRaises(ValueError):
+            with self.db.edit() as state:
+                state['technology']['manual'] = {'10102': {'level_toggle': {'low': 100, 'high': 120}}}
+        self.assertEqual(self.db.load(), committed)
 
     def test_first_edit_rollback_leaves_readable_empty_database(self):
         with self.assertRaisesRegex(RuntimeError, 'cancelled'):
@@ -319,7 +313,7 @@ class FleetDatabaseTest(unittest.TestCase):
     def test_read_recovers_hot_journal_after_crashed_editor(self):
         self.seed()
         with self.db.edit() as state:
-            state['technology'] = {'manual': {'10102': {'owned': True}}, 'nations': {'1': 2}}
+            state['technology'] = {'progress': {'10102': {'owned': True}}, 'nations': {'1': 2}}
         committed = self.db.load()
         context = multiprocessing.get_context('spawn')
         process = context.Process(target=crash_editor_worker, args=(str(self.config),))
