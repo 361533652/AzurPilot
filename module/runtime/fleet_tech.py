@@ -127,7 +127,7 @@ def progress(record, group_type):
     return dict(group_type=group_type, **state, awakening_pending=saved.get('awakening_pending') is True,
                 status=status, points=0,
                 current_count=len(cards), current_level=max((row['level'] for row in cards), default=None),
-                evidence=evidence, historical_evidence=record.get('evidence_history', {}).get(gid, {}),
+                evidence=evidence,
                 source=saved.get('source', ''), updated_at=saved.get('updated_at', ''))
 
 

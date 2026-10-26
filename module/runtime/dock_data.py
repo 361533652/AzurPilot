@@ -56,7 +56,6 @@ def technology_record(data):
     snapshot = read_snapshot(data)
     return dict(progress=copy.deepcopy(options.get('progress', {})),
                 nations=copy.deepcopy(options.get('nations', {})),
-                evidence_history=copy.deepcopy(options.get('evidence', {})),
                 holdings=copy.deepcopy(snapshot['ships']),
                 snapshot_revision=snapshot['revision'])
 

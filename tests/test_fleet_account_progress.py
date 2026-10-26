@@ -127,7 +127,7 @@ class AccountProgressTests(unittest.TestCase):
         self.patch_tech([dict(group_type=10102, full_star=True)])
         self.assertTrue(self.row()['full_star'])
 
-    def test_retirement_preserves_progress_and_specific_proof_correction_stays_corrected(self):
+    def test_retirement_preserves_progress_and_manual_correction_stays_corrected(self):
         self.database.patch_cards([dict(group_type=10102, name='杜威', level=120)], self.revision())
         card_id = self.database.load()['snapshot']['ships'][0]['id']
         self.patch_tech([dict(group_type=10102, lv120=False)])
@@ -135,7 +135,6 @@ class AccountProgressTests(unittest.TestCase):
         self.database.patch_cards([dict(id=card_id, delete=True)], self.revision())
         self.assertFalse(self.row()['lv120'])
         self.assertEqual(self.row()['current_count'], 0)
-        self.assertEqual(self.row()['historical_evidence']['lv120'][0]['ship_id'], card_id)
         self.patch_tech([dict(group_type=10102, lv120=False)])
         self.database.patch_cards([dict(group_type=10103, name='卡辛', level=125)], self.revision())
         self.assertFalse(self.row()['lv120'])

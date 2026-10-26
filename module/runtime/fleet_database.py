@@ -22,7 +22,7 @@ class FleetDatabaseAlreadyImported(ValueError):
 
 
 class FleetDatabase:
-    SCHEMA_VERSION = 10
+    SCHEMA_VERSION = 11
     BUSY_TIMEOUT_MS = 10000
 
     def __init__(self, config_path):
@@ -147,13 +147,6 @@ class FleetDatabase:
                 row[key] = bool(row[key])
         if progress:
             output['progress'] = progress
-        evidence = {}
-        for row in self._rows(connection, 'SELECT * FROM technology_evidence ORDER BY group_type, milestone, ship_id'):
-            gid, milestone = row.pop('group_type'), row.pop('milestone')
-            row['full_star'] = None if row['full_star'] is None else bool(row['full_star'])
-            evidence.setdefault(gid, {}).setdefault(milestone, []).append(row)
-        if evidence:
-            output['evidence'] = evidence
         return output
 
     @staticmethod
@@ -232,7 +225,7 @@ class FleetDatabase:
         connection.execute('UPDATE fleet_info SET revision=?, updated_at=? WHERE id=1', (tech.revision(uuid4().hex), self._now()))
 
     def _write_options(self, connection, options):
-        if options.keys() - {'progress', 'nations', 'evidence'}:
+        if options.keys() - {'progress', 'nations'}:
             raise ValueError('科技数据只支持里程碑和阵营等级')
         if 'progress' in options:
             for gid, entry in options['progress'].items():
@@ -284,15 +277,6 @@ class FleetDatabase:
             connection.execute('UPDATE technology_progress SET awakening_pending=? WHERE group_type=?',
                                (values['awakening_pending'], str(gid)))
 
-    def _write_evidence(self, connection, card, milestone, source):
-        connection.execute('INSERT INTO technology_evidence '
-                           '(group_type, milestone, ship_id, level, full_star, source, confirmed_at) '
-                           'VALUES (?, ?, ?, ?, ?, ?, ?) '
-                           'ON CONFLICT(group_type,milestone,ship_id) DO UPDATE SET level=excluded.level, '
-                           'full_star=excluded.full_star, source=excluded.source, confirmed_at=excluded.confirmed_at',
-                           (str(card['group_type']), milestone, card['id'], card['level'],
-                            card.get('full_star'), source, self._now()))
-
     def _initialize_technology(self, connection):
         """Seed account facts once, after the first confirmed ledger is built."""
         if self._info(connection)['technology_initialized']:
@@ -310,7 +294,6 @@ class FleetDatabase:
             values = inferred.setdefault(gid, {})
             for key in facts:
                 values[key] = True
-                self._write_evidence(connection, card, key, 'initial ledger')
         for gid, values in inferred.items():
             self._set_progress(connection, gid, values, source='initial ledger')
         connection.execute('UPDATE fleet_info SET technology_initialized=1 WHERE id=1')
@@ -376,7 +359,6 @@ class FleetDatabase:
                 values = changed.setdefault(gid, dict(values))
                 for key in additions:
                     values[key] = True
-                    self._write_evidence(connection, card, key, 'explicit union: current ship')
             if changed:
                 for gid, values in changed.items():
                     self._set_progress(connection, gid, values, source='explicit union: current ship')

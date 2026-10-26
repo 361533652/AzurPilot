@@ -124,10 +124,10 @@ class FleetDatabaseTest(unittest.TestCase):
                 "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
             self.assertEqual(tables, {'ships', 'fleet_info', 'nation_technology',
                                      'pending_ships', 'pending_technology', 'pending_nations',
-                                     'pending_targets', 'technology_progress', 'technology_evidence'})
+                                     'pending_targets', 'technology_progress'})
             columns = {row[1]: row for row in connection.execute('PRAGMA table_info(ships)')}
             self.assertEqual(set(columns), {'id', 'position', 'group_type', 'name', 'level',
-                'rarity', 'base_rarity', 'review', 'source', 'full_star', 'form'})
+                'rarity', 'base_rarity', 'extra_exp', 'review', 'source', 'full_star', 'form'})
             self.assertEqual(columns['id'][2], 'INTEGER')
             self.assertEqual(columns['id'][5], 1)
             sql = connection.execute("SELECT sql FROM sqlite_master WHERE name='ships'").fetchone()[0]

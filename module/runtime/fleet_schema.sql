@@ -84,16 +84,3 @@ CREATE TABLE technology_progress (
     source TEXT NOT NULL,
     updated_at TEXT NOT NULL
 ) STRICT;
-
--- Milestone proof survives the retirement of the physical card. No ship FK:
--- deleted card IDs must remain available as historical provenance.
-CREATE TABLE technology_evidence (
-    group_type TEXT NOT NULL,
-    milestone TEXT NOT NULL CHECK(milestone IN ('owned', 'full_star', 'lv120')),
-    ship_id INTEGER NOT NULL,
-    level INTEGER NOT NULL,
-    full_star INTEGER CHECK(full_star IN (0, 1)),
-    source TEXT NOT NULL,
-    confirmed_at TEXT NOT NULL,
-    PRIMARY KEY(group_type, milestone, ship_id)
-) STRICT;
