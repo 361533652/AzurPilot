@@ -124,7 +124,7 @@ export function MindCalculator() {
             const cap = [100, 105, 110, 115, 120, 125].find(value => value >= level) ?? 125
             const caps = [cap, ...(level === cap && cap < 125 ? [cap + 5] : [])]
             return <tr key={card.id}><td><input type="checkbox" aria-label={`参与计算 ${card.name}`} checked={included.has(card.id)} onChange={event => exclude(card.group_type!, !event.target.checked)}/></td>
-              <td><Link to={`?tab=data&ship=${card.id}&edit=1`}>{card.name} · #{card.id}</Link></td><td>{card.level || '未知'}</td>
+              <td><Link to={`?tab=data&ship=${card.id}`}>{card.name} · #{card.id}</Link></td><td>{card.level || '未知'}</td>
               <td>{amount(row?.mind)}</td><td>{amount(row?.gold)}</td>
               <td>{!included.has(card.id) ? <p>本次已排除</p> : <>
                 {progress.get(card.group_type!)?.lv120 == null && <p>累计120级科技未核实，按当前等级估算</p>}
