@@ -26,10 +26,12 @@ export function remainingPoints(row: Row) {
 }
 export function matches(row: Row, filters: Record<string, string[]>, query: string, scope = 'all', stage = 'all') {
   if (scope === 'tech' && !row.technology || scope === 'none' && row.technology) return false
-  if (query && ![row.name, ...Object.values(row.names)].some(value => value?.toLocaleLowerCase().includes(query.toLocaleLowerCase()))) return false
+  if (query && ![row.name, ...Object.values(row.names), String(row.code).padStart(3, '0')].some(value => value?.toLocaleLowerCase().includes(query.toLocaleLowerCase()))) return false
   const statuses = [
     ...(!row.current_count ? ['notHeld'] : ['held']),
     ...(row.owned === false ? ['unowned'] : []),
+    ...(row.owned === true ? ['owned'] : []),
+    ...(row.lv120 === true ? ['lv120'] : row.owned === true && row.lv120 === false ? ['unfinished'] : []),
     ...(row.full_star === false ? ['missingStar'] : []),
     ...(row.lv120 === false ? ['missing120'] : []),
     ...(milestones.some(key => row[key] === null) ? ['unverified'] : []),
@@ -37,8 +39,8 @@ export function matches(row: Row, filters: Record<string, string[]>, query: stri
     ...(row.technology && complete(row) ? ['complete'] : []),
   ]
   for (const [key, values] of Object.entries(filters)) {
-    if (!values.length || ['bonusType', 'attr'].includes(key)) continue
-    const current = key === 'type' ? [String(shipType(row.type))] : key === 'status' ? statuses : key === 'nation' ? [String(row.nationality)] : [row.rarity]
+    if (!values.length || ['bonusType', 'attr', 'getBonusType', 'getAttr', 'levelBonusType', 'levelAttr'].includes(key)) continue
+    const current = key === 'type' ? [String(shipType(row.type)), ...([1, 2, 3, 18, 19, 20, 21, 23].includes(row.type) ? ['front'] : []), ...([4, 5, 6, 7, 10, 12, 13, 22].includes(row.type) ? ['back'] : [])] : key === 'status' ? statuses : key === 'nation' ? [String(row.nationality)] : [row.rarity]
     if (!values.some(value => current.includes(value))) return false
   }
   if (filters.bonusType?.length || filters.attr?.length) {
@@ -46,6 +48,12 @@ export function matches(row: Row, filters: Record<string, string[]>, query: stri
     if (!t) return false
     const effects = [...(stage !== 'level' ? [[t.add_get_shiptype, t.add_get_attr] as const] : []), ...(stage !== 'get' ? [[t.add_level_shiptype, t.add_level_attr] as const] : [])]
     if (!effects.some(([types, attr]) => (!filters.bonusType?.length || types.some(value => filters.bonusType!.includes(String(shipType(value))))) && (!filters.attr?.length || filters.attr.includes(String(attr))))) return false
+  }
+  for (const stage of ['get', 'level'] as const) {
+    const classes = filters[`${stage}BonusType`], attrs = filters[`${stage}Attr`], t = row.technology
+    if ((classes?.length || attrs?.length) && (!t
+      || classes?.length && !t[`add_${stage}_shiptype`].some(value => classes.includes(String(shipType(value))))
+      || attrs?.length && !attrs.includes(String(t[`add_${stage}_attr`])))) return false
   }
   return true
 }

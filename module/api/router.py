@@ -82,6 +82,7 @@ class Router:
             'fleetTech.catalog': Method(p.InstanceParams, lambda x: self.fleet_tech.catalog(x.instance)),
             'fleetTech.report': Method(p.InstanceParams, lambda x: self.fleet_tech.report(x.instance)),
             'fleetTech.syncMind': Method(p.InstanceParams, lambda x: self.fleet_tech.sync_mind(x.instance)),
+            'fleetTech.mergeShips': Method(p.RevisionParams, lambda x: self.fleet_tech.merge_ships(x.instance, x.revision), True),
             'fleetTech.patch': Method(p.FleetTechPatchParams, lambda x: self.fleet_tech.patch(x.instance, x.revision, x.changes, x.nations), True),
             'mind.report': Method(p.InstanceParams, lambda x: self.mind.report(x.instance)),
             'mind.plan': Method(p.CultivationParams, lambda x: self.mind.plan(x.instance, x.revision, x.ship_ids, x.target_level, [item.model_dump(exclude_unset=True) for item in x.assumptions])),

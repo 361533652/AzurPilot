@@ -22,6 +22,7 @@ CREATE TABLE fleet_info (
     updated_at TEXT NOT NULL DEFAULT '',
     imported_at TEXT,
     technology_fields INTEGER NOT NULL DEFAULT 0,
+    technology_initialized INTEGER NOT NULL DEFAULT 0 CHECK(technology_initialized IN (0, 1)),
     pending_revision TEXT,
     pending_source TEXT,
     pending_updated_at TEXT,

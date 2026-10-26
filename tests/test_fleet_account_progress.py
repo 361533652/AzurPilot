@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 
 from module.runtime import dock_data, fleet_tech as tech
-from module.runtime.fleet_database import FleetDatabase, FleetDatabaseConflict, FleetTechnologyConflict
+from module.runtime.fleet_database import FleetDatabase, FleetDatabaseConflict
 
 
 class AccountProgressTests(unittest.TestCase):
@@ -52,7 +52,7 @@ class AccountProgressTests(unittest.TestCase):
             after = connection.execute('SELECT id, position, group_type, name, level, rarity, base_rarity, '
                 'extra_exp, excluded, review, source FROM ships ORDER BY id').fetchall()
             self.assertEqual(before, after)
-            self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0], 4)
+            self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0], FleetDatabase.SCHEMA_VERSION)
             self.assertEqual(connection.execute('PRAGMA integrity_check').fetchone()[0], 'ok')
         self.assertTrue(self.row()['lv120'])
         self.assertTrue(self.row()['full_star'])
@@ -75,7 +75,7 @@ class AccountProgressTests(unittest.TestCase):
     def test_explicit_migrated_unknown_is_not_restored_by_incidental_edit(self):
         self.v3([(10102, 120)], [('10102', 120, 1 | (1 << 2), None)])
         self.assertIsNone(self.row()['full_star'])
-        self.assertEqual(self.row()['conflicts']['full_star'], [1])
+        self.assertEqual(self.row()['conflicts'], {})
         self.database.patch_cards([dict(id=1, extra_exp=10)], self.revision())
         self.assertIsNone(self.row()['full_star'])
         self.database.patch_cards([dict(id=1, excluded=True)], self.revision())
@@ -90,47 +90,44 @@ class AccountProgressTests(unittest.TestCase):
             self.assertTrue(self.row(gid)['lv120'])
             self.assertEqual(self.row(gid)['status'], 'unknown')
         cards = self.database.load()['snapshot']['ships']
-        self.database.patch_cards([dict(id=row['id'], breakthrough=3) for row in cards], self.revision())
-        self.assertTrue(self.row(29901)['full_star'])
-        self.assertTrue(self.row(970101)['full_star'])
-        self.assertTrue(self.row(10517)['full_star'])
+        self.database.patch_cards([dict(id=row['id'], full_star=True) for row in cards], self.revision())
+        for gid in (29901, 970101, 10517):
+            self.assertIsNone(self.row(gid)['full_star'])
+        self.patch_tech([dict(group_type=gid, full_star=True) for gid in (29901, 970101, 10517)])
+        for gid in (29901, 970101, 10517):
+            self.assertTrue(self.row(gid)['full_star'])
 
-    def test_explicit_breakthrough_overrides_level_inference_and_allows_correction(self):
-        self.database.patch_cards([dict(group_type=10102, name='杜威', level=125)], self.revision())
+    def test_card_full_star_changes_do_not_override_independent_correction(self):
+        self.database.patch_cards([dict(group_type=10102, name='杜威', level=100, full_star=True)], self.revision())
         self.assertTrue(self.row()['full_star'])
-        for stage in (0, 1, 2):
-            with self.subTest(stage=stage):
-                self.database.patch_cards([dict(id=1, breakthrough=stage)], self.revision())
-                self.assertEqual(self.row()['evidence']['full_star'], [])
-                # Current state does not erase history; correcting the separate
-                # account milestone is explicit and no longer conflicts.
-                self.patch_tech([dict(group_type=10102, full_star=False)])
-                self.database.patch_cards([dict(id=1, extra_exp=stage)], self.revision())
-                self.assertFalse(self.row()['full_star'])
-        with self.assertRaises(FleetTechnologyConflict):
-            self.database.patch_cards([dict(id=1, breakthrough=3)], self.revision())
-        self.patch_tech([dict(group_type=10102, full_star=True)])
-        self.database.patch_cards([dict(id=1, breakthrough=3)], self.revision())
+        self.database.patch_cards([dict(id=1, full_star=False)], self.revision())
+        self.assertEqual(self.row()['evidence']['full_star'], [])
+        self.assertTrue(self.row()['full_star'])
+        self.patch_tech([dict(group_type=10102, full_star=False)])
+        self.database.patch_cards([dict(id=1, full_star=True)], self.revision())
+        self.assertFalse(self.row()['full_star'])
         self.assertEqual(self.row()['evidence']['full_star'], [1])
+        self.patch_tech([dict(group_type=10102, full_star=True)])
+        self.assertTrue(self.row()['full_star'])
 
     def test_retirement_preserves_progress_and_specific_proof_correction_stays_corrected(self):
         self.database.patch_cards([dict(group_type=10102, name='杜威', level=120)], self.revision())
         card_id = self.database.load()['snapshot']['ships'][0]['id']
-        with self.assertRaises(FleetTechnologyConflict) as error:
-            self.patch_tech([dict(group_type=10102, lv120=False)])
-        self.assertEqual(error.exception.conflicts[0]['ship_ids'], [card_id])
+        self.patch_tech([dict(group_type=10102, lv120=False)])
+        self.assertFalse(self.row()['lv120'])
         self.database.patch_cards([dict(id=card_id, delete=True)], self.revision())
-        self.assertTrue(self.row()['lv120'])
+        self.assertFalse(self.row()['lv120'])
         self.assertEqual(self.row()['current_count'], 0)
         self.assertEqual(self.row()['historical_evidence']['lv120'][0]['ship_id'], card_id)
         self.patch_tech([dict(group_type=10102, lv120=None)])
         self.database.patch_cards([dict(group_type=10103, name='卡辛', level=125)], self.revision())
         self.assertIsNone(self.row()['lv120'])
 
-    def test_identity_correction_promotes_new_type_and_retains_old_history(self):
+    def test_identity_correction_leaves_new_type_unknown_and_retains_old_history(self):
         self.database.patch_cards([dict(group_type=10102, name='杜威', level=120)], self.revision())
         self.database.patch_cards([dict(id=1, group_type=10103, name='卡辛')], self.revision())
-        self.assertTrue(self.row(10103)['lv120'])
+        self.assertIsNone(self.row(10103)['lv120'])
+        self.assertIsNone(self.row(10103)['owned'])
         self.assertTrue(self.row(10102)['lv120'])
         self.assertEqual(self.row(10102)['current_count'], 0)
 
@@ -139,7 +136,7 @@ class AccountProgressTests(unittest.TestCase):
         self.database.stage_import([dict(name='杜威', level=120)], self.revision())
         staged = self.database.load()
         self.assertEqual(tech.report(self.record()), before)
-        self.assertEqual(staged['pending_changes'][0]['milestones'], ['full_star', 'lv120', 'owned'])
+        self.assertEqual(staged['pending_changes'][0]['milestones'], [])
         with self.assertRaises(FleetDatabaseConflict):
             self.database.stage_import([dict(name='卡辛', level=125)], self.revision())
         self.assertEqual(self.database.load(), staged)
@@ -172,6 +169,91 @@ class AccountProgressTests(unittest.TestCase):
         self.assertEqual(self.database.load()['snapshot']['ships'][0]['extra_exp'], 0)
         self.database.patch_cards([dict(id=1, extra_exp=None)], self.revision())
         self.assertIsNone(self.database.load()['snapshot']['ships'][0]['extra_exp'])
+
+    def test_initial_seed_only_confirms_positive_facts_and_never_reseeds(self):
+        self.database.patch_cards([dict(group_type=10102, name='杜威', level=50)], self.revision())
+        self.assertTrue(self.row()['owned'])
+        self.assertIsNone(self.row()['full_star'])
+        self.assertIsNone(self.row()['lv120'])
+        self.database.patch_cards([dict(id=1, level=120),
+                                   dict(group_type=10103, name='卡辛', level=120)], self.revision())
+        self.assertIsNone(self.row()['full_star'])
+        self.assertIsNone(self.row()['lv120'])
+        self.assertIsNone(self.row(10103)['owned'])
+
+    def test_manual_milestones_before_first_ledger_prevent_automatic_seeding(self):
+        self.patch_tech([dict(group_type=10102, owned=None, full_star=None, lv120=None)])
+        self.database.patch_cards([dict(group_type=10102, name='杜威', level=120),
+                                   dict(group_type=10103, name='卡辛', level=120)], self.revision())
+        for gid in (10102, 10103):
+            self.assertTrue(all(self.row(gid)[key] is None for key in tech.MILESTONES))
+
+    def test_confirming_dock_scan_changes_cards_without_proposing_or_updating_milestones(self):
+        self.database.patch_cards([dict(group_type=10102, name='杜威', level=100)], self.revision())
+        before = self.record()['progress']
+        snapshot = dock_data.build_snapshot([dict(group_type=10102, name='杜威', level=120)],
+            min_level=1, max_level=125, physical_count=1, expected_count=None,
+            reached_bottom=False, filters_clear=False, updated_at='scan')
+        self.database.save_scan(snapshot, self.revision())
+        state = self.database.load()
+        self.assertTrue(all(row['kind'] == 'ship' for row in state['pending_changes']))
+        self.database.review([dict(id=row['id'], accept=True) for row in state['pending_changes']],
+                             self.revision(), state['pending_revision'])
+        self.assertEqual(self.database.load()['snapshot']['ships'][0]['level'], 120)
+        self.assertEqual(self.record()['progress'], before)
+
+    def test_explicit_technology_confirmation_ignores_current_card_conflicts(self):
+        self.database.patch_cards([dict(group_type=10102, name='杜威', level=120)], self.revision())
+        self.database.stage_legacy(dict(snapshot=None, technology=dict(manual={
+            '10102': dict(owned=False)})), self.revision())
+        state = self.database.load()
+        self.assertEqual([row['kind'] for row in state['pending_changes']], ['technology'])
+        self.database.review([dict(id=row['id'], accept=True) for row in state['pending_changes']],
+                             self.revision(), state['pending_revision'])
+        self.assertTrue(all(self.row()[key] is False for key in tech.MILESTONES))
+
+    def test_v5_upgrade_preserves_saved_false_and_unknown_without_reseeding(self):
+        self.database.patch_cards([dict(group_type=10102, name='杜威', level=120)], self.revision())
+        self.patch_tech([dict(group_type=10102, full_star=False, lv120=None)])
+        before = self.record()['progress']
+        with closing(sqlite3.connect(self.database.path)) as connection, connection:
+            connection.execute('ALTER TABLE fleet_info DROP COLUMN technology_initialized')
+            connection.execute('PRAGMA user_version=5')
+        self.assertEqual(self.record()['progress'], before)
+        self.database.patch_cards([dict(id=1, extra_exp=3)], self.revision())
+        self.assertEqual(self.record()['progress'], before)
+
+    def test_explicit_union_only_adds_confirmed_current_facts_and_is_idempotent(self):
+        self.patch_tech([dict(group_type=10102, owned=False),
+                         dict(group_type=10103, full_star=True),
+                         dict(group_type=10104, owned=False)])
+        self.database.patch_cards([
+            dict(group_type=10102, name='杜威', level=120, excluded=True),
+            dict(group_type=10104, name='麦考尔', level=120, review=True),
+            dict(name='未识别舰船', level=120, review=True),
+            dict(group_type=10105, name='格里德利', level=50)], self.revision())
+        self.database.merge_ship_technology(tech.revision(self.record()))
+        self.assertTrue(all(self.row()[key] is True for key in tech.MILESTONES))
+        self.assertTrue(self.row(10103)['full_star'])
+        self.assertFalse(self.row(10104)['owned'])
+        self.assertTrue(self.row(10105)['owned'])
+        self.assertIsNone(self.row(10105)['full_star'])
+        self.assertIsNone(self.row(10105)['lv120'])
+        before = self.database.load()
+        self.database.merge_ship_technology(tech.revision(self.record()))
+        self.assertEqual(self.database.load(), before)
+
+    def test_explicit_union_rejects_stale_ship_or_technology_revision(self):
+        stale = tech.revision(self.record())
+        self.database.patch_cards([dict(group_type=10102, name='杜威', level=120)], self.revision())
+        before = self.database.load()
+        with self.assertRaises(FleetDatabaseConflict):
+            self.database.merge_ship_technology(stale)
+        self.assertEqual(self.database.load(), before)
+        stale = tech.revision(self.record())
+        self.patch_tech([dict(group_type=10102, lv120=None)])
+        with self.assertRaises(FleetDatabaseConflict):
+            self.database.merge_ship_technology(stale)
 
 
 if __name__ == '__main__':

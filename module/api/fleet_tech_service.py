@@ -1,4 +1,4 @@
-"""舰队科技的实例隔离、事务编辑与心智清单同步接口。"""
+"""独立舰队科技的实例隔离、事务编辑与显式底稿并集接口。"""
 from module.config.transaction import config_transaction
 from module.api.protocol import ApiError
 from module.runtime import fleet_tech as tech
@@ -42,4 +42,17 @@ class FleetTechService:
 
     def sync_mind(self, instance):
         """保留旧接口为只读报告；两个分析已经共用数据库，不再复制数据。"""
+        return self.report(instance)
+
+    def merge_ships(self, instance, expected_revision):
+        """用户显式合并舰船正向事实，保留已有科技里程碑。"""
+        path = self.configs.path(instance)
+        with self.configs.lock, config_transaction(path):
+            self.configs.path(instance)
+            try:
+                FleetDatabase(path).merge_ship_technology(expected_revision)
+            except FleetDatabaseConflict as exc:
+                raise ApiError('CONFLICT', str(exc)) from exc
+            except (ValueError, TypeError, KeyError) as exc:
+                raise ApiError('INVALID_PARAMS', str(exc)) from exc
         return self.report(instance)

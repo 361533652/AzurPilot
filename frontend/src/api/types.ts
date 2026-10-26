@@ -186,6 +186,7 @@ export interface Results {
   'fleetTech.report': FleetTechReport
   'fleetTech.patch': FleetTechReport
   'fleetTech.syncMind': FleetTechReport
+  'fleetTech.mergeShips': FleetTechReport
   'mind.report': MindReport
   'mind.calculate': MindCalculation
   'mind.plan': import('../mind/cultivation').CultivationReport

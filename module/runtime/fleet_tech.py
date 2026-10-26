@@ -167,11 +167,10 @@ def _account_progress(record, group_type):
     status = ('complete' if all(state[key] is True for key in MILESTONES) else
               'unowned' if state['owned'] is False else
               'unknown' if any(state[key] is None for key in MILESTONES) else 'unfinished')
-    conflicts = {key: ids for key, ids in evidence.items() if ids and state[key] is not True}
     return dict(group_type=group_type, **state, status=status, points=0,
                 current_count=len(cards), current_level=max((row['level'] for row in cards), default=None),
                 evidence=evidence, historical_evidence=record.get('evidence_history', {}).get(gid, {}),
-                conflicts=conflicts, source=saved.get('source', ''), updated_at=saved.get('updated_at', ''))
+                conflicts={}, source=saved.get('source', ''), updated_at=saved.get('updated_at', ''))
 
 
 def _source_progress(record, group_type):

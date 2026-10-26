@@ -25,6 +25,7 @@ export interface Parameters {
   "fleetTech.catalog": { instance: string }
   "fleetTech.report": { instance: string }
   "fleetTech.syncMind": { instance: string }
+  "fleetTech.mergeShips": { instance: string; revision: string }
   "fleetTech.patch": { instance: string; revision: string; changes?: Array<{ group_type: number; owned?: boolean | null; full_star?: boolean | null; lv120?: boolean | null; level?: number | null; restore?: boolean; toggle?: "owned" | "complete" | "star" | null; target?: boolean | null }>; nations?: Record<string, unknown> }
   "mind.report": { instance: string }
   "mind.plan": { instance: string; revision: string; ship_ids: Array<number>; target_level?: 120 | 125; assumptions?: Array<{ ship_id: number; level?: number | null; extra_exp?: number | null; awakened_to?: 100 | 105 | 110 | 115 | 120 | 125 | null }> }
