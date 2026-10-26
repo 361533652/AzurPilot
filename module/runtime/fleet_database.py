@@ -1,4 +1,4 @@
-"""玩家编辑的舰船底账；设备读取仅产生待确认更新。"""
+"""玩家编辑的舰船数据；设备读取仅产生待确认更新。"""
 import copy
 import os
 import sqlite3
@@ -135,7 +135,7 @@ class FleetDatabase:
             return
         if version != 0 or not create:
             raise ValueError(f'Unsupported fleet database schema version: {version}; '
-                             '请先备份旧试验版舰船数据库，再使用新底账重新扫描或显式导入旧配置')
+                             '请先备份旧试验版舰船数据库，再重新扫描或显式导入旧配置以建立舰船数据')
         if connection.execute("SELECT 1 FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'").fetchone():
             raise ValueError('Unversioned fleet database contains existing tables')
         # Execute statements individually: executescript would commit the caller's transaction.
@@ -360,7 +360,7 @@ class FleetDatabase:
 
     def _check_revision(self, connection, expected):
         if self._revision(connection) != expected:
-            raise FleetDatabaseConflict('舰船底账已更新，请重新载入后操作')
+            raise FleetDatabaseConflict('舰船数据已更新，请重新载入后操作')
 
     @staticmethod
     def _now():
@@ -535,7 +535,7 @@ class FleetDatabase:
             from module.runtime import dock_data
             record = dock_data.technology_record(self._load(connection))
             if tech.revision(record) != expected_revision:
-                raise FleetDatabaseConflict('科技记录或舰船底稿已更新，请重新载入后合并')
+                raise FleetDatabaseConflict('科技记录或舰船数据已更新，请重新载入后合并')
             progress = record['progress']
             changed = {}
             for card in self._cards(connection):

@@ -48,7 +48,7 @@ class DockService:
         return self.report(instance)
 
     def review(self, instance, expected_revision, pending_revision, decisions):
-        """按候选项逐条采纳或拒绝，并同时检查底账和候选版本。"""
+        """按候选项逐条采纳或拒绝，并同时检查数据和候选版本。"""
         path = self.configs.path(instance)
         with self.configs.lock, config_transaction(path):
             self.configs.path(instance)
@@ -86,7 +86,7 @@ class DockService:
                 original = json.loads(path.read_text(encoding='utf-8-sig'))
                 database.stage_legacy(convert_legacy(original), expected_revision)
             except FleetDatabaseConflict as exc:
-                raise ApiError('CONFLICT', '舰船底账已更新，请重新载入后导入') from exc
+                raise ApiError('CONFLICT', '舰船数据已更新，请重新载入后导入') from exc
             except FleetDatabaseAlreadyImported as exc:
                 raise ApiError('ALREADY_IMPORTED', '本实例已完成旧数据迁移') from exc
             except (ValueError, TypeError, KeyError) as exc:

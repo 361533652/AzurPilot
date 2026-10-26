@@ -160,9 +160,9 @@ class MindCalculatorService:
                     **project(snapshot['ships'], ship_ids, target_level))
 
     def save(self, instance, expected_revision, ships):
-        """汇总清单没有稳定副本身份，禁止用它覆盖底账或删除同名副本。"""
+        """汇总清单没有稳定副本身份，禁止用它覆盖数据或删除同名副本。"""
         self.configs.path(instance)
-        raise ApiError('READ_ONLY', '心智分析基于舰船底账计算；请到“舰船数据”编辑舰船或排除标记')
+        raise ApiError('READ_ONLY', '心智分析基于舰船数据计算；请到“舰船数据”编辑舰船或排除标记')
 
     def catalog(self, instance):
         """返回用于计算与人工核对的舰船资料。"""
