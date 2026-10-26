@@ -29,7 +29,7 @@ const messages = {
   held: ["当前持有", "目前持有", "Currently held", "現在の所持", "当前持有喵"],
   notHeld: ["未持有", "未持有", "Not currently held", "現在未所持", "未持有喵"],
   unspecified: ["未填写", "未填寫", "Not entered", "未入力", "未填写喵"],
-  missingStar: ["缺满星", "缺滿星", "Missing max stars", "最大突破未達成", "缺满星喵"],
+  missingStar: ["未满星", "未滿星", "Below max stars", "最大突破未達成", "未满星喵"],
   missing120: ["缺120级", "缺120級", "Missing Lv.120", "Lv.120未達成", "缺120级喵"],
   finished: ["已完成", "已完成", "Completed", "達成済み", "已完成喵"],
   notFinished: ["未完成", "未完成", "Not completed", "未達成", "未完成喵"],
