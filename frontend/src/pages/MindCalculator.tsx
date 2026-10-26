@@ -71,7 +71,8 @@ export function MindCalculator() {
     memory.current = {instance, plan}
     try {localStorage.setItem(key, JSON.stringify(plan))} catch { /* Calculation works without browser storage. */ }
     let active = true
-    setResult(undefined); setCalculating(true)
+    // Keep the completed view mounted during subsequent recalculations.
+    setCalculating(true)
     const timer = setTimeout(() => {
       void api.request('mind.plan', {instance, revision: facts.dock.revision, ship_ids: ids,
         target_level: 120}).then(value => {
@@ -138,9 +139,9 @@ export function MindCalculator() {
     })
   }
   const review = facts?.dock.ships.filter(card => card.review || !card.group_type).length ?? 0
+  if (!facts || !plan || !result) return error ? <ErrorBox message={error}/> : <Loading/>
   return <div className="fleet-technology cultivation-calculator">
     {error && <ErrorBox message={error}/>}
-    {!facts && !error && <Loading/>}
     {facts && plan && <>
       <section className="ft-summary" aria-busy={calculating}>
         <h2>养成计算</h2>
