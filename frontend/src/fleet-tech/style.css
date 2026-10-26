@@ -41,7 +41,7 @@
 .ft-table-wrap td.ft-rarity-SR, .ft-table-wrap td.ft-rarity-PR { color: #8b39d2; }
 .ft-table-wrap td.ft-rarity-SSR { color: #946408; }
 .ft-table-wrap td.ft-rarity-UR, .ft-table-wrap td.ft-rarity-DR { color: #b04f91; }
-.ft-table-wrap tbody tr td.ft-unlock.ft-marked, .ft-table-wrap tbody tr.ft-complete td { background: #87f6d6; }
+.ft-table-wrap tbody tr td.ft-marked, .ft-table-wrap tbody tr td.ft-point.ft-state-finished { background: #87f6d6; }
 .ft-point-value { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 27px; }
 .ft-mark { font-size: 12px; font-weight: 700; color: #718091; }
 .ft-state-finished .ft-mark, .ft-marked .ft-mark { color: #13775f; }
