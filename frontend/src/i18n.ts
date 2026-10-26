@@ -1,4 +1,5 @@
 import {rotationZhCN, rotationZhTW, rotationEnUS, rotationJaJP} from './fleet-rotation-i18n'
+import {trainingZhCN, trainingZhTW, trainingEnUS, trainingJaJP} from './fleet-training-i18n'
 import {equipmentZhCN, equipmentZhTW, equipmentEnUS, equipmentJaJP} from './fleet-equipment-i18n'
 import {fleetTechZhCN, fleetTechZhTW, fleetTechEnUS, fleetTechJaJP} from './fleet-tech/i18n'
 import {mindZhCN, mindZhTW, mindEnUS, mindJaJP} from './mind/i18n'
@@ -24,6 +25,7 @@ const zhCN = {
   ...mindZhCN,
   ...fleetTechZhCN,
   ...rotationZhCN,
+  ...trainingZhCN,
   ...equipmentZhCN,
   'stats.category.storage': '仓库物品',
   'stats.runStorage': '运行仓库统计',
@@ -603,6 +605,7 @@ const enUS: Record<UiKey, string> = {
   ...mindEnUS,
   ...fleetTechEnUS,
   ...rotationEnUS,
+  ...trainingEnUS,
   ...equipmentEnUS,
   'stats.category.storage': 'Inventory',
   'stats.runStorage': 'Scan inventory',
@@ -756,6 +759,7 @@ const jaJP: Record<UiKey, string> = {
   ...mindJaJP,
   ...fleetTechJaJP,
   ...rotationJaJP,
+  ...trainingJaJP,
   ...equipmentJaJP,
   'stats.category.storage': '倉庫アイテム',
   'stats.runStorage': '倉庫を集計',
@@ -970,6 +974,7 @@ const zhTW: Record<UiKey, string> = {
   ...mindZhTW,
   ...fleetTechZhTW,
   ...rotationZhTW,
+  ...trainingZhTW,
   ...equipmentZhTW,
   'stats.category.storage': '倉庫物品',
   'stats.runStorage': '執行倉庫統計',

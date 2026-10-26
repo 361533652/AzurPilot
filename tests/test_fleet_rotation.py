@@ -2,7 +2,7 @@
 
 from contextlib import ExitStack
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import tempfile
 from types import SimpleNamespace
@@ -12,9 +12,11 @@ from unittest.mock import Mock, patch
 from module.api.config_service import ConfigService
 from module.api.protocol import ApiError, ConfigChange
 from module.campaign.fleet_rotation import preflight_rotation
+from module.campaign.fleet_rotation_emotion import selected_morale
 from module.combat.emotion import Emotion
 from module.config.config import AzurLaneConfig
 from module.exception import CampaignEnd, FleetManagementError, GameStuckError, ScriptEnd
+from module.handler.info_handler import InfoHandler
 from module.runtime.fleet_rotation import (ROTATION_PATH, begin_round, calibration_changes,
                                          minimum_morale, parse_rules, rank_sources, recorded_morale, supported)
 from module.runtime.fleet_equipment import EQUIPMENT_PATH
@@ -138,6 +140,199 @@ class RotationIntegrationTests(unittest.TestCase):
 
     def state(self):
         return self.service.read_json(self.path)['FleetInfo']['FleetRotation']['State']
+
+    def morale_policy(self, selected_only=True, fixed=70, training=150):
+        self.config.cross_set_many({ROTATION_PATH + '.SelectedOnly': selected_only,
+                                    'Main.Emotion.Fleet1Control': 'keep_exp_bonus',
+                                    'Main.Emotion.Fleet1Recover': 'dormitory_floor_1'})
+        self.live[1] = {1: fixed, 2: 150, 3: 150, 4: training, 5: 150, 6: 150}
+        preflight_rotation(self.runner, 5, 'normal')
+        return self.campaign.emotion
+
+    def popup_handler(self, emotion):
+        return SimpleNamespace(emotion=emotion, config=self.config, _map_battle=5,
+                               _popup_offset=(3, 30), appear=Mock(return_value=True),
+                               handle_use_data_key=Mock(return_value=False),
+                               handle_popup_cancel=Mock(return_value=True),
+                               handle_popup_confirm=Mock(return_value=True),
+                               _emotion_emergency_exit=Mock(), interval_reset=Mock())
+
+    def test_selected_150_fixed_70_does_not_rotate_and_keeps_full_fleet_ledger(self):
+        emotion = self.morale_policy()
+        self.manager.rotate_slot.assert_not_called()
+        self.assertEqual(70, self.config.Emotion_Fleet1Value)
+        self.assertEqual(150, emotion.training_lower(1))
+        emotion.check_reduce(5)
+        emotion.reduce(1)
+        self.assertEqual(68, emotion.fleet_1.lower)
+        self.assertEqual(148, emotion.training_lower(1))
+        self.assertFalse(preflight_rotation(self.runner, 5, 'normal'))
+        self.manager.prepare_rotation.assert_not_called()
+        self.manager.run.assert_called_once()
+
+    def test_switch_off_waits_for_fixed_70_instead_of_swapping_training_150(self):
+        emotion = self.morale_policy(selected_only=False)
+        self.manager.rotate_slot.assert_not_called()
+        with self.assertRaises(ScriptEnd):
+            emotion.check_reduce(5)
+        self.assertGreater(self.config.Scheduler_NextRun, datetime.now())
+        self.assertEqual({}, self.state())
+
+    def test_multiple_training_slots_use_their_minimum_and_missing_stays_unknown(self):
+        self.assertEqual(135, selected_morale({1: 0, 4: 150, 5: 135, 6: 140}, [4, 5, 6]))
+        self.assertEqual(150, selected_morale({1: 0, 4: 150}, [4, 5]))
+        self.assertIsNone(selected_morale({1: 150, 4: 150, 5: None}, [4, 5]))
+        self.assertIsNone(selected_morale({1: 150}, [4, 5]))
+        emotion = self.morale_policy(training=150)
+        self.live[1][5] = 135
+        emotion.calibrate_selected(self.snapshots())
+        self.assertEqual(135, emotion.training_lower(1))
+        emotion.reduce(1)
+        self.assertEqual(133, emotion.training_lower(1))
+
+    def test_low_training_rotates_despite_fixed_low_and_only_ranks_selected_reserve_slots(self):
+        self.live[4][1] = 0
+        before = deepcopy(self.config.cross_get('MindCalculator', {}))
+        emotion = self.morale_policy(training=120)
+        self.manager.rotate_slot.assert_called()
+        self.assertEqual([4, 4, 4], [call.args[0] for call in self.manager.rotate_slot.call_args_list])
+        self.assertEqual(150, emotion.training_lower(1))
+        self.assertEqual(70, self.config.Emotion_Fleet1Value)
+        emotion.check_reduce(5)
+        self.assertEqual(before, self.config.cross_get('MindCalculator', {}))
+        self.assertEqual({'last_source', 'completed_at'}, set(self.state()['1']))
+
+    def test_selected_only_ignores_fixed_low_morale_but_disabled_mode_waits(self):
+        for fixed in (20, 45):
+            with self.subTest(fixed=fixed):
+                emotion = self.morale_policy(fixed=fixed)
+                self.manager.rotate_slot.assert_not_called()
+                emotion.check_reduce(5)
+                emotion = self.morale_policy(selected_only=False, fixed=fixed)
+                with self.assertRaises(ScriptEnd):
+                    emotion.check_reduce(5)
+                self.assertEqual(150, emotion.training_lower(1))
+
+    def test_no_ready_reserve_waits_for_training_instead_of_bypassing_its_threshold(self):
+        for fleet in RULE['sources']:
+            self.live[fleet] = dict.fromkeys(range(1, 7), 100)
+        emotion = self.morale_policy(training=100)
+        self.manager.rotate_slot.assert_not_called()
+        with self.assertRaises(ScriptEnd):
+            emotion.check_reduce(5)
+
+    def test_selected_only_confirms_fixed_red_without_changing_training_morale(self):
+        emotion = self.morale_policy(fixed=0)
+        emotion.check_reduce(5)
+        handler = self.popup_handler(emotion)
+        self.assertTrue(InfoHandler.handle_combat_low_emotion(handler))
+        handler.handle_popup_confirm.assert_called_once_with('IGNORE_LOW_EMOTION')
+        handler.handle_popup_cancel.assert_not_called()
+        self.assertEqual(150, emotion.training_lower(1))
+        self.assertEqual(0, emotion.fleet_1.lower)
+
+    def test_switch_off_retains_original_red_fallback_and_delay(self):
+        emotion = self.morale_policy(selected_only=False, fixed=0)
+        handler = self.popup_handler(emotion)
+        with self.assertRaises(ScriptEnd):
+            InfoHandler.handle_combat_low_emotion(handler)
+        handler.handle_popup_confirm.assert_not_called()
+        handler.handle_popup_cancel.assert_called_once()
+        handler._emotion_emergency_exit.assert_called_once()
+        self.assertGreater(self.config.Scheduler_NextRun, datetime.now())
+        self.assertEqual({}, self.state())
+        self.assertFalse(self.runner._fleet_rotation_context['scanned'])
+
+    def test_training_red_or_unknown_popup_cancels_and_rescans_instead_of_confirming(self):
+        emotion = self.morale_policy(fixed=0)
+        for value in (0, None):
+            with self.subTest(value=value):
+                emotion.calibrate_selected({1: {4: value, 5: 150, 6: 150}})
+                handler = self.popup_handler(emotion)
+                with self.assertRaises(ScriptEnd):
+                    InfoHandler.handle_combat_low_emotion(handler)
+                handler.handle_popup_confirm.assert_not_called()
+                self.assertLess(self.config.Scheduler_NextRun - datetime.now(), timedelta(seconds=2))
+                self.assertFalse(self.runner._fleet_rotation_context['scanned'])
+
+    def test_task_ignore_mode_cannot_skip_training_calculation_in_either_switch_mode(self):
+        self.config.cross_set('Main.Emotion.Mode', 'ignore')
+        emotion = self.morale_policy(fixed=20)
+        self.assertTrue(emotion.is_calculate)
+        emotion.reduce(1)
+        self.assertEqual(148, emotion.training_lower(1))
+        emotion.check_reduce(1)
+        emotion = self.morale_policy(selected_only=False, fixed=20)
+        self.assertTrue(emotion.is_calculate)
+        self.assertFalse(emotion.is_ignore)
+        with self.assertRaises(ScriptEnd):
+            emotion.check_reduce(1)
+
+    def test_unknown_fixed_morale_does_not_block_known_training_or_its_consumption(self):
+        emotion = self.morale_policy(fixed=None)
+        emotion.check_reduce(5)
+        emotion.reduce(1)
+        self.assertEqual(148, emotion.training_lower(1))
+        self.assertIsNone(emotion.fleet_1.state)
+
+    def test_unknown_fixed_morale_does_not_block_a_known_training_swap(self):
+        self.live[4][1] = None
+        emotion = self.morale_policy(fixed=None, training=120)
+        self.assertEqual(3, self.manager.rotate_slot.call_count)
+        self.assertEqual(150, emotion.training_lower(1))
+        emotion.check_reduce(5)
+
+    def test_data_key_popup_stays_ahead_of_rotation_morale_checks(self):
+        emotion = self.morale_policy(fixed=0)
+        handler = self.popup_handler(emotion)
+        handler.handle_use_data_key.return_value = True
+        self.assertTrue(InfoHandler.handle_combat_low_emotion(handler))
+        handler.handle_popup_confirm.assert_not_called()
+        handler.handle_popup_cancel.assert_not_called()
+
+    def test_selected_calculation_preserves_double_book_and_shipwreck_penalty_settings(self):
+        emotion = self.morale_policy(fixed=0)
+        emotion.map_is_2x_book = True
+        emotion.reduce(1)
+        self.assertEqual(146, emotion.training_lower(1))
+        self.config.Emotion_IgnoreShipwreck = True
+        emotion.reduce(1, shipwreck=True)
+        self.assertEqual(146, emotion.training_lower(1))
+        self.config.Emotion_IgnoreShipwreck = False
+        emotion.reduce(1, shipwreck=True)
+        self.assertEqual(136, emotion.training_lower(1))
+
+    def test_selected_only_reuses_recovery_reserve_when_no_reserve_ship_is_ready(self):
+        for fleet in RULE['sources']:
+            self.live[fleet] = dict.fromkeys(range(1, 7), 100)
+        self.config.Emotion_MinReserve = 150
+        emotion = self.morale_policy(training=100)
+        with self.assertRaises(ScriptEnd):
+            emotion.check_reduce(5)
+        self.assertEqual(['1'], self.config.Emotion_RecoveryWait)
+        self.assertGreater(self.config.Scheduler_NextRun - datetime.now(), timedelta(minutes=70))
+
+    def test_zero_battle_training_role_does_not_block_selected_only_popup(self):
+        self.config.cross_set_many({ROTATION_PATH + '.SelectedOnly': True,
+                                    ROTATION_PATH + '.Rules': json.dumps({'1': RULE, '2': RULE}),
+                                    'Main.Fleet.FleetOrder': 'fleet1_mob_fleet2_boss'})
+        self.live[2][1] = 0
+        preflight_rotation(self.runner, 1, 'normal')
+        self.assertEqual({2: 2}, self.campaign.emotion.selected)
+        self.campaign.emotion.check_reduce(1)
+        handler = self.popup_handler(self.campaign.emotion)
+        self.assertTrue(InfoHandler.handle_combat_low_emotion(handler))
+        handler.handle_popup_cancel.assert_not_called()
+        self.manager.rotate_slot.assert_not_called()
+
+    def test_disabling_selected_only_restores_original_task_check_and_mode_change_rescans(self):
+        self.morale_policy()
+        self.config.cross_set(ROTATION_PATH + '.SelectedOnly', False)
+        preflight_rotation(self.runner, 5, 'normal')
+        self.assertEqual(2, self.manager.run.call_count)
+        self.manager.rotate_slot.assert_not_called()
+        with self.assertRaises(ScriptEnd):
+            self.campaign.emotion.check_reduce(5)
 
     def test_equipment_disabled_preserves_original_rotation_even_with_old_equipment_jobs(self):
         job = {'1:4': {'fleet': 1, 'slot': 4}}
@@ -483,9 +678,11 @@ class RotationIntegrationTests(unittest.TestCase):
 
     def test_api_persists_switch_rules_and_reset_but_rejects_invalid_rule_or_state_write(self):
         changes = [ConfigChange(path=ROTATION_PATH + '.Enabled', value=False),
+                   ConfigChange(path=ROTATION_PATH + '.SelectedOnly', value=True),
                    ConfigChange(path=ROTATION_PATH + '.Rules', value=json.dumps({'1': RULE}))]
         saved = self.service.patch('testpilot', None, changes)['values']['FleetInfo']['FleetRotation']
         self.assertFalse(saved['Enabled'])
+        self.assertTrue(saved['SelectedOnly'])
         self.assertEqual(json.loads(saved['Rules'])['1'], RULE)
         for path, value in ((ROTATION_PATH + '.Rules', '{"1":{"sources":[1]}}'),
                             (ROTATION_PATH + '.State', {'1': {'last_source': 6}})):

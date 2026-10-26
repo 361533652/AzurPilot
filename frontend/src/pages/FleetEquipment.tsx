@@ -7,26 +7,36 @@ import {ErrorBox, Loading, PageTitle} from '../components/ui'
 
 export const equipmentTypes = ['DD', 'CL', 'CA', 'CB', 'BC', 'BB', 'CVL', 'CV', 'BBV', 'SS', 'SSV', 'AR', 'BM', 'AE', 'IX'] as const
 type ShipType = typeof equipmentTypes[number]
-type Codes = Record<ShipType, string>
+type CodeSet = [string, string, string]
+type Codes = Record<ShipType, CodeSet>
+const codeSlots = [0, 1, 2] as const
 
 export function equipmentCodes(value: unknown): Codes {
   const parsed = typeof value === 'string' ? JSON.parse(value) : value ?? {}
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)
-      || Object.keys(parsed).some(key => !equipmentTypes.includes(key as ShipType))
-      || Object.values(parsed).some(code => typeof code !== 'string')) throw new Error('Invalid equipment codes')
-  return Object.fromEntries(equipmentTypes.map(kind => [kind, (parsed[kind] ?? '').trim()])) as Codes
+      || Object.keys(parsed).some(key => !equipmentTypes.includes(key as ShipType))) throw new Error('Invalid equipment codes')
+  return Object.fromEntries(equipmentTypes.map(kind => {
+    const value = Object.hasOwn(parsed, kind) ? parsed[kind] : []
+    const entries = typeof value === 'string' ? [value] : value
+    if (!Array.isArray(entries) || entries.length > 3 || entries.some(code => typeof code !== 'string')) throw new Error('Invalid equipment codes')
+    return [kind, codeSlots.map(index => (entries[index] ?? '').trim())]
+  })) as Codes
 }
 
-export function EquipmentCodeFields({codes, disabled, change}: {codes: Codes; disabled: boolean; change: (kind: ShipType, value: string) => void}) {
+export function EquipmentCodeFields({codes, disabled, change}: {codes: Codes; disabled: boolean; change: (kind: ShipType, index: number, value: string) => void}) {
   const {ui} = useApp()
   return <div className="fleet-grid">{equipmentTypes.map(kind => <section className="panel" key={kind}>
-    <div className="panel-heading"><h2>{ui(`fleetEquipment.${kind}`)}</h2></div>
-    <div className="fleet-column"><label htmlFor={`equipment-${kind}`}>{ui('fleetEquipment.code')}</label>
-      <textarea id={`equipment-${kind}`} aria-label={`${ui(`fleetEquipment.${kind}`)} ${ui('fleetEquipment.code')}`}
-        rows={3} dir="ltr" spellCheck={false} value={codes[kind]} disabled={disabled}
-        placeholder={ui('fleetEquipment.placeholder')} onChange={event => change(kind, event.target.value)}
-        style={{width: '100%', resize: 'vertical', marginTop: 8, overflowWrap: 'anywhere'}}/>
+    <div className="panel-heading" style={{display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap'}}>
+      <h2>{ui(`fleetEquipment.${kind}`)}</h2><span className="muted">{ui('fleetEquipment.code')}</span>
     </div>
+    <div className="fleet-column" style={{display: 'grid', gap: 10}}>{codeSlots.map(index => <label key={index}
+      htmlFor={`equipment-${kind}-${index + 1}`} style={{display: 'flex', alignItems: 'center', gap: 8}}>
+      <span aria-hidden="true">{index + 1}</span><input type="text" id={`equipment-${kind}-${index + 1}`}
+        aria-label={`${ui(`fleetEquipment.${kind}`)} ${ui('fleetEquipment.code')} ${index + 1}`}
+        dir="ltr" spellCheck={false} value={codes[kind][index]} disabled={disabled}
+        placeholder={ui('fleetEquipment.placeholder')} onChange={event => change(kind, index, event.target.value)}
+        style={{width: '100%', minWidth: 0, flex: 1}}/>
+    </label>)}</div>
   </section>)}</div>
 }
 
@@ -78,8 +88,12 @@ export function FleetEquipment() {
     </section>
     {pending > 0 && <p role="status">{ui('fleetEquipment.pending', {number: pending})}</p>}
     {error && <ErrorBox message={error}/>}
-    {codes ? <EquipmentCodeFields codes={codes} disabled={disabled} change={(kind, value) => {
-      setCodes(previous => ({...previous!, [kind]: value})); setDirty(true)
+    {codes ? <EquipmentCodeFields codes={codes} disabled={disabled} change={(kind, index, value) => {
+      setCodes(previous => {
+        const entries = [...previous![kind]] as CodeSet
+        entries[index] = value
+        return {...previous!, [kind]: entries}
+      }); setDirty(true)
     }}/> : !error && <Loading/>}
   </>
 }

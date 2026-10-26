@@ -25,6 +25,7 @@ export function FleetRotation() {
   const {instance = ''} = useParams()
   const {ui, instances, notify} = useApp(), connection = useConnection()
   const [enabled, setEnabled] = useState(false), [rules, setRules] = useState<Rules>()
+  const [selectedOnly, setSelectedOnly] = useState(false)
   const [progress, setProgress] = useState<Progress>({})
   const [error, setError] = useState(''), [busy, setBusy] = useState(false), [dirty, setDirty] = useState(false)
   const running = instances.find(item => item.name === instance)?.status === 'running'
@@ -36,6 +37,7 @@ export function FleetRotation() {
       if (!active) return
       const values = config.values.FleetInfo?.FleetRotation
       setEnabled(values?.Enabled === true)
+      setSelectedOnly(values?.SelectedOnly === true)
       setRules(rotationRules(values?.Rules))
       setProgress(rotationProgress(values?.State))
       setError(''); setDirty(false)
@@ -72,6 +74,7 @@ export function FleetRotation() {
       const config = await api.request('config.get', {instance})
       const result = await api.request('config.patch', {instance, revision: config.revision, changes: [
         {path: 'FleetInfo.FleetRotation.Enabled', value: nextEnabled},
+        {path: 'FleetInfo.FleetRotation.SelectedOnly', value: selectedOnly},
         {path: 'FleetInfo.FleetRotation.Rules', value: JSON.stringify(rules)},
         ...(reset ? [{path: 'FleetInfo.FleetRotation.State', value: {}}] : []),
       ]})
@@ -89,6 +92,14 @@ export function FleetRotation() {
     </>}/>
     <p className="muted">{ui('rotation.help')}</p>
     <p className="muted">{ui('rotation.duplicates')}</p>
+    <section className="panel" style={{padding: 20, marginBottom: 20}}>
+      <label className="checkbox-label">
+        <input type="checkbox" checked={selectedOnly} disabled={disabled || !rules}
+          onChange={event => {setSelectedOnly(event.target.checked); setDirty(true)}}/>
+        {ui('rotation.selectedOnly')}
+      </label>
+      <p className="muted">{ui('rotation.emotionHelp')}</p>
+    </section>
     {error && <ErrorBox message={error}/>}
     {!rules ? !error && <Loading/> : <div className="fleet-grid">{numbers.map(fleet => <section className="panel" key={fleet} aria-label={ui('fleet.title', {number: fleet})}>
       <div className="panel-heading"><h2>{ui('fleet.title', {number: fleet})}</h2></div>
