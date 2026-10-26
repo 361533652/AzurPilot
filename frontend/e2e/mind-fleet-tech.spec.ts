@@ -52,8 +52,10 @@ test('authoritative milestones distinguish unknown, never obtained and not curre
   await page.reload()
   const corrected = await rpc(page, 'fleetTech.report', {instance})
   expect(corrected.ships.find((ship: any) => ship.group_type === 10102)).toMatchObject({owned: false, full_star: false, lv120: false, points: 0})
-  await page.getByRole('link', {name: '缺120级舰船加入养成计算', exact: true}).click()
-  await expect(page).toHaveURL(/tab=mind&scope=missing120/)
+  await expect(page.getByRole('link', {name: '缺120级舰船加入养成计算', exact: true})).toHaveCount(0)
+  await page.getByRole('tab', {name: '养成计算', exact: true}).click()
+  await expect(page).toHaveURL(/tab=mind$/)
+  await expect(page.getByText(/参与 0 艘/)).toBeVisible()
 })
 
 test('correction conflicts identify current copies and retirement preserves cumulative milestones and evidence', async ({page}, info) => {

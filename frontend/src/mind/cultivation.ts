@@ -1,17 +1,17 @@
 import type {DockCard} from '../api/types'
+import type {Catalog, Progress} from '../fleet-tech/types'
 export interface CultivationRow {
   id: number; name: string; current_level: number; level: number; target_level: number
-  extra_exp: number | null; hypothetical: boolean; experience: number | null; experience_upper: number | null
-  mind: number | null; mind2: number | null; gold: number | null
+  hypothetical: boolean; mind: number | null; mind2: number | null; gold: number | null
   status: 'exact' | 'estimated' | 'unknown'; notes: string[]; stages: number[]
 }
 export interface CultivationReport {
   instance: string; revision: string; ships: CultivationRow[]; target_level: number
-  included: number; unknown: number; estimated: number; experience_upper: number
+  included: number; unknown: number; estimated: number
   mind: number; mind2: number; gold: number; rules_sha256: string
 }
-export interface Assumption {ship_id: number; level?: number; extra_exp?: number | null; awakened_to?: 100 | 105 | 110 | 115 | 120 | 125 | null}
-export interface CultivationPlan {target: 120 | 125; ids: number[]; assumptions: Assumption[]}
+export interface Assumption {ship_id: number; level?: number; awakened_to?: 100 | 105 | 110 | 115 | 120 | 125 | null}
+export interface CultivationPlan {excluded_groups: number[]; assumptions: Assumption[]}
 export function highestCopies(cards: DockCard[]): number[] {
   const groups = new Map<string, DockCard>()
   for (const card of cards) {
@@ -21,18 +21,33 @@ export function highestCopies(cards: DockCard[]): number[] {
   }
   return [...groups.values()].map(card => card.id)
 }
+/** Account achievements survive retirement; an unknown achievement remains an estimate. */
+export function automaticCandidates(cards: DockCard[], catalog: Catalog, progress: Progress[]): DockCard[] {
+  const supported = new Set(catalog.ships.filter(row => row.technology).map(row => row.group_type))
+  const completed = new Set(progress.filter(row => row.lv120 === true).map(row => row.group_type))
+  const confirmed = cards.filter(card => !card.review && card.group_type && supported.has(card.group_type))
+  const highest = new Set(highestCopies(confirmed))
+  return confirmed.filter(card => highest.has(card.id) && card.level < 120 && !completed.has(card.group_type!))
+}
 export function readPlan(raw: string | null, cards: DockCard[]): CultivationPlan {
-  const known = new Set(cards.map(card => card.id))
+  const known = new Map(cards.map(card => [card.id, card])), groups = new Set(cards.map(card => card.group_type))
   try {
     const value = JSON.parse(raw ?? 'null') as CultivationPlan
-    if (value && [120, 125].includes(value.target) && Array.isArray(value.ids) && Array.isArray(value.assumptions)) {
-      const ids = [...new Set(value.ids.filter(id => Number.isInteger(id) && known.has(id)))]
-      const assumptions = value.assumptions.filter(row => row && ids.includes(row.ship_id)
+    if (value && Array.isArray(value.excluded_groups) && Array.isArray(value.assumptions)) {
+      const excluded_groups = [...new Set(value.excluded_groups.filter(id => Number.isInteger(id) && groups.has(id)))]
+      const assumptions = value.assumptions.filter(row => row && known.has(row.ship_id)
         && (row.level === undefined || Number.isInteger(row.level) && row.level >= 1 && row.level <= 125)
-        && (row.extra_exp == null || Number.isSafeInteger(row.extra_exp) && row.extra_exp >= 0)
         && (row.awakened_to == null || [100, 105, 110, 115, 120, 125].includes(row.awakened_to)))
-      return {target: value.target, ids, assumptions: [...new Map(assumptions.map(row => [row.ship_id, row])).values()]}
+        .map(({ship_id, level, awakened_to}) => {
+          const actualLevel = level ?? known.get(ship_id)!.level
+          const inferred = [100, 105, 110, 115, 120, 125].find(value => value >= actualLevel) ?? 125
+          const maximum = Math.min(125, inferred + (actualLevel === inferred ? 5 : 0))
+          return {ship_id, ...(level === undefined ? {} : {level}),
+            ...(awakened_to != null && inferred <= awakened_to && awakened_to <= maximum ? {awakened_to} : {})}
+        }).filter(row => Object.keys(row).length > 1)
+      return {excluded_groups, assumptions: [...new Map(assumptions.map(row => [row.ship_id, row])).values()]}
     }
-  } catch { /* Damaged browser preferences must never change confirmed data. */ }
-  return {target: 120, ids: highestCopies(cards.filter(card => !card.excluded)), assumptions: []}
+  } catch { /* Damaged preferences must never change confirmed data. */ }
+  const highest = new Set(highestCopies(cards))
+  return {excluded_groups: cards.filter(card => highest.has(card.id) && card.excluded && card.group_type).map(card => card.group_type!), assumptions: []}
 }

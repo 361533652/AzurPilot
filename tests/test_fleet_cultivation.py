@@ -25,18 +25,16 @@ class CultivationTests(unittest.TestCase):
         self.assertEqual(rules()['awaken']['120']['SSR'], {'gold': 3000, 'mind': 300, 'mind2': 150})
         result = project([card(level=120)], [1], 125)
         self.assertEqual((result['mind'], result['mind2'], result['gold']), (300, 150, 3000))
-        self.assertEqual(result['ships'][0]['experience_upper'], 1310000)
         ur = card(level=120)
         ur.update(group_type=10517, name='新泽西', rarity='UR', base_rarity='UR')
         result = project([ur], [1], 125)
         self.assertEqual(result['mind2'], 225)
-        self.assertEqual(result['ships'][0]['experience_upper'], 1572000)
 
-    def test_unknown_experience_is_not_zero_and_cap_is_explicit(self):
+    def test_resource_only_calculation_keeps_cap_explicit(self):
         row = project([card(level=120)], [1], 125)['ships'][0]
-        self.assertIsNone(row['experience'])
-        row = project([card(level=120)], [1], 125, [dict(ship_id=1, extra_exp=0, awakened_to=125)])['ships'][0]
-        self.assertEqual(row['experience'], 1310000)
+        self.assertNotIn('experience', row)
+        self.assertNotIn('experience_upper', row)
+        row = project([card(level=120)], [1], 125, [dict(ship_id=1, awakened_to=125)])['ships'][0]
         self.assertEqual((row['mind'], row['mind2'], row['gold']), (0, 0, 0))
         self.assertEqual(row['status'], 'exact')
 
@@ -44,7 +42,7 @@ class CultivationTests(unittest.TestCase):
         cards = [card(level=100)]
         row = project(cards, [1], 120, [dict(ship_id=1, level=119, extra_exp=100)])['ships'][0]
         self.assertEqual((row['current_level'], row['level']), (100, 119))
-        self.assertEqual(row['experience'], 204900)
+        self.assertEqual((row['mind'], row['gold']), (0, 0))
         self.assertEqual(cards[0]['level'], 100)
 
     def test_bad_ids_and_cap_rejected(self):
@@ -63,7 +61,7 @@ class CultivationTests(unittest.TestCase):
         bad['review'] = True
         result = project([bad, card(2, 125)], [1, 2], 125)
         self.assertEqual(result['unknown'], 1)
-        self.assertEqual(result['ships'][1]['experience'], 0)
+        self.assertEqual(result['ships'][1]['gold'], 0)
         self.assertEqual(result['mind'], 0)
 
     def test_unknown_identity_and_stale_rarity_do_not_produce_exact_totals(self):
@@ -74,12 +72,20 @@ class CultivationTests(unittest.TestCase):
             self.assertEqual(result['unknown'], 1)
             self.assertEqual(result['mind'], 0)
 
-    def test_changed_trial_level_does_not_reuse_original_experience(self):
-        value = card(level=100)
-        value['extra_exp'] = 99999
-        result = project([value], [1], 120, [dict(ship_id=1, level=119)])
-        self.assertIsNone(result['ships'][0]['experience'])
-        self.assertEqual(result['ships'][0]['experience_upper'], 205000)
+    def test_experience_does_not_affect_resource_amounts_or_certainty(self):
+        values = []
+        for exp in (None, 0, 99999):
+            value = card(level=119)
+            value['extra_exp'] = exp
+            result = project([value], [1])
+            self.assertNotIn('experience_upper', result)
+            self.assertEqual(result['estimated'], 0)
+            self.assertEqual(result['ships'][0]['status'], 'exact')
+            values.append((result['mind'], result['gold']))
+        self.assertEqual(values, [(0, 0)] * 3)
+        result = project([card(level=110)], [1])
+        self.assertEqual(result['estimated'], 1)
+        self.assertGreater(result['mind'], 0)
 
     def test_confirmed_group_disambiguates_raw_names(self):
         from module.runtime.mind_calculator import find_ships

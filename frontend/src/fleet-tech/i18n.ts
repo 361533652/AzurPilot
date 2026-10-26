@@ -14,7 +14,6 @@ const messages = {
   correct: ["纠正科技记录", "糾正科技紀錄", "Correct technology record", "技術記録を訂正", "纠正科技记录喵"],
   evidence: ["数据依据", "資料依據", "Evidence", "記録の根拠", "数据依据喵"],
   viewShips: ["查看对应舰船", "查看對應艦船", "View current ships", "対応する艦船", "查看对应舰船喵"],
-  cultivate: ["缺120级舰船加入养成计算", "缺120級艦船加入養成計算", "Plan cultivation for missing Lv.120", "Lv.120未達成艦の育成計算", "缺120级舰船加入养成计算喵"],
   shipBonuses: ["舰船科技贡献", "艦船科技貢獻", "Ship technology bonuses", "艦船技術の補正", "舰船科技贡献喵"],
   nationBonuses: ["阵营科技贡献", "陣營科技貢獻", "Faction technology bonuses", "陣営技術の補正", "阵营科技贡献喵"],
   correctionHint: ["纠错会直接修改累计科技。若与当前舰船冲突，请先修正关联舰船再重试。", "糾錯會直接修改累計科技。若與目前艦船衝突，請先修正關聯艦船再重試。", "Corrections change cumulative progress directly. Resolve conflicting current ship records before retrying.", "訂正は累積実績を直接変更します。競合する所持艦船の記録を修正してから再試行してください。", "纠错会直接修改累计科技。若与当前舰船冲突，请先修正关联舰船再重试。喵"],

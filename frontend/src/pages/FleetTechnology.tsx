@@ -86,7 +86,6 @@ export function FleetTechnology() {
     <PageTitle title={tr('nav')} actions={<button className="button secondary" disabled={busy || connection !== 'ready'} onClick={() => void reload()}>{ui('mind.reload')}</button>}/>
     {error && <ErrorBox message={error}/>}
     <section className="ft-summary"><div><strong>{tr('accountSummary')}</strong><p>{tr('confirmed')}：<b>{report.confirmed_points.toLocaleString()} / {catalog.max_points.toLocaleString()}</b></p><p>{milestones.map(key => <span key={key}>{tr(stageLabel[key])}：{report.milestone_counts[key]} / {rows.filter(value => value.technology).length}　</span>)}</p><p>{tr('finished')}：{report.completed}　{tr('unverified')}：{report.unknown_count} · {tr('factionLevel')}：{Object.entries(catalog.nations).map(([id]) => `${tr(`nation.${id}`)} ${report.nation_levels[id] ?? tr('unverified')}`).join(' · ')}</p><small>{tr('accountHint')}</small></div></section>
-    <Link className="button secondary" to="?tab=mind&scope=missing120">{tr('cultivate')}</Link>
     <section className="ft-filters">
       {group('status', ['incomplete', 'unowned', 'missingStar', 'missing120', 'unverified', 'notHeld', 'held'].map(key => [key, tr(key)]))}
       {group('type', types.map(value => [String(value), tr(`type.${value}`)]))}

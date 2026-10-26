@@ -46,7 +46,7 @@ test('import keeps duplicate cards pending until confirmation', async ({page}, i
   expect(new Set(saved.ships.map((row: any) => row.id)).size).toBe(2)
 })
 
-test('cultivation selects duplicate copies independently and trial conditions never change facts', async ({page}, info) => {
+test('automatic cultivation uses the highest copy and editing drafts never change facts', async ({page}, info) => {
   const instance = `plan-${info.testId.replace(/[^a-z0-9]/gi, '').slice(-12)}-${info.retry}`
   await page.goto('/'); await rpc(page, 'instances.create', {name: instance})
   const empty = await rpc(page, 'dock.report', {instance})
@@ -55,23 +55,17 @@ test('cultivation selects duplicate copies independently and trial conditions ne
     {name: '杜威', group_type: 10102, level: 110, rarity: 'R', base_rarity: 'R', extra_exp: 0},
   ]})
   const [first, second] = saved.ships
-  await page.goto(`/#/i/${instance}/task/FleetAnalysis?tab=mind&ships=${first.id},${second.id}`)
-  await expect(page.getByLabel(`选择 杜威 副本 ${first.id}`, {exact: true})).toBeChecked()
-  await expect(page.getByLabel(`选择 杜威 副本 ${second.id}`, {exact: true})).toBeChecked()
-  await page.getByLabel('目标等级', {exact: true}).selectOption('125')
-  await expect(page.getByText(/参与 2 艘/)).toBeVisible()
-  await expect(page.locator('.mind-totals').getByText('心智单元Ⅱ')).toBeVisible()
-  const row = page.locator('tbody tr').filter({has: page.getByLabel(`选择 杜威 副本 ${first.id}`, {exact: true})})
+  await page.goto(`/#/i/${instance}/task/FleetAnalysis?tab=mind`)
+  await expect(page.getByText(/参与 1 艘/)).toBeVisible()
+  await expect(page.locator('tbody tr')).toHaveCount(1)
+  await expect(page.locator('tbody')).toContainText(`杜威 · #${second.id}`)
+  const row = page.locator('tbody tr')
   await row.locator('summary').click()
-  await page.getByLabel(`假设等级 ${first.id}`, {exact: true}).fill('120')
+  await page.getByLabel(`假设等级 ${second.id}`, {exact: true}).fill('119')
   await expect(row.getByText('已启用试算条件', {exact: true})).toBeVisible()
-  await expect(page.getByText(/参与 2 艘/)).toBeVisible()
   const afterTrial = await rpc(page, 'dock.report', {instance})
   expect(afterTrial.revision).toBe(saved.revision)
   expect(afterTrial.ships).toEqual(saved.ships)
-  await page.getByRole('button', {name: '每种选择最高等级一艘', exact: true}).click()
-  await expect(page.getByLabel(`选择 杜威 副本 ${first.id}`, {exact: true})).not.toBeChecked()
-  await expect(page.getByLabel(`选择 杜威 副本 ${second.id}`, {exact: true})).toBeChecked()
   await page.getByRole('tab', {name: '我的舰船', exact: true}).click()
   await page.locator(`a[href$="ship=${first.id}&edit=1"]`).click()
   await page.getByRole('dialog').getByLabel('等级', {exact: true}).fill('112')
