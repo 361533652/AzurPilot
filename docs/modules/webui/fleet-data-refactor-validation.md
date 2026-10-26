@@ -1,6 +1,6 @@
 # 舰船数据重构验证记录
 
-本文是最初重构阶段的历史验证记录。后续已调整内联编辑、二态里程碑、固定觉醒边界，并移除旧接口及逐副本历史证据；现行行为以 [舰船数据](fleet-analysis.md) 为准。下列通过数量只属于当时版本，不代表后续修改已重新通过测试。当前按用户要求不自动运行测试。
+本文是最初重构阶段的历史验证记录。后续已调整内联编辑、二态里程碑、固定觉醒边界，并移除旧接口及逐副本历史证据；现行行为以 [舰船数据](fleet-analysis.md) 为准。下列通过数量只属于当时版本，不代表后续修改已重新通过测试。
 
 日期：2026-10-26。基线为用户本人 deploy 修复后的开发分支。计划见 [固定重构计划](fleet-data-refactor-plan.md)，当前行为见 [舰船数据](fleet-analysis.md)。
 
@@ -50,9 +50,13 @@
 ## 后续复跑
 
 - 前端：在 `frontend/` 执行 `npm test`、`npm run build`。
-- 页面专项：在 `frontend/` 执行 `npm run test:e2e:fleet`，使用 mock 及真实 Python 服务，覆盖 5 个 spec 文件中的 14 个场景。公共 `mock.spec.ts` 的额外 3 个相关场景在本次也已验证。
+- 页面专项：在 `frontend/` 执行 `npm run test:e2e:fleet`，使用 mock 及真实 Python 服务，覆盖 5 个 spec 文件。公共 `mock.spec.ts` 的相关场景另行运行。
 - 后端：使用项目 Python 环境分别对 `test_fleet*.py`、`test_dock*.py`、`test_mind*.py` 做 unittest discovery；养成重点为 `tests.test_fleet_cultivation`，迁移与纠错重点为 `tests.test_fleet_account_progress`。
 - API 参数模型或注册变动后重新运行 `uv run python -m dev_tools.export_api_schema`。
+
+舰队组件测试使用 Vitest、React Testing Library 和按文件启用的 jsdom，实际挂载组件并验证角色、可访问名称、DOM 属性及交互结果，不对序列化 HTML 的大小写、属性顺序或转义格式做断言。异步目录加载、逐副本保存、页签切换和审核请求使用受控 API 响应验证。纯计算规则继续使用 Node 环境单测。
+
+Playwright 舰队专项通过共用的类型化 WebSocket 辅助函数准备数据，按当前 HashRouter 完整路由验证跨页定位。测试等待可见状态或请求完成，不使用固定休眠；旧 JSON 数据和浏览器偏好的兼容场景仍保留。后端继续使用项目现有 unittest 入口，按当前 API 职责、版本冲突及事务结果断言。
 
 ## 验证边界
 
@@ -70,3 +74,16 @@
 最初使用每次请求启动Docker的测试包装器时，两项浏览器断言在加载期间超时；改用独立常驻测试容器后，以上12项完整通过。真实预览后端独立验证无浏览器错误，当前账号225艘参与自动计算。未重建用户正在编辑的预览数据副本。
 
 日志位于开发运行目录 `validation/fleet-data-refactor/auto-cultivation-{unit,build,backend,browser-final}.log`。实际页面截图和检查结果保存在 `runtime-data/visual-preview-20261026/automatic-cultivation*`。
+
+## 2026-10-26 测试更新与复验
+
+舰队表格、页签、底账及舰队信息组件改用 DOM 和交互断言。新增的测试开发依赖保持项目已有 React、Vitest、TypeScript 版本不变，并兼容项目声明的 Node 版本。浏览器夹具共用带 API 类型的 WebSocket 请求，路由断言使用完整哈希路径。
+
+后端专项首轮运行 408 项，发现过期的人工纠错冲突、已移除接口、导入列和错误文案断言。测试现按当前职责验证独立科技事实、显式旧 JSON 导入确认、歧义舰船不计费及事务冲突。另修复实际缺陷：旧 JSON 清除获得或普通舰船满星时，依赖里程碑的否定值被过滤掉；科研等独立 120 级规则保持不变。
+
+- 前端完整单元测试：66 个文件、435 项通过；TypeScript 检查和生产构建通过。
+- 舰队 Playwright 专项：17 项全部通过。使用独立常驻测试容器，避免每个模拟请求启动 Docker 带来的额外等待；未放宽断言超时。
+- 后端修正后复跑 157 项，最后针对剩余断言修正复跑 31 项通过；首轮失败项均已复验通过，新增一项回归。没有将分批结果描述为最终版本的单次全量通过。
+- 舰队浏览器文件单独执行严格 TypeScript 检查通过；前端锁文件下载源检查及本次 Python 文件未定义名称、未使用导入检查通过。
+
+日志位于开发运行目录 `validation/fleet-data-refactor/`：后端为 `new-version-backend{,-rerun,-final}.log`，浏览器为 `modern-fleet-e2e.log`。未操作实际游戏或用户舰船数据。

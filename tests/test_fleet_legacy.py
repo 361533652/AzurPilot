@@ -39,9 +39,16 @@ class FleetLegacyTests(unittest.TestCase):
         self.assertEqual(active['history']['observed']['10104'], 120)
         payload = sqlite_payload(result)
         self.assertEqual(max(row['level'] for row in payload['ships']), 110)
-        self.assertFalse(payload['technology']['10102']['owned'])
+        self.assertEqual(payload['technology']['10102'], dict(owned=False, full_star=False, lv120=False))
         self.assertTrue(payload['technology']['10103']['lv120'])
         self.assertEqual(payload['nations'], {'1': 3})
+
+    def test_incomplete_full_stars_clear_only_dependent_ordinary_level_milestone(self):
+        for gid, lv120 in [('10102', False), ('29901', True)]:
+            with self.subTest(group_type=gid):
+                payload = sqlite_payload({'technology': {'manual': {
+                    gid: dict(level=120, full_star=False)}}})
+                self.assertEqual(payload['technology'][gid], dict(owned=True, full_star=False, lv120=lv120))
 
     def test_explicit_mind_analysis_wins_over_legacy_result_derivation(self):
         original = snapshot()

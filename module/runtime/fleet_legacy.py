@@ -398,11 +398,19 @@ def _milestones(group_type, observed=None, manual=None):
     for key in tech.MILESTONES:
         if key in manual:
             values[key] = manual[key] is True
+    explicit = set(manual) & set(tech.MILESTONES)
     if 'owned' in manual and manual['owned'] is not True:
         values.update(owned=False, full_star=False, lv120=False)
+        explicit.update(tech.MILESTONES)
+    if 'full_star' in manual and manual['full_star'] is not True:
+        info = next(row for row in tech.catalog()['ships'] if row['group_type'] == int(group_type))
+        if info['full_star_rule'] == 'ordinary_level_cap':
+            values['lv120'] = False
+            explicit.add('lv120')
     if values['full_star'] is True or values['lv120'] is True:
         values['owned'] = True
-    return values
+    # Clearing a prerequisite explicitly clears its dependent milestones too.
+    return {key: value for key, value in values.items() if value is True or key in explicit}
 
 
 def sqlite_payload(converted):
@@ -418,7 +426,6 @@ def sqlite_payload(converted):
     technology = {}
     for gid in observed.keys() | manual.keys():
         entry = manual.get(gid, {})
-        values = _milestones(gid, observed.get(gid), entry)
-        technology[gid] = {key: value for key, value in values.items() if value is True or key in entry}
+        technology[gid] = _milestones(gid, observed.get(gid), entry)
     return dict(ships=[{key: value for key, value in row.items() if key in ledger.CARD_FIELDS} for row in rows],
                 technology=technology, nations=copy.deepcopy(options.get('nations', {})))

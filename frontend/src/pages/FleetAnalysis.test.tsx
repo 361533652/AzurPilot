@@ -1,20 +1,48 @@
-import {describe, expect, it, vi} from 'vitest'
-import {renderToStaticMarkup} from 'react-dom/server'
+// @vitest-environment jsdom
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
+import {cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react'
 import {MemoryRouter, Route, Routes} from 'react-router-dom'
+import {api} from '../api/client'
 import {translateUi} from '../i18n'
 import {FleetAnalysis} from './FleetAnalysis'
 
+vi.mock('../api/client', () => ({api: {request: vi.fn()}}))
 vi.mock('../app/context', () => ({useConnection: () => 'ready', useApp: () => ({ui: (key: Parameters<typeof translateUi>[1]) => translateUi('zh-CN', key), instances: [], notify: vi.fn()})}))
 vi.mock('./MindCalculator', () => ({MindCalculator: () => <p>mind content</p>}))
 vi.mock('./FleetTechnology', () => ({FleetTechnology: () => <p>technology content</p>}))
 vi.mock('./FleetLedger', () => ({FleetLedger: () => <p>data content</p>}))
 vi.mock('./ScanUpdate', () => ({ScanUpdate: () => <p>scan content</p>}))
+const tabs = ['data', 'technology', 'mind', 'scan'] as const
+function page(tab: string) {
+  return render(<MemoryRouter initialEntries={[`/i/test/task/FleetAnalysis?tab=${tab}`]}><Routes><Route path="/i/:instance/task/FleetAnalysis" element={<FleetAnalysis/>}/></Routes></MemoryRouter>)
+}
+beforeEach(() => {vi.mocked(api.request).mockReset().mockReturnValue(new Promise(() => {}))})
+afterEach(cleanup)
+
 describe('ship data navigation', () => {
-  it.each(['data', 'technology', 'mind', 'scan'])('mounts only the active %s page', tab => {
-    const html = renderToStaticMarkup(<MemoryRouter initialEntries={[`/i/test/task/FleetAnalysis?tab=${tab}`]}><Routes><Route path="/i/:instance/task/FleetAnalysis" element={<FleetAnalysis/>}/></Routes></MemoryRouter>)
-    expect(html.match(/role="tab"/g)).toHaveLength(4)
-    expect(html.match(/role="tabpanel"/g)).toHaveLength(1)
-    expect(html).toContain(`${tab} content`)
-    for (const other of ['data', 'technology', 'mind', 'scan'].filter(value => value !== tab)) expect(html).not.toContain(`${other} content`)
+  it.each(tabs)('mounts only the active %s page and requests its dock snapshot', tab => {
+    page(tab)
+    expect(screen.getAllByRole('tab')).toHaveLength(4)
+    const panel = screen.getByRole('tabpanel')
+    expect(panel.textContent).toBe(`${tab} content`)
+    const selected = screen.getByRole('tab', {selected: true})
+    expect(panel.getAttribute('aria-labelledby')).toBe(selected.id)
+    for (const other of tabs.filter(value => value !== tab)) expect(screen.queryByText(`${other} content`)).toBeNull()
+    expect(api.request).toHaveBeenCalledExactlyOnceWith('dock.report', {instance: 'test'})
+  })
+
+  it('switches tabs on click and unmounts the previous page', () => {
+    page('data')
+    fireEvent.click(screen.getByRole('tab', {name: translateUi('zh-CN', 'analysis.scanPage')}))
+    expect(screen.getByRole('tabpanel').textContent).toBe('scan content')
+    expect(screen.queryByText('data content')).toBeNull()
+    expect(screen.getByRole('tab', {selected: true}).id).toBe('tab-scan')
+    expect(api.request).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders dock load failures from the request effect', async () => {
+    vi.mocked(api.request).mockRejectedValueOnce(new Error('dock unavailable'))
+    page('data')
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('dock unavailable'))
   })
 })

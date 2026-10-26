@@ -135,16 +135,16 @@ class FleetLedgerTest(unittest.TestCase):
         service.patch('pilot', report['revision'], [FleetTechChange(group_type=10102,
             owned=False, full_star=False)], {'1': 3})
         manual = copy.deepcopy(self.db.load()['technology'])
-        with self.assertRaises(FleetDatabaseConflict):
-            self.edit(dict(name='杜威', group_type=10102, level=125))
-        self.assertEqual(self.cards(), [])
+        self.edit(dict(name='杜威', group_type=10102, level=125))
+        self.assertEqual([row['level'] for row in self.cards()], [125])
         pending = self.scan([dict(name='杜威', group_type=10102, level=120)])
         self.decide([dict(id=item['id'], accept=False) for item in pending['pending_changes']])
         self.assertEqual(self.db.load()['technology'], manual)
         reloaded = service.report('pilot')
         row = next(item for item in reloaded['ships'] if item['group_type'] == 10102)
         self.assertFalse(row['owned'])
-        self.assertEqual(row['current_count'], 0)
+        self.assertEqual(row['current_count'], 1)
+        self.assertEqual(row['current_level'], 125)
         self.assertEqual(reloaded['nation_levels']['1'], 3)
 
     def test_local_legacy_read_stages_without_mutating_ledger_or_source_json(self):

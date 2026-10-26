@@ -1,5 +1,6 @@
 """心智重名群组、原生卡片、人工确认及科技导入的离线回归。"""
 import copy
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -69,11 +70,24 @@ class SameNameTests(unittest.TestCase):
         self.assertEqual(rows, before)
         with tempfile.TemporaryDirectory() as directory:
             configs = ConfigService(fixture(directory))
-            service = MindCalculatorService(configs)
             dock = DockService(configs)
-            dock.patch('testpilot', dock.report('testpilot')['revision'], rows)
-            saved = configs.path('testpilot').read_bytes()
-            self.assertEqual(sum(row['review'] for row in dock.report('testpilot')['ships']), 6)
+            path = configs.path('testpilot')
+            data = json.loads(path.read_text())
+            data['MindCalculatorScan'] = {'MindCalculator': {'Result': {'ships': rows}}}
+            path.write_text(json.dumps(data), encoding='utf-8')
+            saved = path.read_bytes()
+            initial = dock.report('testpilot')
+            self.assertEqual(initial['ships'], [])
+            pending = dock.import_legacy('testpilot', initial['revision'])
+            self.assertEqual(pending['ships'], [])
+            self.assertEqual(len(pending['pending_changes']), 6)
+            dock.review('testpilot', pending['revision'], pending['pending_revision'],
+                        [dict(id=row['id'], accept=True) for row in pending['pending_changes']])
+            report = dock.report('testpilot')
+            self.assertEqual(sum(row['review'] for row in report['ships']), 6)
+            plan = MindCalculatorService(configs).plan('testpilot', report['revision'],
+                [row['id'] for row in report['ships']], 120)
+            self.assertEqual((plan['unknown'], plan['mind'], plan['mind2'], plan['gold']), (6, 0, 0, 0))
             self.assertEqual(configs.path('testpilot').read_bytes(), saved)
 
     def test_qualified_names_keep_identity_through_import_and_dock_edits(self):

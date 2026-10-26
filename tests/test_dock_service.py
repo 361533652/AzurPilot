@@ -217,20 +217,23 @@ class SharedAnalysisTests(unittest.TestCase):
     def test_重载独立保留人工否定且不覆盖底账正向证据(self):
         snapshot = self.scan(120)
         card_id = snapshot['ships'][0]['id']
-        before = self.tech.report('testpilot')
         for field in ('owned', 'full_star', 'lv120'):
             with self.subTest(field=field, target=None), self.assertRaises(ValidationError):
                 FleetTechChange(group_type=10102, **{field: None})
-            with self.subTest(field=field, target=False), self.assertRaises(ApiError) as error:
-                self.tech.patch('testpilot', before['revision'],
-                                [FleetTechChange(group_type=10102, **{field: False})], {})
-            self.assertEqual(error.exception.code, 'CONFLICT')
-            self.assertIn(str(card_id), error.exception.message)
-            self.assertEqual(self.tech.report('testpilot'), before)
-        self.dock.patch('testpilot', snapshot['revision'], [dict(id=card_id, delete=True)])
+            before = self.tech.report('testpilot')
+            restored = self.tech.patch('testpilot', before['revision'],
+                [FleetTechChange(group_type=10102, owned=True, full_star=True, lv120=True)], {})
+            corrected = self.tech.patch('testpilot', restored['revision'],
+                [FleetTechChange(group_type=10102, **{field: False})], {})
+            row = next(row for row in corrected['ships'] if row['group_type'] == 10102)
+            self.assertFalse(row[field])
+            self.assertEqual(self.dock.report('testpilot')['ships'], snapshot['ships'])
+            self.assertEqual(self.tech.report('testpilot'), corrected)
+        self.dock.patch('testpilot', self.dock.report('testpilot')['revision'],
+                        [dict(id=card_id, delete=True)])
         report = self.tech.report('testpilot')
         row = next(row for row in report['ships'] if row['group_type'] == 10102)
-        self.assertTrue(row['lv120'])
+        self.assertFalse(row['lv120'])
         self.assertEqual(row['current_count'], 0)
         corrected = self.tech.patch('testpilot', report['revision'],
                                      [FleetTechChange(group_type=10102, lv120=False)], {})

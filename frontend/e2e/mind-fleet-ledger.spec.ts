@@ -1,19 +1,7 @@
-import {expect, test, type Page} from '@playwright/test'
-
-async function rpc(page: Page, method: string, params: Record<string, unknown>) {
-  return page.evaluate(({method, params}) => new Promise<any>((resolve, reject) => {
-    const socket = new WebSocket(`ws://${location.host}/api/v1/ws`)
-    const timer = setTimeout(() => {socket.close(); reject(new Error('模拟接口超时'))}, 20000)
-    socket.onopen = () => socket.send(JSON.stringify({v: 1, type: 'request', id: 'ledger-test', method, params}))
-    socket.onmessage = event => {
-      const value = JSON.parse(String(event.data))
-      if (value.id !== 'ledger-test') return
-      clearTimeout(timer); socket.close()
-      value.ok ? resolve(value.result) : reject(new Error(value.error.message))
-    }
-    socket.onerror = () => {clearTimeout(timer); reject(new Error('模拟连接失败'))}
-  }), {method, params})
-}
+import {expect, test} from '@playwright/test'
+import {rpc} from './fleet-helpers'
+import type {Parameters} from '../src/api/generated'
+import type {DockReport} from '../src/api/types'
 
 test.beforeEach(async ({page}) => {
   await page.addInitScript(() => {
@@ -50,8 +38,8 @@ test('four flat pages preserve per-copy edits and never start a scan on navigati
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.reload()
   const reloaded = await rpc(page, 'dock.report', {instance})
-  expect(reloaded.ships.find((row: any) => row.id === first.id)).toMatchObject({level: 110, extra_exp: null})
-  expect(reloaded.ships.find((row: any) => row.id === second.id)).toMatchObject({level: 100, extra_exp: 0})
+  expect(reloaded.ships.find(row => row.id === first.id)).toMatchObject({level: 110, extra_exp: null})
+  expect(reloaded.ships.find(row => row.id === second.id)).toMatchObject({level: 100, extra_exp: 0})
   const navigationStart = methods.length
   for (const tab of ['舰队科技', '养成计算', '我的舰船']) {
     await page.getByRole('tab', {name: tab, exact: true}).click()
@@ -68,11 +56,11 @@ test('safe batch excludes removals and unresolved duplicates', async ({page}, in
   const instance = `safe-${info.testId.replace(/[^a-z0-9]/gi, '').slice(-12)}-${info.retry}`
   await page.goto('/'); await rpc(page, 'instances.create', {name: instance}); await page.goto('about:blank')
   const card = (id: number, level: number) => ({id, name: '杜威', level, group_type: 10102, rarity: 'R', base_rarity: 'R', extra_exp: null, review: false, source: 'manual'})
-  const decisions: any[] = []
-  const report: any = {instance, revision: 'a'.repeat(64), ships: [card(10, 100), card(11, 100)], legacy_imported: false, min_level: 1, max_level: 125, updated_at: '', complete: true, review_count: 0, source: 'manual', pending_revision: 'b'.repeat(64), pending_changes: [
-    {id: 'update', kind: 'ship', operation: 'update', ship_id: 10, name: '杜威', before: card(10, 100), after: card(10, 110), candidates: [], milestones: ['owned']},
-    {id: 'remove', kind: 'ship', operation: 'remove', ship_id: 11, name: '杜威', before: card(11, 100), after: null, candidates: []},
-    {id: 'resolve', kind: 'ship', operation: 'resolve', ship_id: null, name: '杜威', before: null, after: card(0, 120), candidates: [card(10, 100), card(11, 100)]},
+  const decisions: Parameters['dock.review']['decisions'][] = []
+  const report: DockReport = {instance, revision: 'a'.repeat(64), ships: [card(10, 100), card(11, 100)], legacy_imported: false, min_level: 1, max_level: 125, updated_at: '', complete: true, review_count: 0, source: 'manual', pending_revision: 'b'.repeat(64), pending_changes: [
+    {id: 'update', kind: 'ship', operation: 'update', ship_id: 10, name: '杜威', before: card(10, 100), after: card(10, 110), candidates: [], group_type: 10102, fields: ['level']},
+    {id: 'remove', kind: 'ship', operation: 'remove', ship_id: 11, name: '杜威', before: card(11, 100), after: null, candidates: [], group_type: 10102, fields: []},
+    {id: 'resolve', kind: 'ship', operation: 'resolve', ship_id: null, name: '杜威', before: null, after: card(0, 120), candidates: [card(10, 100), card(11, 100)], group_type: 10102, fields: ['level']},
   ]}
   await page.routeWebSocket('**/api/v1/ws', socket => {
     const server = socket.connectToServer()
@@ -80,8 +68,9 @@ test('safe batch excludes removals and unresolved duplicates', async ({page}, in
       const request = JSON.parse(String(message))
       if (!['dock.report', 'dock.review'].includes(request.method)) {server.send(message); return}
       if (request.method === 'dock.review') {
-        decisions.push(request.params.decisions)
-        for (const decision of request.params.decisions) report.pending_changes = report.pending_changes.filter((row: any) => row.id !== decision.id)
+        const review = request.params as Parameters['dock.review']
+        decisions.push(review.decisions)
+        for (const decision of review.decisions) report.pending_changes = report.pending_changes.filter(row => row.id !== decision.id)
       }
       socket.send(JSON.stringify({v: 1, type: 'response', id: request.id, ok: true, result: report}))
     })

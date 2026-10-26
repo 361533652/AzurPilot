@@ -99,8 +99,8 @@ class MindCalculatorMockTest(unittest.TestCase):
         self.assertEqual(reloaded['result']['pending_changes'], pending)
         before_review = dispatch(dict(persisted, action='dock.report'))['result']
         self.assertEqual(before_review['ships'][0]['level'], 100)
-        # Accept the card and observed achievements while keeping the existing
-        # manual ownership and nation level by rejecting their separate changes.
+        # Accept the card and converted achievements, including old manual
+        # corrections, while rejecting ownership and nation changes separately.
         decisions = [dict(id=row['id'], accept=row['id'] not in ('technology:10102', 'nation:1'))
                      for row in pending]
         reviewed = dispatch(dict(persisted, action='dock.review', revision=migrated['result']['revision'],
@@ -114,7 +114,9 @@ class MindCalculatorMockTest(unittest.TestCase):
         rows = {row['group_type']: row for row in tech['ships']}
         self.assertFalse(rows[10102]['owned'])
         self.assertEqual(rows[10102]['current_level'], 125)
-        self.assertTrue(rows[10103]['lv120'])
+        self.assertTrue(rows[10103]['owned'])
+        self.assertFalse(rows[10103]['full_star'])
+        self.assertFalse(rows[10103]['lv120'])
         self.assertTrue(rows[10104]['lv120'])
         self.assertEqual(rows[10103]['current_count'], 0)
         self.assertEqual(tech['nation_levels']['1'], 1)

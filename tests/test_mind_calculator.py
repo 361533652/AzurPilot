@@ -10,15 +10,14 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 from PIL import Image
-from openpyxl import Workbook, load_workbook
+from openpyxl import Workbook
 
 from module.api.config_service import ConfigService
 from module.api.dock_service import DockService
-from module.runtime.fleet_database import FleetDatabase
+from module.runtime.fleet_database import FleetDatabase, FleetDatabaseConflict
 from module.runtime import dock_data, mind_calculator
 from module.api.mind_calculator_service import MindCalculatorService, import_ships
 from module.api.protocol import ApiError, MindShip
-from module.api.router import Router
 from module.runtime.mind_calculator import catalog, highest_ships, recognize
 from module.runtime.mind_recognition import Card, ScanMerger, color_rows, estimate_scroll, level_vote, recognize_cards
 from tests.test_api import fixture
@@ -364,8 +363,13 @@ class ServiceTests(unittest.TestCase):
         output = io.BytesIO()
         book.save(output)
         rows = import_ships('原工具.xlsx', encoded(output.getvalue()))
-        self.assertTrue(rows[0]['review'])
-        self.assertEqual(rows[1]['name'], '小企业')
+        # Historical status and excluded-name columns are not current import fields.
+        self.assertFalse(rows[0]['review'])
+        self.assertEqual(len(rows), 1)
+        sheet['F2'], sheet['F3'] = '需核对', '是'
+        output = io.BytesIO()
+        book.save(output)
+        self.assertTrue(import_ships('原工具.xlsx', encoded(output.getvalue()))[0]['review'])
 
     def test_reject_invalid_import_values(self):
         with self.assertRaises(ApiError):
@@ -417,8 +421,9 @@ class ServiceTests(unittest.TestCase):
                         scanner._scan_metadata = dict(reached_bottom=True, physical_count=1)
                     scanner._scan_pages = Mock(side_effect=collect)
                     if changed:
-                        with self.assertRaisesRegex(MindCalculatorScanError, '舰船底账已更新'):
+                        with self.assertRaises(MindCalculatorScanError) as error:
                             scanner.run()
+                        self.assertIsInstance(error.exception.__cause__, FleetDatabaseConflict)
                         scanner._prune_scan_evidence.assert_not_called()
                     else:
                         scanner.run()

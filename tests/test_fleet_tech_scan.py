@@ -8,14 +8,14 @@ from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
 import numpy as np
+from pydantic import ValidationError
 from PIL import Image
 
 from module.api.config_service import ConfigService
 from module.api.fleet_tech_service import FleetTechService
-from module.api.protocol import ApiError, FleetTechChange
+from module.api.protocol import FleetTechChange
 from module.config.deep import deep_set
 from module.runtime.fleet_database import FleetDatabase
-from module.runtime import fleet_tech as tech
 from module.runtime.fleet_legacy import _merge_scan_history
 from module.runtime.fleet_tech_identity import FleetTechIdentity, surface_icon
 from module.runtime.mind_recognition import Card, ScanMerger, aircraft_icon, color_rows, recognize_cards
@@ -121,14 +121,19 @@ class FleetTechRecordTests(unittest.TestCase):
         second = merge(first, list(reversed(ships)))
         self.assertEqual(second['current'], {'10224': 99, '30702': 120, '30507': 120})
 
-    def test_shortcut_patch_rejects_mixed_or_missing_target_without_partial_save(self):
+    def test_router_rejects_obsolete_shortcut_fields_without_partial_save(self):
+        from module.api.router import Router
         with tempfile.TemporaryDirectory() as directory:
             configs = ConfigService(fixture(directory))
-            service = FleetTechService(configs)
+            router = Router(configs, SimpleNamespace())
+            initial = router.dispatch('fleetTech.report', {'instance': 'testpilot'})
             before = configs.path('testpilot').read_bytes()
             for values in [dict(toggle='owned'), dict(toggle='owned', target=True, level=100), dict(target=True)]:
-                with self.subTest(values=values), self.assertRaises(ApiError):
-                    service.patch('testpilot', service.report('testpilot')['revision'], [FleetTechChange(group_type=10102, **values)], {})
+                with self.subTest(values=values), self.assertRaises(ValidationError) as error:
+                    router.dispatch('fleetTech.patch', dict(instance='testpilot', revision=initial['revision'],
+                        changes=[dict(group_type=10102, **values)]))
+                self.assertEqual({item['type'] for item in error.exception.errors()}, {'extra_forbidden'})
+                self.assertEqual(router.dispatch('fleetTech.report', {'instance': 'testpilot'}), initial)
                 self.assertEqual(configs.path('testpilot').read_bytes(), before)
 
 

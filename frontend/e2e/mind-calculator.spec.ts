@@ -1,19 +1,9 @@
 import {expect, test, type Page} from '@playwright/test'
+import {fleetAnalysisHash, rpc} from './fleet-helpers'
+import type {Parameters} from '../src/api/generated'
 
-async function rpc(page: Page, method: string, params: object) {
-  return page.evaluate(({method, params}) => new Promise<any>((resolve, reject) => {
-    const socket = new WebSocket(`ws://${location.host}/api/v1/ws`)
-    const timer = setTimeout(() => {socket.close(); reject(new Error(`接口超时 ${method}`))}, 30000)
-    socket.onopen = () => socket.send(JSON.stringify({v: 1, type: 'request', id: 'cultivation-test', method, params}))
-    socket.onmessage = event => {
-      const response = JSON.parse(String(event.data))
-      if (response.id !== 'cultivation-test') return
-      clearTimeout(timer); socket.close(); response.ok ? resolve(response.result) : reject(new Error(response.error.message))
-    }
-    socket.onerror = () => {clearTimeout(timer); reject(new Error('模拟连接失败'))}
-  }), {method, params})
-}
-async function seed(page: Page, name: string, ships: object[]) {
+
+async function seed(page: Page, name: string, ships: Parameters['dock.patch']['changes']) {
   await page.goto('/')
   await rpc(page, 'instances.create', {name})
   await page.goto('about:blank')
@@ -21,7 +11,7 @@ async function seed(page: Page, name: string, ships: object[]) {
   const empty = await rpc(page, 'dock.report', {instance: name})
   return rpc(page, 'dock.patch', {instance: name, revision: empty.revision, changes: ships})
 }
-const ship = (level: number) => ({name: '企业', group_type: 10706, level, rarity: 'SSR', base_rarity: 'SSR', extra_exp: null})
+const ship = (level: number): Parameters['dock.patch']['changes'][number] => ({name: '企业', group_type: 10706, level, rarity: 'SSR', base_rarity: 'SSR', extra_exp: null})
 test.beforeEach(async ({page}) => {
   await page.addInitScript(() => {localStorage.setItem('azurpilot.theme', 'light'); localStorage.setItem('azurpilot.language', 'zh-CN')})
 })
@@ -33,7 +23,7 @@ test('cultivation automatically selects the highest copy and only shows mind and
   await page.goto(`/#/i/${instance}/task/FleetAnalysis?tab=mind`)
   await expect(page.getByText('计入 1 种舰船', {exact: false})).toBeVisible()
   await expect(page.locator('tbody tr')).toHaveCount(1)
-  await expect(page.getByRole('link', {name: '企业', exact: true})).toHaveAttribute('href', `?tab=data&ship=${saved.ships[0].id}`)
+  await expect(page.getByRole('link', {name: '企业', exact: true})).toHaveAttribute('href', fleetAnalysisHash(instance, 'data', saved.ships[0].id))
   await expect(page.locator('.cultivation-totals')).toContainText('心智单元')
   await expect(page.locator('.cultivation-totals')).toContainText('物资')
   await expect(page.getByRole('button', {name: '选择全部舰船', exact: true})).toHaveCount(0)
@@ -80,20 +70,21 @@ test('current level120 copies suppress duplicates but only explicit merge preser
   await page.goto(`/#/i/${instance}/task/FleetAnalysis?tab=mind`)
   await expect(page.getByText('计入 1 种舰船', {exact: false})).toBeVisible()
   saved = await rpc(page, 'dock.patch', {instance, revision: saved.revision, changes: [ship(110)]})
-  await expect(page.getByRole('link', {name: '企业', exact: true})).toHaveAttribute('href', `?tab=data&ship=${saved.ships[1].id}`)
+  await expect(page.getByRole('link', {name: '企业', exact: true})).toHaveAttribute('href', fleetAnalysisHash(instance, 'data', saved.ships[1].id))
   await expect(page.locator('tbody tr')).toHaveCount(1)
   saved = await rpc(page, 'dock.patch', {instance, revision: saved.revision, changes: [ship(120)]})
   await expect(page.getByText('计入 0 种舰船', {exact: false})).toBeVisible()
   saved = await rpc(page, 'dock.patch', {instance, revision: saved.revision, changes: [{id: saved.ships[2].id, delete: true}]})
   await page.reload()
   await expect(page.getByText('计入 1 种舰船', {exact: false})).toBeVisible()
-  await expect(page.getByRole('link', {name: '企业', exact: true})).toHaveAttribute('href', `?tab=data&ship=${saved.ships[1].id}`)
+  await expect(page.getByRole('link', {name: '企业', exact: true})).toHaveAttribute('href', fleetAnalysisHash(instance, 'data', saved.ships[1].id))
   saved = await rpc(page, 'dock.patch', {instance, revision: saved.revision, changes: [ship(120)]})
-  const completed = saved.ships.find((card: any) => card.level === 120)
+  const completed = saved.ships.find(card => card.level === 120)
+  expect(completed).toBeDefined()
   const tech = await rpc(page, 'fleetTech.report', {instance})
   await rpc(page, 'fleetTech.mergeShips', {instance, revision: tech.revision})
   const merged = await rpc(page, 'dock.report', {instance})
-  await rpc(page, 'dock.patch', {instance, revision: merged.revision, changes: [{id: completed.id, delete: true}]})
+  await rpc(page, 'dock.patch', {instance, revision: merged.revision, changes: [{id: completed!.id, delete: true}]})
   await page.reload()
   await expect(page.getByText('计入 0 种舰船', {exact: false})).toBeVisible()
   await expect(page.getByText('当前没有需要计算120级养成费用的舰船。', {exact: true})).toBeVisible()
@@ -108,7 +99,7 @@ test('group exclusions follow the highest copy and remain isolated between insta
   await page.getByLabel('参与计算 企业', {exact: true}).uncheck()
   await expect(page.getByText('计入 0 种舰船', {exact: false})).toBeVisible()
   const updated = await rpc(page, 'dock.patch', {instance, revision: saved.revision, changes: [ship(110)]})
-  await expect(page.getByRole('link', {name: '企业', exact: true})).toHaveAttribute('href', `?tab=data&ship=${updated.ships[1].id}`)
+  await expect(page.getByRole('link', {name: '企业', exact: true})).toHaveAttribute('href', fleetAnalysisHash(instance, 'data', updated.ships[1].id))
   await expect(page.getByLabel('参与计算 企业', {exact: true})).not.toBeChecked()
   await page.goto(`/#/i/${other}/task/FleetAnalysis?tab=mind`)
   await expect(page.getByText('计入 1 种舰船', {exact: false})).toBeVisible()

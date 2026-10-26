@@ -1,14 +1,7 @@
-import {expect, test, type Page} from '@playwright/test'
+import {expect, test} from '@playwright/test'
+import {rpc} from './fleet-helpers'
 
-async function rpc(page: Page, method: string, params: Record<string, unknown>) {
-  return page.evaluate(({method, params}) => new Promise<any>((resolve, reject) => {
-    const socket = new WebSocket(`ws://${location.host}/api/v1/ws`)
-    const timer = setTimeout(() => {socket.close(); reject(new Error('RPC timeout'))}, 30000)
-    socket.onopen = () => socket.send(JSON.stringify({v: 1, type: 'request', id: 'tech-test', method, params}))
-    socket.onmessage = event => {const value = JSON.parse(String(event.data)); if (value.id === 'tech-test') {clearTimeout(timer); socket.close(); value.ok ? resolve(value.result) : reject(new Error(value.error.message))}}
-    socket.onerror = () => {clearTimeout(timer); reject(new Error('RPC connection failed'))}
-  }), {method, params})
-}
+
 test.beforeEach(async ({page}) => {
   await page.addInitScript(() => {localStorage.setItem('azurpilot.theme', 'light'); localStorage.setItem('azurpilot.language', 'zh-CN')})
 })
@@ -25,13 +18,13 @@ test('inline milestones preview dependency changes and save together independent
   await milestone('Lv.120', '未完成').click()
   for (const stage of ['获得', '满星', 'Lv.120']) await expect(milestone(stage, '已完成')).toHaveAttribute('aria-pressed', 'true')
   const before = await rpc(page, 'fleetTech.report', {instance})
-  expect(before.ships.find((ship: any) => ship.group_type === 10102)).toMatchObject({owned: false, full_star: false, lv120: false})
+  expect(before.ships.find(ship => ship.group_type === 10102)).toMatchObject({owned: false, full_star: false, lv120: false})
   await expect(page.getByRole('button', {name: '合并舰船数据', exact: true})).toBeDisabled()
   await page.getByRole('button', {name: '保存', exact: true}).click()
   await expect(page.locator('.ft-modified')).toHaveCount(0)
   await expect(page.getByRole('button', {name: '保存', exact: true})).toBeDisabled()
   const saved = await rpc(page, 'fleetTech.report', {instance})
-  expect(saved.ships.find((ship: any) => ship.group_type === 10102)).toMatchObject({owned: true, full_star: true, lv120: true, current_count: 0, points: 15})
+  expect(saved.ships.find(ship => ship.group_type === 10102)).toMatchObject({owned: true, full_star: true, lv120: true, current_count: 0, points: 15})
   await milestone('满星', '已完成').click()
   await expect(milestone('Lv.120', '未完成')).toHaveAttribute('aria-pressed', 'false')
   await expect(milestone('获得', '已完成')).toHaveAttribute('aria-pressed', 'true')
@@ -45,7 +38,7 @@ test('inline milestones preview dependency changes and save together independent
   await page.reload()
   await expect(milestone('Lv.120', '未完成')).toBeVisible()
   const cleared = await rpc(page, 'fleetTech.report', {instance})
-  expect(cleared.ships.find((ship: any) => ship.group_type === 10102)).toMatchObject({owned: false, full_star: false, lv120: false, points: 0})
+  expect(cleared.ships.find(ship => ship.group_type === 10102)).toMatchObject({owned: false, full_star: false, lv120: false, points: 0})
 })
 
 test('manual milestones survive current copies until explicit merge and remain after retirement', async ({page}, info) => {
@@ -69,7 +62,7 @@ test('manual milestones survive current copies until explicit merge and remain a
   await page.reload()
   await expect(milestone('Lv.120', '未完成')).toBeVisible()
   const corrected = await rpc(page, 'fleetTech.report', {instance})
-  expect(corrected.ships.find((ship: any) => ship.group_type === 10102)).toMatchObject({owned: false, full_star: false, lv120: false, current_count: 1, current_level: 120})
+  expect(corrected.ships.find(ship => ship.group_type === 10102)).toMatchObject({owned: false, full_star: false, lv120: false, current_count: 1, current_level: 120})
   await page.getByRole('button', {name: '合并舰船数据', exact: true}).click()
   await expect(milestone('Lv.120', '已完成')).toBeVisible()
   // Reload proves the mock persisted the explicit merge, rather than only returning a preview.
@@ -79,7 +72,7 @@ test('manual milestones survive current copies until explicit merge and remain a
   await rpc(page, 'dock.patch', {instance, revision: current.revision, changes: [{id: card.id, delete: true}]})
   await page.reload()
   const retired = await rpc(page, 'fleetTech.report', {instance})
-  expect(retired.ships.find((ship: any) => ship.group_type === 10102)).toMatchObject({owned: true, full_star: true, lv120: true, current_count: 0, points: 15})
+  expect(retired.ships.find(ship => ship.group_type === 10102)).toMatchObject({owned: true, full_star: true, lv120: true, current_count: 0, points: 15})
   await page.getByRole('button', {name: '记录编辑模式', exact: true}).click()
   await milestone('Lv.120', '已完成').click()
   await expect(milestone('获得', '已完成')).toBeVisible()
@@ -90,5 +83,5 @@ test('manual milestones survive current copies until explicit merge and remain a
   await page.getByRole('button', {name: '合并舰船数据', exact: true}).click()
   await page.reload()
   const after = await rpc(page, 'fleetTech.report', {instance})
-  expect(after.ships.find((ship: any) => ship.group_type === 10102)).toMatchObject({owned: true, full_star: true, lv120: false, points: 10})
+  expect(after.ships.find(ship => ship.group_type === 10102)).toMatchObject({owned: true, full_star: true, lv120: false, points: 10})
 })

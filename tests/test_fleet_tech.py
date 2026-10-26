@@ -99,7 +99,7 @@ class FleetTechTests(unittest.TestCase):
             with self.assertRaises(ValidationError):
                 FleetTechPatchParams.model_validate({'instance': 'testpilot', 'revision': 'a' * 64, 'nations': {'1': True}})
 
-    def test_saved_scan_range_is_preserved(self):
+    def test_saved_scan_range_belongs_to_dock_report(self):
         with tempfile.TemporaryDirectory() as directory:
             root = fixture(directory)
             path = root / 'config/testpilot.json'
@@ -107,8 +107,13 @@ class FleetTechTests(unittest.TestCase):
             data['DockScan']['Dock']['MinLevel'] = 90
             data['DockScan']['Dock']['MaxLevel'] = 120
             path.write_text(json.dumps(data), encoding='utf-8')
-            result = FleetTechService(ConfigService(root)).report('testpilot')
+            from module.api.dock_service import DockService
+            configs = ConfigService(root)
+            result = DockService(configs).report('testpilot')
             self.assertEqual((result['min_level'], result['max_level']), (90, 120))
+            technology = FleetTechService(configs).report('testpilot')
+            self.assertNotIn('min_level', technology)
+            self.assertNotIn('max_level', technology)
             self.assertEqual((ScanPolicy().min_level, ScanPolicy().max_level), (95, 125))
 
     def test_router_contract_and_read_only_guards(self):

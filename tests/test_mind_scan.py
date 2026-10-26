@@ -17,7 +17,7 @@ import numpy as np
 from module.api.app import create_app
 from module.api.config_service import ConfigService
 from module.api.mind_calculator_service import MindCalculatorService
-from module.api.protocol import ApiError, ConfigChange
+from module.api.protocol import ApiError
 from module.runtime.mind_recognition import Card, ScanMerger, ScanPolicy, _match_name, normalize_screenshot, recognize_cards
 from tests.test_api import fixture
 
@@ -310,19 +310,19 @@ class RangeTests(unittest.TestCase):
             with self.assertRaises(ValueError): ScanPolicy(low, high)
 
     def test_range_config_defaults_and_api_persistence(self):
+        from module.api.dock_service import DockService
         with tempfile.TemporaryDirectory() as temp:
             configs = ConfigService(fixture(temp))
-            service = MindCalculatorService(configs)
+            service = DockService(configs)
             report = service.report('testpilot')
-            configs.patch('testpilot', configs.get('testpilot')['revision'], [
-                ConfigChange(path='DockScan.Dock.MinLevel', value=90),
-                ConfigChange(path='DockScan.Dock.MaxLevel', value=115),
-            ])
-            report = service.report('testpilot')
-            with self.assertRaises(ApiError):
-                configs.patch('testpilot', configs.get('testpilot')['revision'], [
-                    ConfigChange(path='DockScan.Dock.MaxLevel', value=126),
-                ])
+            self.assertEqual((report['min_level'], report['max_level']), (1, 125))
+            report = service.configure('testpilot', 90, 115)
+            self.assertEqual((report['min_level'], report['max_level']), (90, 115))
+            self.assertEqual(DockService(ConfigService(configs.root)).report('testpilot'), report)
+            with self.assertRaises(ApiError) as error:
+                service.configure('testpilot', 90, 126)
+            self.assertEqual(error.exception.code, 'INVALID_PARAMS')
+            self.assertEqual(service.report('testpilot'), report)
 
 
 class NativeLevelTests(unittest.TestCase):
