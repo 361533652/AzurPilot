@@ -113,13 +113,15 @@ class AccountProgressTests(unittest.TestCase):
         self.patch_tech([dict(group_type=10102, owned=False, full_star=False, lv120=True)])
         self.assertEqual([self.row()[key] for key in tech.MILESTONES], [False, False, False])
 
-    def test_manual_final_milestones_survive_reload_and_independent_cancellations(self):
+    def test_manual_final_milestones_survive_reload_and_dependency_cancellations(self):
         for mask in range(8):
             values = {key: bool(mask & (1 << index)) for index, key in enumerate(tech.MILESTONES)}
             with self.subTest(values=values):
                 self.patch_tech([dict(group_type=10102, **values)])
                 if not values['owned']:
                     values.update(full_star=False, lv120=False)
+                elif not values['full_star']:
+                    values['lv120'] = False
                 self.assertEqual({key: self.row()[key] for key in tech.MILESTONES}, values)
                 report = tech.report(self.record())
                 self.assertEqual(report['milestone_counts'], {key: int(value) for key, value in values.items()})
@@ -132,6 +134,7 @@ class AccountProgressTests(unittest.TestCase):
                     self.patch_tech([dict(group_type=10102, **{key: False})])
                     self.assertEqual({field: self.row()[field] for field in tech.MILESTONES},
                                      {field: False for field in tech.MILESTONES} if key == 'owned'
+                                     else dict(values, full_star=False, lv120=False) if key == 'full_star'
                                      else dict(values, **{key: False}))
 
     def test_card_full_star_changes_do_not_override_independent_correction(self):

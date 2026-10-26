@@ -40,5 +40,7 @@ describe('explicit correction dependencies', () => {
     expect(changeMilestone({group_type: 1, full_star: true, lv120: true}, 'owned', false)).toEqual({group_type: 1, owned: false, full_star: false, lv120: false})
     expect(changeMilestone({group_type: 1, owned: false}, 'lv120', true, 'ordinary_level_cap')).toEqual({group_type: 1, owned: true, full_star: true, lv120: true})
     expect(changeMilestone({group_type: 1, owned: false}, 'lv120', true, 'explicit_breakthrough')).toEqual({group_type: 1, owned: true, lv120: true})
+    expect(changeMilestone({group_type: 1, owned: true, lv120: true}, 'full_star', false, 'ordinary_level_cap')).toEqual({group_type: 1, owned: true, full_star: false, lv120: false})
+    expect(changeMilestone({group_type: 1, owned: true, lv120: true}, 'full_star', false, 'explicit_breakthrough')).toEqual({group_type: 1, owned: true, full_star: false, lv120: true})
   })
 })
