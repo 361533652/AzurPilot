@@ -9,6 +9,7 @@ import {FleetTechnology} from './FleetTechnology'
 import {FleetLedger} from './FleetLedger'
 import {ScanUpdate} from './ScanUpdate'
 import '../mind/mind.css'
+import './fleet-analysis.css'
 
 export function FleetAnalysis() {
   const {instance = ''} = useParams(), [params, setParams] = useSearchParams()
@@ -32,7 +33,7 @@ export function FleetAnalysis() {
   }, [instance, connection])
   const onBusy = (value: boolean) => {epoch.current++; writing.current = value; setBusy(value)}
   const onReport = (value: DockReport) => {epoch.current++; setReport(value)}
-  return <div className="mind-calculator"><PageTitle title={ui('analysis.title')}/>{error && <ErrorBox message={error}/>}
+  return <div className="mind-calculator fleet-analysis"><PageTitle title={ui('analysis.title')}/>{error && <ErrorBox message={error}/>}
     <div className="ft-chips" role="tablist" aria-label={ui('analysis.title')}>{(['data', 'technology', 'mind', 'scan'] as const).map(value => <button key={value} role="tab" disabled={busy} aria-selected={tab === value} aria-controls={`analysis-${value}`} id={`tab-${value}`} onClick={() => setParams({tab: value}, {replace: true})}>{ui(value === 'scan' ? 'analysis.scanPage' : `analysis.${value}`)}</button>)}</div>
     <section role="tabpanel" id={`analysis-${tab}`} aria-labelledby={`tab-${tab}`}>
       {tab === 'data' && <FleetLedger key={instance} instance={instance} report={report} locked={busy} onReport={onReport} onBusy={onBusy} onDirty={() => {}}/>}
