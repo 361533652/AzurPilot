@@ -1,5 +1,11 @@
 import type {Language} from '../i18n'
 
+// Wiki 图鉴阵营顺序；未收录的联动阵营保留在列表末尾。
+export const fleetFactionOrder: readonly number[] = [
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 97, 98, 96,
+  101, 102, 103, 104, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115,
+]
+
 const messages = {
   accountSummary: ["账号累计科技进度", "帳號累計科技進度", "Cumulative account technology", "累積艦隊技術", "账号累计科技进度喵"],
   accountHint: ["仅统计已确认里程碑；退役保留累计进度。未核实不等于未完成。", "僅統計已確認里程碑；退役保留累計進度。未核實不等於未完成。", "Only confirmed milestones count. Retirement preserves progress. Unverified does not mean incomplete.", "確認済みの実績のみ集計。退役後も実績は保持され、未確認は未達成とは異なります。", "仅统计已确认里程碑；退役保留累计进度。未核实不等于未完成。喵"],

@@ -37,7 +37,8 @@ def catalog():
                  else '幼体' if row.get('is_child') else '方案' if row['group_type'] // 100 % 100 == 99 else '')
         info = dict(name=name, raw_name=name, rarity=rarity, base_rarity=rarity, group_type=row['group_type'],
                     base_name=base['name']['cn'].strip() if row['is_retrofit'] else name,
-                    group=group, type=row['type_name'], nation=base.get('nation_name', str(base['nationality'])))
+                    group=group, type=row['type_name'], nationality=base['nationality'],
+                    nation=base.get('nation_name', str(base['nationality'])))
         if row['is_retrofit']:
             info.update(group='改造', rarity=RARITIES[max(0, RARITIES.index(rarity) - 1)])
         entries[row['group_type'], name] = info
