@@ -45,11 +45,11 @@
 .ft-point-value { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 27px; }
 .ft-mark { font-size: 12px; font-weight: 700; color: #718091; }
 .ft-state-finished .ft-mark, .ft-marked .ft-mark { color: #13775f; }
-.ft-point select { display: block; margin: 4px auto 0; width: 90px; min-height: 28px; padding: 4px; font-size: 12px; }
-.ft-bonus-button { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 28px; border: 0; padding: 2px; background: transparent; color: #263746; }
-.fleet-technology .ft-bonus-button:disabled { opacity: 1; color: inherit; }
-.ft-bonus-button:not(:disabled) { cursor: pointer; border-radius: 4px; }
-.ft-bonus-button:not(:disabled):hover { outline: 1px solid #3385c6; outline-offset: 2px; }
+.ft-table-wrap td.ft-point, .ft-table-wrap td.ft-unlock { padding: 0; }
+.ft-milestone-button { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 43px; border: 0; padding: 7px 9px; background: transparent; color: inherit; }
+.fleet-technology .ft-milestone-button:disabled { opacity: 1; color: inherit; }
+.ft-milestone-button:not(:disabled) { cursor: pointer; border-radius: 4px; }
+.ft-milestone-button:not(:disabled):hover { outline: 1px solid #3385c6; outline-offset: -2px; }
 .ft-table-wrap .ft-modified td:first-child { box-shadow: inset 3px 0 #d69d22; }
 .ft-table-wrap .ft-target { outline: 2px solid #1466c7; outline-offset: -2px; }
 .ft-bonuses { padding: 16px; background: #fff; border: 1px solid var(--ft-line); }

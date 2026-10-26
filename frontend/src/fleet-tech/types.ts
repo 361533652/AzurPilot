@@ -1,5 +1,5 @@
 export interface Technology {pt_get: number; pt_upgrage: number; pt_level: number; max_star: number; add_get_shiptype: number[]; add_get_attr: number; add_get_value: number; add_level_shiptype: number[]; add_level_attr: number; add_level_value: number}
-export interface Ship {group_type: number; code: number; handbook_type: number; blueprint: boolean; name: string; names: Record<string, string | null>; nationality: number; rarity: string; type: number; variant?: 'child' | 'mu' | ''; technology: Technology | null}
+export interface Ship {group_type: number; code: number; handbook_type: number; blueprint: boolean; full_star_rule: 'ordinary_level_cap' | 'explicit_breakthrough'; name: string; names: Record<string, string | null>; nationality: number; rarity: string; type: number; variant?: 'child' | 'mu' | ''; technology: Technology | null}
 export interface Catalog {ships: Ship[]; nations: Record<string, [number[], number, number][][]>; updated_at: string; source_commit: string; max_points: number; nation_points: Record<string, number>}
 export type Milestone = 'owned' | 'full_star' | 'lv120'
 export type State = boolean
@@ -56,9 +56,10 @@ export function matches(row: Row, filters: Record<string, string[]>, query: stri
   }
   return true
 }
-/** Mirror the server's milestone dependency rules in the explicit correction form. */
-export function changeMilestone(change: Change, key: Milestone, value: State): Change {
-  if (key === 'owned' && value !== true) return {...change, owned: value, full_star: value, lv120: value}
-  if (key !== 'owned' && value === true) return {...change, [key]: value, owned: true}
-  return {...change, [key]: value}
+/** Completing a milestone fills its prerequisites; cancelling changes only itself. */
+export function changeMilestone(change: Change, key: Milestone, value: State, fullStarRule?: Ship['full_star_rule']): Change {
+  const next = {...change, [key]: value}
+  if (value && key !== 'owned') next.owned = true
+  if (value && key === 'lv120' && fullStarRule === 'ordinary_level_cap') next.full_star = true
+  return next
 }

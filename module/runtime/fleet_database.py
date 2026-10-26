@@ -441,10 +441,6 @@ class FleetDatabase:
             if key in values and type(values[key]) is not bool:
                 raise ValueError('科技里程碑必须为布尔值')
             values.setdefault(key, False)
-        if values.get('full_star') is True or values.get('lv120') is True:
-            values['owned'] = True
-        elif values.get('owned') is False:
-            values.update(full_star=False, lv120=False)
         connection.execute('INSERT INTO technology_progress VALUES (?, ?, ?, ?, ?, ?) '
                            'ON CONFLICT(group_type) DO UPDATE SET owned=excluded.owned, '
                            'full_star=excluded.full_star, lv120=excluded.lv120, source=excluded.source, '
@@ -488,7 +484,7 @@ class FleetDatabase:
             record = dock_data.technology_record(self._load(connection))
             if tech.revision(record) != expected_revision:
                 raise FleetDatabaseConflict('科技记录已更新，请重新载入后编辑')
-            known = {row['group_type'] for row in tech.catalog()['ships']}
+            known = {row['group_type']: row for row in tech.catalog()['ships']}
             seen = set()
             for change in changes:
                 gid = change['group_type']
@@ -499,12 +495,13 @@ class FleetDatabase:
                     raise ValueError('只允许编辑科技里程碑；等级请在我的舰船维护')
                 values = dict(record['progress'].get(str(gid), {}))
                 values.update({key: change[key] for key in tech.MILESTONES if key in change})
-                if 'owned' in change and change['owned'] is not True:
-                    if any(change.get(key) is True for key in ('full_star', 'lv120')):
-                        raise ValueError('未获取不能同时设置已完成状态')
-                    values.update(full_star=change['owned'], lv120=change['owned'])
-                elif any(values.get(key) is True for key in ('full_star', 'lv120')):
+                # Enabling a milestone fills omitted prerequisites. Explicit
+                # final values preserve later clicks that cancel just one bit.
+                if 'owned' not in change and any(change.get(key) is True for key in ('full_star', 'lv120')):
                     values['owned'] = True
+                if ('full_star' not in change and change.get('lv120') is True
+                        and known[gid]['full_star_rule'] == 'ordinary_level_cap'):
+                    values['full_star'] = True
                 self._set_progress(connection, gid, values, source='manual correction')
             if changes:
                 connection.execute('UPDATE fleet_info SET technology_initialized=1 WHERE id=1')

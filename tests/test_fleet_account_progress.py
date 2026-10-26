@@ -93,9 +93,43 @@ class AccountProgressTests(unittest.TestCase):
         self.database.patch_cards([dict(id=row['id'], full_star=True) for row in cards], self.revision())
         for gid in (29901, 970101, 10517):
             self.assertFalse(self.row(gid)['full_star'])
+        self.patch_tech([dict(group_type=gid, lv120=True) for gid in (29901, 970101, 10517)])
+        for gid in (29901, 970101, 10517):
+            self.assertFalse(self.row(gid)['full_star'])
         self.patch_tech([dict(group_type=gid, full_star=True) for gid in (29901, 970101, 10517)])
         for gid in (29901, 970101, 10517):
             self.assertTrue(self.row(gid)['full_star'])
+
+    def test_manual_positive_milestones_fill_only_omitted_prerequisites(self):
+        self.patch_tech([dict(group_type=10102, full_star=True)])
+        self.assertEqual([self.row()[key] for key in tech.MILESTONES], [True, True, False])
+        self.patch_tech([dict(group_type=10102, full_star=False, owned=False)])
+        self.patch_tech([dict(group_type=10102, lv120=True)])
+        self.assertEqual([self.row()[key] for key in tech.MILESTONES], [True, True, True])
+        self.patch_tech([dict(group_type=10102, owned=False)])
+        self.assertEqual([self.row()[key] for key in tech.MILESTONES], [False, True, True])
+        self.patch_tech([dict(group_type=10102, lv120=False)])
+        self.assertEqual([self.row()[key] for key in tech.MILESTONES], [False, True, False])
+        self.patch_tech([dict(group_type=10102, owned=False, full_star=False, lv120=True)])
+        self.assertEqual([self.row()[key] for key in tech.MILESTONES], [False, False, True])
+
+    def test_manual_final_milestones_survive_reload_and_independent_cancellations(self):
+        for mask in range(8):
+            values = {key: bool(mask & (1 << index)) for index, key in enumerate(tech.MILESTONES)}
+            with self.subTest(values=values):
+                self.patch_tech([dict(group_type=10102, **values)])
+                self.assertEqual({key: self.row()[key] for key in tech.MILESTONES}, values)
+                report = tech.report(self.record())
+                self.assertEqual(report['milestone_counts'], {key: int(value) for key, value in values.items()})
+                self.assertEqual(report['confirmed_points'],
+                                 3 * values['owned'] + 7 * values['full_star'] + 5 * values['lv120'])
+                bonus = int(values['owned']) + int(values['lv120'])
+                self.assertEqual(report['ship_bonuses'], {'1': {'1': bonus}} if bonus else {})
+                for key in tech.MILESTONES:
+                    self.patch_tech([dict(group_type=10102, **values)])
+                    self.patch_tech([dict(group_type=10102, **{key: False})])
+                    self.assertEqual({field: self.row()[field] for field in tech.MILESTONES},
+                                     dict(values, **{key: False}))
 
     def test_card_full_star_changes_do_not_override_independent_correction(self):
         self.database.patch_cards([dict(group_type=10102, name='杜威', level=100, full_star=True)], self.revision())

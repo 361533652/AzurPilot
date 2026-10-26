@@ -15,7 +15,7 @@ const messages = {
   "saveBeforeMerge": ["请先保存或放弃当前修改，再合并舰船底稿。", "請先儲存或放棄目前修改，再合併艦船底稿。", "Save or discard pending changes before merging ship progress.", "変更を保存または破棄してから統合してください。", "请先保存或放弃当前修改，再合并舰船底稿。喵"],
   "pendingEdits": ["未保存修改", "未儲存修改", "Pending edits", "未保存の変更", "未保存修改喵"],
   "draftPreview": ["未保存预览", "未儲存預覽", "Unsaved preview", "未保存のプレビュー", "未保存预览喵"],
-  "inlineEditHint": ["在科技点列选择已完成或未完成，或点击属性加成切换完成状态；点击保存统一生效。", "在科技點欄選擇已完成或未完成，或點擊屬性加成切換完成狀態；點擊儲存統一生效。", "Choose a milestone state in the points columns or click a bonus to cycle its state. Save to apply all edits.", "技術ポイント列で実績の状態を選択するか、補正列をクリックして切り替えます。保存すると一括反映されます。", "在科技点列选择已完成或未完成，或点击属性加成切换完成状态；点击保存统一生效。喵"],
+  "inlineEditHint": ["点击格子切换完成状态；点亮满星或120级会补记已获得，常规舰船120级会补记满星。取消仅影响对应记录，点击保存统一生效。", "點擊格子切換完成狀態；點亮滿星或120級會補記已獲得，常規艦船120級會補記滿星。取消僅影響對應紀錄，點擊儲存統一生效。", "Click a points or bonus cell to toggle its milestone. Completing max stars or Lv.120 also records ownership; ordinary ships at Lv.120 also record max stars. Clearing affects only that milestone. Save to apply.", "ポイントや補正のセルをクリックして切り替えます。最大突破・Lv.120の達成時は入手済み、通常艦のLv.120達成時は最大突破も記録します。解除は選択した実績のみ対象です。保存で一括反映します。", "点击格子切换完成状态；点亮满星或120级会补记已获得，常规舰船120级会补记满星。取消仅影响对应记录，点击保存统一生效喵。"],
   toggleMilestone: ["点击切换：已完成 / 未完成", "點擊切換：已完成 / 未完成", "Click to toggle completed / not completed", "クリックで達成済み／未達成を切り替え", "点击切换：已完成 / 未完成喵"],
   "rarity.N": ["普通", "普通", "Normal", "ノーマル", "普通喵"],
   "rarity.R": ["稀有", "稀有", "Rare", "レア", "稀有喵"],

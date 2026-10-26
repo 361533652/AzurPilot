@@ -41,11 +41,11 @@ export function TechnologyTable({rows, language, tr, editing = false, disabled =
     const identityHighlight = row.lv120 ? 'ft-marked' : ''
     return <tr key={row.group_type} id={`technology-${row.group_type}`} data-group={row.group_type} className={[complete(row) ? 'ft-complete' : '', modified.includes(row.group_type) ? 'ft-modified' : '', targetGroup === String(row.group_type) ? 'ft-target' : ''].filter(Boolean).join(' ')}>
       <td className={identityHighlight}>{String(row.code).padStart(3, '0')}</td><td className={`ft-name ft-rarity-${row.rarity} ${identityHighlight}`}><Link to={`?tab=data&group=${row.group_type}`} title={title}>{nameFor(row, language)}</Link></td><td className={identityHighlight}>{tr(`nation.${row.nationality}`)}</td><td className={identityHighlight}>{tr(`type.${shipType(row.type)}`)}</td>
-      {milestones.map(key => <td key={key} className={`ft-point ft-state-${stateKey(row[key])}`}><span className="ft-point-value" aria-label={`${row.name} · ${tr(stageLabel[key])} · ${tr(stateKey(row[key]))}`} title={tr(stateKey(row[key]))}><b>{pointsFor(row, key)}</b><span className="ft-mark" aria-hidden="true">{stateSymbol(row[key])}</span></span>{editing && <select aria-label={`${row.name} ${tr(stageLabel[key])}`} disabled={disabled} value={String(row[key])} onChange={event => onChange?.(row, key, event.target.value === 'true')}><option value="true">{tr('finished')}</option><option value="false">{tr('notFinished')}</option></select>}</td>)}
+      {milestones.map(key => <td key={key} className={`ft-point ft-state-${stateKey(row[key])}`}><button type="button" className="ft-milestone-button" disabled={!editing || disabled} aria-pressed={row[key]} aria-label={`${row.name} · ${tr(stageLabel[key])} · ${tr(stateKey(row[key]))}`} title={editing ? tr('toggleMilestone') : tr(stateKey(row[key]))} onClick={() => onChange?.(row, key, nextState(row[key]))}><span className="ft-point-value"><b>{pointsFor(row, key)}</b><span className="ft-mark" aria-hidden="true">{stateSymbol(row[key])}</span></span></button></td>)}
       <td className={complete(row) ? 'ft-marked' : ''} title={`${tr('confirmed')}: ${row.points}`}>{maximumPoints(row)}</td>
       {(['get', 'level'] as const).map(stage => {
         const key = stage === 'get' ? 'owned' : 'lv120', label = `${row.name} · ${tr(stage === 'get' ? 'unlock' : 'completionBonus')} · ${tr(stateKey(row[key]))}`
-        return <td key={stage} className={`ft-unlock ${row[key] === true ? 'ft-marked' : ''}`}><button type="button" className="ft-bonus-button" disabled={!editing || disabled} aria-label={label} title={editing ? tr('toggleMilestone') : tr(stateKey(row[key]))} onClick={() => onChange?.(row, key, nextState(row[key]))}><span>{effectFor(row, stage, tr)}</span><span className="ft-mark" aria-hidden="true">{stateSymbol(row[key])}</span></button></td>
+        return <td key={stage} className={`ft-unlock ${row[key] === true ? 'ft-marked' : ''}`}><button type="button" className="ft-milestone-button" disabled={!editing || disabled} aria-pressed={row[key]} aria-label={label} title={editing ? tr('toggleMilestone') : tr(stateKey(row[key]))} onClick={() => onChange?.(row, key, nextState(row[key]))}><span>{effectFor(row, stage, tr)}</span><span className="ft-mark" aria-hidden="true">{stateSymbol(row[key])}</span></button></td>
       })}
     </tr>
   })}</tbody></table></div>
@@ -148,9 +148,10 @@ export function FleetTechnology() {
     if (!report || busy || connection !== 'ready') return
     setDraft(current => {
       const changes = {...current?.changes}, original = rows.find(value => value.group_type === row.group_type)!
-      const next = changeMilestone(current?.changes[row.group_type] ?? {group_type: row.group_type}, key, value)
-      for (const field of milestones) if (Object.hasOwn(next, field) && next[field] === original[field]) delete next[field]
-      if (Object.keys(next).length === 1) delete changes[row.group_type]; else changes[row.group_type] = next
+      const state = {group_type: row.group_type, owned: original.owned, full_star: original.full_star, lv120: original.lv120, ...current?.changes[row.group_type]}
+      const next = changeMilestone(state, key, value, row.full_star_rule)
+      // Keep all final states so an explicit cancellation survives earlier forward completion.
+      if (milestones.every(field => next[field] === original[field])) delete changes[row.group_type]; else changes[row.group_type] = next
       const nations = current?.nations ?? {}
       return Object.keys(changes).length || Object.keys(nations).length ? {revision: current?.revision ?? report.revision, changes, nations} : null
     })
@@ -168,7 +169,11 @@ export function FleetTechnology() {
     const token = scope.current
     writing.current = true; setBusy(true); setError('')
     try {
-      const value = await api.request('fleetTech.patch', {instance, revision: draft.revision, changes: Object.values(draft.changes), nations: draft.nations})
+      const changes = Object.values(draft.changes).map(change => {
+        const original = rows.find(row => row.group_type === change.group_type)!
+        return {owned: original.owned, full_star: original.full_star, lv120: original.lv120, ...change}
+      })
+      const value = await api.request('fleetTech.patch', {instance, revision: draft.revision, changes, nations: draft.nations})
       if (token === scope.current) {setReport(value); setDraft(null); notify(tr('saved'))}
     } catch (e) {if (token === scope.current) setError((e as Error).message)}
     finally {if (token === scope.current) {writing.current = false; setBusy(false)}}
