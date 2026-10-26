@@ -62,15 +62,14 @@ class RemoteClientParams(Params):
 
 
 class MindShip(Params):
-    """可编辑的舰船字段，核对状态与排除状态独立保存。"""
+    """导入的舰船字段与核对状态。"""
     name: StrictStr = Field(min_length=1, max_length=100)
     level: StrictInt = Field(ge=0, le=125)
     rarity: Literal['', 'N', 'R', 'SR', 'SSR', 'UR'] = ''
     base_rarity: Literal['', 'N', 'R', 'SR', 'SSR', 'UR'] = ''
-    excluded: StrictBool = False
+    extra_exp: StrictInt | None = Field(default=None, ge=0)
     review: StrictBool = False
     source: StrictStr = Field(default='', max_length=200)
-    extra_exp: StrictInt | None = Field(default=None, ge=0)
 
 
 class Request(Params):
@@ -144,7 +143,6 @@ class DockCardChange(Params):
     extra_exp: StrictInt | None = Field(default=None, ge=0)
     full_star: StrictBool | None = None
     form: Literal['base', 'retrofit'] | None = None
-    excluded: StrictBool = None
     review: StrictBool = None
     source: StrictStr = Field(default=None, max_length=200)
 
@@ -186,10 +184,6 @@ class FleetTechChange(Params):
     full_star: StrictBool = False
     lv120: StrictBool = False
     awakening_pending: StrictBool = False
-    level: StrictInt | None = Field(default=None, ge=1, le=125)
-    restore: StrictBool = False
-    toggle: Literal['owned', 'complete', 'star'] | None = None
-    target: StrictBool | None = None
 
 
 class FleetTechPatchParams(InstanceParams):
@@ -198,21 +192,9 @@ class FleetTechPatchParams(InstanceParams):
     nations: dict[str, StrictInt | None] = Field(default_factory=dict, max_length=4)
 
 
-class MindCalculateParams(InstanceParams):
-    ships: list[MindShip] = Field(max_length=5000)
-
-
-class MindSaveParams(MindCalculateParams):
-    revision: StrictStr = Field(min_length=64, max_length=64)
-
-
 class MindFileParams(InstanceParams):
     filename: StrictStr = Field(min_length=1, max_length=200)
     content: StrictStr = Field(min_length=1, max_length=8_000_000)
-
-
-class MindExportParams(InstanceParams):
-    format: Literal['json', 'csv', 'xlsx'] = 'xlsx'
 
 
 class StockRequestParams(InstanceParams):

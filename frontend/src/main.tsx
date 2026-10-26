@@ -46,13 +46,10 @@ const router = createHashRouter([
   {path: '/i/:instance', element: <App/>, errorElement: <ErrorPage/>, children: [
     {index: true, element: <Navigate to="overview" replace/>},
     {path: 'overview', element: <Overview/>}, {path: 'task/:task', element: <TaskConfig/>},
-    {path: 'mind-calculator', element: <Navigate to="../task/FleetAnalysis?tab=mind" replace/>},
     {path: 'resources', element: <Navigate to="../statistics?view=management" replace/>},
     {path: 'stock-exchange', element: <StockExchangeBoundary><Suspense fallback={<StockExchangeFallback/>}><StockExchange/></Suspense></StockExchangeBoundary>},
     {path: 'logs', element: <Navigate to="../overview" replace/>}, {path: 'statistics', element: <Statistics/>}, {path: 'scheduler', element: <Navigate to="../task/SchedulerProgram" replace/>}, {path: 'settings', element: <Navigate to="/settings" replace/>},
     {path: 'task/SchedulerProgram', element: <Suspense fallback={<div>{translateCurrentUi('common.loading')}</div>}><SchedulerProgram/></Suspense>},
-    {path: 'task/MindCalculator', element: <Navigate to="../task/FleetAnalysis?tab=mind" replace/>},
-    {path: 'task/FleetTechnology', element: <Navigate to="../task/FleetAnalysis?tab=technology" replace/>},
     {path: 'task/FleetAnalysis', element: <Suspense fallback={<div>{translateCurrentUi('common.loading')}</div>}><FleetAnalysis/></Suspense>},
     {path: 'task/FleetRotation', element: <Suspense fallback={<div>{translateCurrentUi('common.loading')}</div>}><FleetRotation/></Suspense>},
   ]},

@@ -18,7 +18,7 @@ from tests.test_api import fixture
 
 
 def ship(name='杜威', level=125, **kwargs):
-    return dict(name=name, level=level, review=False, excluded=False, **kwargs)
+    return dict(name=name, level=level, review=False, **kwargs)
 
 
 class FleetTechTests(unittest.TestCase):
@@ -80,7 +80,6 @@ class FleetTechTests(unittest.TestCase):
             updated = service.patch('testpilot', updated['revision'], [FleetTechChange(group_type=10102, owned=True)], {})
             self.assertTrue(next(row for row in updated['ships'] if row['group_type'] == 10102)['owned'])
             self.assertEqual(service.report('second')['completed'], 0)
-            self.assertEqual(service.sync_mind('testpilot'), updated)
 
     def test_invalid_patch_does_not_write_any_partial_change(self):
         schema = FleetTechChange.model_json_schema()
@@ -127,7 +126,6 @@ class FleetTechTests(unittest.TestCase):
             self.assertFalse(row['lv120'])
             with patch.dict('os.environ', {'DEMO': '1'}):
                 self.assertTrue(router.dispatch('fleetTech.catalog', {'instance': 'testpilot'})['ships'])
-                self.assertEqual(router.dispatch('fleetTech.syncMind', {'instance': 'testpilot'}), updated)
             with self.assertRaises(ApiError) as error:
                 configs.patch('testpilot', configs.get('testpilot')['revision'], [ConfigChange(path='FleetTechScan.FleetTech.Record', value={})])
             self.assertEqual(error.exception.code, 'READ_ONLY')
@@ -136,7 +134,7 @@ class FleetTechTests(unittest.TestCase):
         """使用真实配置 save，模拟扫描中途另一客户端写入人工校正。"""
         from contextlib import ExitStack
         from module.config.config import AzurLaneConfig
-        from module.retire.fleet_tech_scan import FleetTechScan
+        from module.retire.dock_scan import DockScan
         from module.retire.assets import DOCK_SEARCH_CLOSED
         with tempfile.TemporaryDirectory() as directory, ExitStack() as stack:
             configs = ConfigService(fixture(directory))
@@ -151,7 +149,7 @@ class FleetTechTests(unittest.TestCase):
             config = AzurLaneConfig('testpilot')
             config.data = configs.read('testpilot')[0]
             config._loaded_data = copy.deepcopy(config.data)
-            runner = object.__new__(FleetTechScan)
+            runner = object.__new__(DockScan)
             runner.config = config
             runner.device = SimpleNamespace(image=None)
             runner._close_search = lambda: None

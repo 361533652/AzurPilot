@@ -9,12 +9,12 @@ export function technologyEfficiency(ship: Pick<Ship, 'rarity' | 'technology'> |
 }
 export interface CultivationRow {
   id: number; name: string; current_level: number; level: number; target_level: number
-  hypothetical: boolean; mind: number | null; mind2: number | null; gold: number | null
+  mind: number | null; mind2: number | null; gold: number | null
   status: 'exact' | 'unknown'; notes: string[]; stages: number[]
 }
 export interface CultivationReport {
   instance: string; revision: string; ships: CultivationRow[]; target_level: number
-  included: number; unknown: number; estimated: number
+  included: number; unknown: number
   mind: number; mind2: number; gold: number; rules_sha256: string
   mind_costs_100_to_120: Record<string, number>
 }
@@ -41,10 +41,8 @@ export function readPlan(raw: string | null, cards: DockCard[]): CultivationPlan
   try {
     const value = JSON.parse(raw ?? 'null') as CultivationPlan
     if (value && Array.isArray(value.excluded_groups)) {
-      // Discard legacy assumed levels and awakening caps: costs always use confirmed levels.
       return {excluded_groups: [...new Set(value.excluded_groups.filter(id => Number.isInteger(id) && groups.has(id)))]}
     }
   } catch { /* Damaged preferences must never change confirmed data. */ }
-  const highest = new Set(highestCopies(cards))
-  return {excluded_groups: cards.filter(card => highest.has(card.id) && card.excluded && card.group_type).map(card => card.group_type!)}
+  return {excluded_groups: []}
 }

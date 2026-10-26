@@ -3,8 +3,7 @@ import copy
 import unittest
 
 from module.runtime import dock_data
-from module.runtime.fleet_legacy import convert_legacy, sqlite_payload
-from module.runtime import mind_analysis
+from module.runtime.fleet_legacy import convert_legacy, sqlite_payload, _keyed, _mind_ships
 
 
 def row(name='杜威', level=105, **kwargs):
@@ -55,7 +54,7 @@ class FleetLegacyTests(unittest.TestCase):
         rows = sqlite_payload(result)['ships']
         self.assertNotIn('opaque_old_data', result['mind'])
         self.assertEqual(rows[0]['level'], 105)
-        self.assertTrue(rows[0]['excluded'])
+        self.assertNotIn('excluded', rows[0])
         self.assertEqual(rows[1]['name'], '未知舰')
 
     def test_newest_trustworthy_snapshot_is_preferred_without_dock(self):
@@ -94,14 +93,14 @@ class FleetLegacyTests(unittest.TestCase):
         original = dock_data.build_snapshot([dict(row(name='未确认舰', level=0), review=True)],
             min_level=1, max_level=125, reached_bottom=True, filters_clear=True,
             physical_count=1, expected_count=1, updated_at='2026-10-25T10:00:00')
-        key = next(mind_analysis.keyed(dock_data.mind_ships(original)))[0]
+        key = next(_keyed(_mind_ships(original)))[0]
         data = {'DockScan': {'Dock': {'Result': original}}, 'MindCalculatorScan': {'MindCalculator': {
-            'Analysis': {'overrides': {key: {'excluded': True}}, 'snapshot_revision': 'stale'}}}}
+            'Analysis': {'overrides': {key: {'level': 105}}, 'snapshot_revision': 'stale'}}}}
         stale = sqlite_payload(convert_legacy(data))
-        self.assertFalse(stale['ships'][0].get('excluded', False))
+        self.assertEqual(stale['ships'][0]['level'], 0)
         data['MindCalculatorScan']['MindCalculator']['Analysis']['snapshot_revision'] = original['revision']
         matching = sqlite_payload(convert_legacy(data))
-        self.assertTrue(matching['ships'][0]['excluded'])
+        self.assertEqual(matching['ships'][0]['level'], 105)
 
     def test_unknown_manual_extra_without_snapshots_remains_visible(self):
         data = {'MindCalculatorScan': {'MindCalculator': {'Analysis': {'extra': [

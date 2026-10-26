@@ -43,7 +43,7 @@ describe('舰队分析入口', () => {
   it('舰队管理只提供一个数据分析页面', () => {
     expect(taskNavItems('FleetManagement', ['FleetInfo'])).toEqual(['FleetInfo', 'FleetRotation', 'FleetAnalysis'])
   })
-  it('工具菜单隐藏旧扫描和共享扫描任务', () => {
-    expect(taskNavItems('Tool', ['Other', 'MindCalculatorScan', 'FleetTechScan', 'DockScan'])).toEqual(['Other'])
+  it('工具菜单隐藏共享扫描任务', () => {
+    expect(taskNavItems('Tool', ['Other', 'DockScan'])).toEqual(['Other'])
   })
 })

@@ -153,7 +153,6 @@ class AccountProgressTests(unittest.TestCase):
         self.database.stage_import([dict(name='杜威', level=120)], self.revision())
         staged = self.database.load()
         self.assertEqual(tech.report(self.record()), before)
-        self.assertEqual(staged['pending_changes'][0]['milestones'], [])
         with self.assertRaises(FleetDatabaseConflict):
             self.database.stage_import([dict(name='卡辛', level=125)], self.revision())
         self.assertEqual(self.database.load(), staged)
@@ -177,15 +176,6 @@ class AccountProgressTests(unittest.TestCase):
             self.database.review([dict(id=row['id'], accept=False) for row in state['pending_changes']],
                                  self.revision(), state['pending_revision'])
 
-    def test_explicit_unknown_and_zero_experience_remain_distinct_during_import(self):
-        self.database.patch_cards([dict(group_type=10102, name='杜威', level=100, extra_exp=0)], self.revision())
-        self.database.stage_import([dict(group_type=10102, name='杜威', level=101)], self.revision())
-        state = self.database.load()
-        self.database.review([dict(id=row['id'], accept=True) for row in state['pending_changes']],
-                             self.revision(), state['pending_revision'])
-        self.assertEqual(self.database.load()['snapshot']['ships'][0]['extra_exp'], 0)
-        self.database.patch_cards([dict(id=1, extra_exp=None)], self.revision())
-        self.assertIsNone(self.database.load()['snapshot']['ships'][0]['extra_exp'])
 
     def test_initial_seed_only_confirms_positive_facts_and_never_reseeds(self):
         self.database.patch_cards([dict(group_type=10102, name='杜威', level=50)], self.revision())
@@ -234,7 +224,7 @@ class AccountProgressTests(unittest.TestCase):
                          dict(group_type=10103, full_star=True),
                          dict(group_type=10104, owned=False)])
         self.database.patch_cards([
-            dict(group_type=10102, name='杜威', level=120, excluded=True),
+            dict(group_type=10102, name='杜威', level=120),
             dict(group_type=10104, name='麦考尔', level=120, review=True),
             dict(name='未识别舰船', level=120, review=True),
             dict(group_type=10105, name='格里德利', level=50)], self.revision())

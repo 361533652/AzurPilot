@@ -8,7 +8,7 @@ from module.runtime.fleet_cultivation import project, rules
 
 def card(id=1, level=100, **values):
     return dict(id=id, group_type=10706, name='企业', level=level, rarity='SSR', base_rarity='SSR',
-                extra_exp=None, review=False, **values)
+                review=False, **values)
 
 
 class CultivationTests(unittest.TestCase):
@@ -68,21 +68,12 @@ class CultivationTests(unittest.TestCase):
             self.assertEqual(result['unknown'], 1)
             self.assertEqual(result['mind'], 0)
 
-    def test_experience_does_not_affect_resource_amounts_or_certainty(self):
-        values = []
-        for exp in (None, 0, 99999):
-            value = card(level=119)
-            value['extra_exp'] = exp
-            result = project([value], [1])
-            self.assertNotIn('experience_upper', result)
-            self.assertEqual(result['estimated'], 0)
-            self.assertEqual(result['mind_costs_100_to_120']['SSR'], 2200)
-            self.assertEqual(result['ships'][0]['status'], 'exact')
-            values.append((result['mind'], result['gold']))
-        self.assertEqual(values, [(0, 0)] * 3)
-        result = project([card(level=110)], [1])
-        self.assertEqual(result['estimated'], 0)
-        self.assertGreater(result['mind'], 0)
+    def test_resource_costs_use_confirmed_levels(self):
+        result = project([card(level=119)], [1])
+        self.assertEqual((result['mind'], result['gold']), (0, 0))
+        self.assertEqual(result['mind_costs_100_to_120']['SSR'], 2200)
+        self.assertEqual(result['ships'][0]['status'], 'exact')
+        self.assertGreater(project([card(level=110)], [1])['mind'], 0)
 
     def test_confirmed_group_disambiguates_raw_names(self):
         from module.runtime.mind_calculator import find_ships

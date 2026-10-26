@@ -55,40 +55,15 @@ class SharedAnalysisTests(unittest.TestCase):
         before = self.configs.path('testpilot').read_bytes()
         runtime = Mock()
         router = Router(self.configs, runtime)
-        for method in ('dock.report', 'mind.report', 'fleetTech.report'):
+        for method in ('dock.report', 'fleetTech.report'):
             self.assertIsInstance(router.dispatch(method, {'instance': 'testpilot'}), dict)
-        self.assertEqual(self.mind.report('testpilot')['ships'][0]['level'], 105)
+        self.assertEqual(self.dock.report('testpilot')['ships'][0]['level'], 105)
         row = next(row for row in self.tech.report('testpilot')['ships'] if row['group_type'] == 10102)
         self.assertEqual(row['current_level'], 105)
         self.assertEqual(self.dock.report('testpilot')['revision'], snapshot['revision'])
         self.assertEqual(self.configs.path('testpilot').read_bytes(), before)
         runtime.start.assert_not_called()
 
-    def test_心智排除属于底账且扫描待采纳前不改变等级(self):
-        snapshot = self.scan()
-        before = self.configs.path('testpilot').read_bytes()
-        card_id = snapshot['ships'][0]['id']
-        self.dock.patch('testpilot', snapshot['revision'], [dict(id=card_id, excluded=True)])
-        report = self.mind.report('testpilot')
-        self.assertEqual(report['excluded'], 1)
-        with self.assertRaises(ApiError) as error:
-            self.mind.save('testpilot', report['revision'], [])
-        self.assertEqual(error.exception.code, 'READ_ONLY')
-        self.scan(110, confirm=False)
-        self.assertEqual(self.mind.report('testpilot')['ships'][0]['level'], 105)
-        self.assertTrue(self.mind.report('testpilot')['ships'][0]['excluded'])
-        self.assertTrue(self.dock.report('testpilot')['pending_changes'])
-        pending = self.dock.report('testpilot')
-        self.dock.review('testpilot', pending['revision'], pending['pending_revision'],
-                         [dict(id=row['id'], accept=True) for row in pending['pending_changes']])
-        report = self.mind.report('testpilot')
-        self.assertEqual(report['ships'][0]['level'], 110)
-        self.assertTrue(report['ships'][0]['excluded'])
-        row = next(row for row in self.tech.report('testpilot')['ships'] if row['group_type'] == 10102)
-        self.assertEqual(row['current_level'], 110)
-        self.assertTrue(row['owned'])
-        self.assertTrue(FleetDatabase(self.configs.path('testpilot')).load()['snapshot']['ships'][0]['excluded'])
-        self.assertEqual(self.configs.path('testpilot').read_bytes(), before)
 
     def test_科技人工校正保留且不复制扫描快照(self):
         snapshot = self.scan()
@@ -105,20 +80,8 @@ class SharedAnalysisTests(unittest.TestCase):
         report = self.tech.report('testpilot')
         self.assertTrue(next(row for row in report['ships'] if row['group_type'] == 10102)['lv120'])
         self.assertEqual(report['nation_levels']['1'], 1)
-        self.assertEqual(self.mind.report('testpilot')['ships'][0]['level'], 110)
+        self.assertEqual(self.dock.report('testpilot')['ships'][0]['level'], 110)
 
-    def test_扫描更新拒绝旧人工保存且保留新底账(self):
-        self.scan()
-        mind = self.mind.report('testpilot')
-        tech = self.tech.report('testpilot')
-        snapshot = self.scan(110)
-        with self.assertRaises(ApiError) as error:
-            self.dock.patch('testpilot', mind['revision'], [dict(id=snapshot['ships'][0]['id'], excluded=True)])
-        self.assertEqual(error.exception.code, 'CONFLICT')
-        with self.assertRaises(ApiError) as error:
-            self.tech.patch('testpilot', tech['revision'], [FleetTechChange(group_type=10102, level=120)], {})
-        self.assertEqual(error.exception.code, 'CONFLICT')
-        self.assertEqual(self.dock.report('testpilot')['revision'], snapshot['revision'])
 
     def test_配置扫描范围不伪造快照覆盖且接口严格验证(self):
         self.scan()
@@ -141,22 +104,22 @@ class SharedAnalysisTests(unittest.TestCase):
         initial = self.dock.report('testpilot')
         report = router.dispatch('dock.patch', dict(instance='testpilot', revision=initial['revision'], changes=[
             dict(name='杜威', group_type=10102, level=100),
-            dict(name='杜威', group_type=10102, level=120, excluded=True)]))
+            dict(name='杜威', group_type=10102, level=120, review=True)]))
         ids = [row['id'] for row in report['ships']]
         self.assertNotEqual(*ids)
         report = router.dispatch('dock.patch', dict(instance='testpilot', revision=report['revision'],
-            changes=[dict(id=ids[0], extra_exp=123)]))
-        self.assertEqual([row['level'] for row in report['ships']], [100, 120])
-        self.assertTrue(report['ships'][1]['excluded'])
+            changes=[dict(id=ids[0], level=106)]))
+        self.assertEqual([row['level'] for row in report['ships']], [106, 120])
+        self.assertTrue(report['ships'][1]['review'])
         before = FleetDatabase(self.configs.path('testpilot')).path.read_bytes()
         for change in (dict(id=True, level=100), dict(id=ids[0], level=True), dict(id=ids[0], name=None)):
             with self.subTest(change=change), self.assertRaises(ValidationError):
                 router.dispatch('dock.patch', dict(instance='testpilot', revision=report['revision'], changes=[change]))
         self.assertEqual(FleetDatabase(self.configs.path('testpilot')).path.read_bytes(), before)
         with self.assertRaises(ApiError) as stale:
-            router.dispatch('dock.patch', dict(instance='testpilot', revision=initial['revision'], changes=[dict(id=ids[0], excluded=True)]))
+            router.dispatch('dock.patch', dict(instance='testpilot', revision=initial['revision'], changes=[dict(id=ids[0], review=True)]))
         self.assertEqual(stale.exception.code, 'CONFLICT')
-        requests = [('dock.patch', dict(instance='testpilot', revision=report['revision'], changes=[dict(id=ids[0], excluded=True)])),
+        requests = [('dock.patch', dict(instance='testpilot', revision=report['revision'], changes=[dict(id=ids[0], review=True)])),
                     ('dock.review', dict(instance='testpilot', revision=report['revision'], pending_revision='a' * 64,
                                          decisions=[dict(id='ship:1', accept=True)]))]
         for method, params in requests:
@@ -230,8 +193,7 @@ class SharedAnalysisTests(unittest.TestCase):
             dict(name='杜威', level=105, source='自动扫描第 1 页')]))
         self.write(data)
         self.scan(rows=[])
-        self.assertEqual(self.mind.report('testpilot')['ships'], [])
-        self.assertIsNone(self.tech.report('testpilot')['last_scan'])
+        self.assertEqual(self.dock.report('testpilot')['ships'], [])
 
     def test_旧配置不会自动导入且分析保存不改配置(self):
         data, _ = self.configs.read('testpilot')
@@ -247,12 +209,7 @@ class SharedAnalysisTests(unittest.TestCase):
         self.write(data)
         before = self.configs.path('testpilot').read_bytes()
         self.assertEqual(self.dock.report('testpilot')['ships'], [])
-        self.assertEqual(self.mind.report('testpilot')['ships'], [])
         self.assertEqual(self.tech.report('testpilot')['completed'], 0)
-        self.assertEqual(self.tech.sync_mind('testpilot'), self.tech.report('testpilot'))
-        with self.assertRaises(ApiError) as error:
-            self.mind.save('testpilot', self.mind.report('testpilot')['revision'], [dict(name='杜威', level=105)])
-        self.assertEqual(error.exception.code, 'READ_ONLY')
         self.tech.patch('testpilot', self.tech.report('testpilot')['revision'],
                         [FleetTechChange(group_type=10102, owned=True)], {})
         self.assertEqual(self.configs.path('testpilot').read_bytes(), before)
@@ -301,9 +258,9 @@ class SharedAnalysisTests(unittest.TestCase):
         self.assertFalse(row['full_star'])
         self.assertEqual(row['evidence']['owned'], [card_id])
         self.assertEqual(row['evidence']['lv120'], [])
-        self.assertEqual(report, self.tech.sync_mind('testpilot'))
+        self.assertEqual(report, self.tech.report('testpilot'))
 
-    def test_反复读取与旧同步接口不写库不运行游戏(self):
+    def test_反复读取不写库不运行游戏(self):
         self.scan()
         database = FleetDatabase(self.configs.path('testpilot'))
         before = database.path.read_bytes()
@@ -311,12 +268,12 @@ class SharedAnalysisTests(unittest.TestCase):
         runtime = Mock()
         router = Router(self.configs, runtime)
         # Pending analysis belongs to a client draft until an explicit save.
-        draft = self.mind.report('testpilot')['ships']
-        draft[0]['excluded'] = True
+        draft = self.dock.report('testpilot')['ships']
+        draft[0]['review'] = True
         for _ in range(3):
-            for method in ('dock.report', 'mind.report', 'fleetTech.report', 'fleetTech.syncMind'):
+            for method in ('dock.report', 'fleetTech.report'):
                 router.dispatch(method, {'instance': 'testpilot'})
-        self.assertFalse(self.mind.report('testpilot')['ships'][0]['excluded'])
+        self.assertFalse(self.dock.report('testpilot')['ships'][0]['review'])
         self.assertEqual(database.path.read_bytes(), before)
         self.assertEqual(self.configs.path('testpilot').read_bytes(), config_before)
         runtime.start.assert_not_called()

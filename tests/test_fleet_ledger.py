@@ -52,9 +52,9 @@ class FleetLedgerTest(unittest.TestCase):
         first, second = self.cards()
         self.assertNotEqual(first['id'], second['id'])
         self.assertEqual((first['extra_exp'], second['extra_exp']), (None, 0))
-        self.edit(dict(id=first['id'], level=101, excluded=True))
+        self.edit(dict(id=first['id'], level=101, review=True))
         changed, untouched = self.cards()
-        self.assertEqual((changed['id'], changed['level'], changed['extra_exp'], changed['excluded']),
+        self.assertEqual((changed['id'], changed['level'], changed['extra_exp'], changed['review']),
                          (first['id'], 101, None, True))
         self.assertEqual(untouched, second)
         self.edit(dict(id=second['id'], delete=True))

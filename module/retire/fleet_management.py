@@ -255,7 +255,7 @@ class FleetManagement(Dock):
             in: 编队选船页
             out: 同一页面
         """
-        from module.retire.mind_scan import MindCalculatorScan
+        from module.retire.dock_scan import DockScan
         self._scan_window = None
         if self.appear(DOCK_EMPTY):
             return
@@ -323,7 +323,7 @@ class FleetManagement(Dock):
                 return
             last_offset = merger.offset
             try:
-                MindCalculatorScan._drag_rows(self, 227)
+                DockScan._drag_rows(self, 227)
             except MindCalculatorScanError as exc:
                 raise FleetManagementError(str(exc)) from exc
             stable, retries = None, 0

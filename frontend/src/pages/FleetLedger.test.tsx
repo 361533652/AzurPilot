@@ -6,7 +6,7 @@ import {translateUi} from '../i18n'
 import {FleetLedger} from './FleetLedger'
 import {ScanUpdate, safeScanChanges} from './ScanUpdate'
 vi.mock('../app/context', () => ({useConnection: () => 'ready', useApp: () => ({ui: (key: Parameters<typeof translateUi>[1]) => translateUi('zh-CN', key), instances: [], notify: vi.fn()})}))
-const report: DockReport = {instance: 'test', revision: 'r1', updated_at: null, min_level: 1, max_level: 125, complete: false, review_count: 0, source: 'manual', pending_revision: 'p1', pending_changes: [], ships: [null, 0].map((extra_exp, index) => ({id: index + 1, name: '重复舰船', group_type: 100, level: 120, rarity: 'SSR', base_rarity: 'SSR', extra_exp, excluded: false, review: false, source: 'manual'}))}
+const report: DockReport = {instance: 'test', revision: 'r1', updated_at: null, min_level: 1, max_level: 125, complete: false, review_count: 0, source: 'manual', pending_revision: 'p1', pending_changes: [], ships: [1, 2].map((id) => ({id, name: '重复舰船', group_type: 100, level: 120, rarity: 'SSR', base_rarity: 'SSR', extra_exp: null, review: false, source: 'manual'}))}
 function render(value = report, entry = '?tab=data') {return renderToStaticMarkup(<MemoryRouter initialEntries={[entry]}><FleetLedger instance="test" report={value} onReport={vi.fn()} onBusy={vi.fn()} onDirty={vi.fn()}/></MemoryRouter>)}
 describe('current ships and scan separation', () => {
   it('shows editable duplicate rows and one save button for the whole ledger', () => {

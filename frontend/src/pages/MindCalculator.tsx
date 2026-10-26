@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useRef, useState} from 'react'
-import {Link, useParams, useSearchParams} from 'react-router-dom'
+import {Link, useParams} from 'react-router-dom'
 import {api, ApiError} from '../api/client'
 import type {DockReport} from '../api/types'
 import {catalogRows, matches, type Catalog, type Report} from '../fleet-tech/types'
@@ -20,7 +20,7 @@ type Column = keyof typeof columns
 type Sort = {column: Column; direction: 'ascending' | 'descending'}
 interface Facts {dock: DockReport; technology: Report; catalog: Catalog}
 export function MindCalculator() {
-  const {instance = ''} = useParams(), [params, setParams] = useSearchParams(), connection = useConnection(), {language} = useApp()
+  const {instance = ''} = useParams(), connection = useConnection(), {language} = useApp()
   const [facts, setFacts] = useState<Facts>(), [plan, setPlan] = useState<CultivationPlan>()
   const [result, setResult] = useState<CultivationReport>(), [error, setError] = useState('')
   const [query, setQuery] = useState(''), [includedOnly, setIncludedOnly] = useState(false)
@@ -30,13 +30,7 @@ export function MindCalculator() {
   const [mindCosts, setMindCosts] = useState<Record<string, number>>({})
   const [reload, setReload] = useState(0), [calculating, setCalculating] = useState(false)
   const memory = useRef<{instance: string; plan: CultivationPlan} | null>(null)
-  // Old manually selected copy IDs must not freeze the automatic calculation range.
   const key = `azurpilot.cultivation-auto.${instance}`
-  useEffect(() => {
-    if (params.has('ships') || params.has('scope')) setParams(previous => {
-      const clean = new URLSearchParams(previous); clean.delete('ships'); clean.delete('scope'); return clean
-    }, {replace: true})
-  }, [params, setParams])
   useEffect(() => {
     let active = true, pending = false
     setFacts(undefined); setResult(undefined); setError('')

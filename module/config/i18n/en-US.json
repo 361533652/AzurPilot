@@ -402,14 +402,6 @@
       "name": "Dock data scan",
       "help": "Read dock cards into shared data for mental-chip and fleet-technology analysis; does not upgrade or swap ships."
     },
-    "MindCalculatorScan": {
-      "name": "Cognitive chip dock scan",
-      "help": "Scan a CN dock at 1280×720 and review results in the cognitive chip calculator. Keeps old data until completion; resets dock filters."
-    },
-    "FleetTechScan": {
-      "name": "Fleet technology scan",
-      "help": "Record ship identities and levels independently of cognitive chip exclusions."
-    },
     "Daemon": {
       "name": "Semi-Auto Click",
       "help": ""
@@ -6765,34 +6757,6 @@
     "MaxLevel": {
       "name": "Maximum scan level",
       "help": "Read dock cards into shared data for mental-chip and fleet-technology analysis; does not upgrade or swap ships."
-    }
-  },
-  "MindCalculator": {
-    "_info": {
-      "name": "Cognitive chip calculator",
-      "help": "Calculate Cognitive Chips I and coins to reach level 120."
-    },
-    "MinLevel": {
-      "name": "Minimum scan level",
-      "help": "Inclusive. Import ships at or above this level."
-    },
-    "MaxLevel": {
-      "name": "Maximum scan level",
-      "help": "Inclusive. Import ships at or below this level."
-    }
-  },
-  "FleetTech": {
-    "_info": {
-      "name": "Technology scan",
-      "help": "Defaults to 95–125. Only a complete unfiltered 1–125 scan can confirm absence."
-    },
-    "MinLevel": {
-      "name": "Minimum level",
-      "help": "Inclusive; preserve existing records outside the range."
-    },
-    "MaxLevel": {
-      "name": "Maximum level",
-      "help": "Inclusive, up to level 125."
     }
   },
   "FleetRotation": {

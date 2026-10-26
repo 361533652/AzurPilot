@@ -22,7 +22,7 @@ class FleetDatabaseAlreadyImported(ValueError):
 
 
 class FleetDatabase:
-    SCHEMA_VERSION = 9
+    SCHEMA_VERSION = 10
     BUSY_TIMEOUT_MS = 10000
 
     def __init__(self, config_path):
@@ -122,7 +122,7 @@ class FleetDatabase:
     def _cards(self, connection):
         rows = self._rows(connection, 'SELECT id, ' + ', '.join(ledger.CARD_FIELDS) + ' FROM ships ORDER BY position')
         for row in rows:
-            for field in ('review', 'excluded', 'full_star'):
+            for field in ('review', 'full_star'):
                 row[field] = None if row[field] is None else bool(row[field])
         return rows
 
@@ -162,7 +162,7 @@ class FleetDatabase:
 
     def _load(self, connection, *, include_import_status=False):
         info = self._info(connection)
-        value = dict(snapshot=self._snapshot(connection), technology=self._options(connection), mind={},
+        value = dict(snapshot=self._snapshot(connection), technology=self._options(connection),
                      pending_revision=info['pending_revision'], pending_changes=self._differences(connection))
         if info['reading_count'] is not None:
             value['pending_read'] = dict(source=info['pending_source'], updated_at=info['pending_updated_at'],
@@ -192,7 +192,7 @@ class FleetDatabase:
     def _read_only(self, *, include_import_status=False):
         connection = self._connect(write=False)
         if connection is None:
-            value = dict(snapshot=None, mind={}, technology={}, pending_revision=None, pending_changes=[])
+            value = dict(snapshot=None, technology={}, pending_revision=None, pending_changes=[])
             if include_import_status:
                 value['legacy_imported'] = False
             return value
@@ -413,7 +413,7 @@ class FleetDatabase:
         cards = {row['id']: row for row in self._cards(connection)}
         output = []
         for row in self._rows(connection, 'SELECT * FROM pending_ships ORDER BY id'):
-            values = {field: bool(row[field]) if field in ('excluded', 'review', 'full_star') and row[field] is not None else row[field]
+            values = {field: bool(row[field]) if field in ('review', 'full_star') and row[field] is not None else row[field]
                       for field in ledger.CARD_FIELDS}
             before = cards.get(row['ship_id'])
             operation = row['operation']
@@ -437,8 +437,7 @@ class FleetDatabase:
             output.append(dict(id=f'ship:{row["id"]}', kind='ship', operation=operation, ship_id=row['ship_id'],
                                group_type=values['group_type'], name=values['name'], before=before,
                                after=None if operation == 'remove' else values, fields=delta,
-                               candidates=candidates if operation == 'resolve' else [],
-                               milestones=[]))
+                               candidates=candidates if operation == 'resolve' else []))
         current = self._options(connection)
         names = {str(row['group_type']): row['name'] for row in tech.catalog()['ships']}
         for row in self._rows(connection, 'SELECT * FROM pending_technology ORDER BY group_type'):

@@ -5,7 +5,84 @@ from functools import lru_cache
 
 from module.config.deep import deep_get
 from module.config.fleet_legacy import LEGACY_PATHS
-from module.runtime import dock_data, fleet_ledger as ledger, fleet_tech as tech, mind_analysis, mind_calculator as mind
+from module.runtime import dock_data, fleet_ledger as ledger, fleet_tech as tech, mind_calculator as mind
+
+
+def _mind_ships(snapshot):
+    """把已确认群组映射为心智限定名；歧义卡位仍独立留待核对。"""
+    by_group = {}
+    for info in mind.catalog()['ships'].values():
+        by_group.setdefault(info['group_type'], []).append(info)
+    output = []
+    for row in snapshot.get('ships', []):
+        level = row.get('level', 0)
+        if (type(level) is int and 1 <= level <= 125 and not row.get('review')
+                and not snapshot.get('min_level', 1) <= level <= snapshot.get('max_level', 125)):
+            continue
+        matches = by_group.get(row.get('group_type'), [])
+        info = next((item for item in matches if item['raw_name'] == row.get('name')), None)
+        if info is None and matches:
+            info = next((item for item in matches if item['group'] != '改造'), matches[0])
+        name = info['name'] if info else row.get('name', '未识别舰船')
+        level = row.get('level', 0)
+        valid_level = type(level) is int and 1 <= level <= 125
+        output.append(dict(name=name[:100], level=level if valid_level else 0,
+                           rarity=info['rarity'] if info else row.get('rarity', ''),
+                           base_rarity=info['base_rarity'] if info else row.get('base_rarity', ''),
+                           excluded=False, review=bool(row.get('review')) or not info or not valid_level,
+                           source=row.get('source', '')[:200]))
+    return mind.highest_ships(output)
+
+
+_FIELDS = ('name', 'level', 'rarity', 'base_rarity', 'excluded', 'review', 'source')
+
+
+def _ship_key(ship):
+    info = mind.find_ship(ship['name'])
+    if info and not ship.get('review'):
+        return f'group:{info["group_type"]}'
+    # 未确认身份不跨次继承卡位，避免排序变化把校正应用到其他船。
+    return f'review:{tech.revision([ship.get("name"), ship.get("source")])}'
+
+
+def _keyed(ships):
+    counts = {}
+    for ship in ships:
+        key = _ship_key(ship)
+        count = counts.get(key, 0)
+        counts[key] = count + 1
+        yield (f'{key}:{count}' if count else key), {field: ship.get(field) for field in _FIELDS}
+
+
+def _base_ships(data):
+    return _mind_ships(dock_data.read_snapshot(data))
+
+
+def _settings(data):
+    """读取本次 JSON 转换的旧覆盖设置。"""
+    return copy.deepcopy(data.get('mind') or dict(overrides={}, removed=[], extra=[]))
+
+
+def _save_settings(data, submitted, updated_at):
+    """把旧清单折叠为 JSON 转换所需的差异。"""
+    base = dict(_keyed(_base_ships(data)))
+    incoming = list(_keyed(submitted))
+    previous = _settings(data)
+    overrides = copy.deepcopy(previous.get('overrides', {}))
+    for key in base:
+        overrides.pop(key, None)
+    extra, present = [], set()
+    for key, ship in incoming:
+        if key in base:
+            present.add(key)
+            delta = {field: value for field, value in ship.items() if value != base[key].get(field)}
+            if delta:
+                overrides[key] = delta
+        else:
+            extra.append(ship)
+    removed = (set(previous.get('removed', [])) - base.keys()) | (base.keys() - present)
+    return dict(overrides=overrides, removed=sorted(removed), extra=extra, updated_at=updated_at,
+                snapshot_revision=dock_data.read_snapshot(data)['revision'])
 
 
 @lru_cache(maxsize=1)
@@ -227,7 +304,7 @@ def convert_legacy(data):
     if analysis:
         _object(analysis.get('overrides', {}), '心智覆盖')
         for key, values in analysis.get('overrides', {}).items():
-            if not isinstance(key, str) or not isinstance(values, dict) or values.keys() - set(mind_analysis.FIELDS):
+            if not isinstance(key, str) or not isinstance(values, dict) or values.keys() - set(_FIELDS):
                 raise ValueError('心智覆盖字段无效')
             _row({'name': '待核对舰船', 'level': 1, **values})
         if not isinstance(analysis.get('removed', []), list) or any(not isinstance(key, str) for key in analysis.get('removed', [])):
@@ -241,8 +318,8 @@ def convert_legacy(data):
             options['snapshot_revision'] = snapshots[-1]['revision']
     elif mind_rows is not None:
         submitted = [{field: row.get(field, '' if field in ('rarity', 'base_rarity', 'source') else False)
-                      for field in mind_analysis.FIELDS} for row in mind_rows]
-        options = mind_analysis.save_settings(state, submitted, saved.get('updated_at', ''))
+                      for field in _FIELDS} for row in mind_rows]
+        options = _save_settings(state, submitted, saved.get('updated_at', ''))
     else:
         options = {}
     useful_mind = any(options.get(key) for key in ('overrides', 'removed', 'extra'))
@@ -283,7 +360,7 @@ def _cards(converted):
         for key, override in options.get('overrides', {}).items():
             if key.startswith('review:'):
                 for row in rows:
-                    if mind_analysis.ship_key(row) == key:
+                    if _ship_key(row) == key:
                         row.update({field: value for field, value in override.items() if field in ledger.CARD_FIELDS})
     return rows
 
@@ -321,4 +398,5 @@ def sqlite_payload(converted):
         entry = manual.get(gid, {})
         values = _milestones(gid, observed.get(gid), entry)
         technology[gid] = {key: value for key, value in values.items() if value is True or key in entry}
-    return dict(ships=rows, technology=technology, nations=copy.deepcopy(options.get('nations', {})))
+    return dict(ships=[{key: value for key, value in row.items() if key in ledger.CARD_FIELDS} for row in rows],
+                technology=technology, nations=copy.deepcopy(options.get('nations', {})))

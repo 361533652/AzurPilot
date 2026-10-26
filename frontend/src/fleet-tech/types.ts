@@ -6,9 +6,9 @@ export type RecordField = Milestone | 'awakening_pending'
 export type State = boolean
 export interface Change {group_type: number; owned?: State; full_star?: State; lv120?: State; awakening_pending?: State}
 export interface HistoricalEvidence {ship_id: number; level: number; full_star: boolean | null; source: string; confirmed_at: string}
-export interface Progress {historical_evidence?: Partial<Record<Milestone, HistoricalEvidence[]>>; conflicts?: Partial<Record<Milestone, number[]>>;source?: string; updated_at?: string; group_type: number; owned: State; full_star: State; lv120: State; awakening_pending: State; current_count: number; current_level: number | null; evidence: Record<Milestone, number[]>; points: number; status: 'complete' | 'unowned' | 'unfinished'}
+export interface Progress {historical_evidence?: Partial<Record<Milestone, HistoricalEvidence[]>>;source?: string; updated_at?: string; group_type: number; owned: State; full_star: State; lv120: State; awakening_pending: State; current_count: number; current_level: number | null; evidence: Record<Milestone, number[]>; points: number; status: 'complete' | 'unowned' | 'unfinished'}
 export type Bonuses = Record<string, Record<string, number>>
-export interface Report {instance: string; revision: string; ships: Progress[]; nation_levels: Record<string, number | null>; bonuses: Bonuses; ship_bonuses: Bonuses; nation_bonuses: Bonuses; confirmed_points: number; completed: number; milestone_counts: Record<Milestone, number>; unknown_count: number; unknown_ships: number}
+export interface Report {instance: string; revision: string; ships: Progress[]; nation_levels: Record<string, number | null>; bonuses: Bonuses; ship_bonuses: Bonuses; nation_bonuses: Bonuses; confirmed_points: number; completed: number; milestone_counts: Record<Milestone, number>}
 export type Row = Ship & Progress
 export const milestones: Milestone[] = ['owned', 'full_star', 'lv120']
 export const recordFields: RecordField[] = [...milestones, 'awakening_pending']

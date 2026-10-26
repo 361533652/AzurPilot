@@ -3872,24 +3872,6 @@
       "Storage": {}
     }
   },
-  "MindCalculatorScan": {
-    "MindCalculator": {
-      "MinLevel": 95,
-      "MaxLevel": 125
-    },
-    "Storage": {
-      "Storage": {}
-    }
-  },
-  "FleetTechScan": {
-    "FleetTech": {
-      "MinLevel": 95,
-      "MaxLevel": 125
-    },
-    "Storage": {
-      "Storage": {}
-    }
-  },
   "Daemon": {
     "Daemon": {
       "EnterMap": true

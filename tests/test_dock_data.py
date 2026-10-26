@@ -5,7 +5,6 @@ import unittest
 from module.api.protocol import MindShip
 from module.runtime import dock_data as dock
 from module.runtime import fleet_tech as tech
-from module.runtime.mind_calculator import calculate
 
 
 def ship(gid=10102, level=105, **extra):
@@ -63,16 +62,6 @@ class DockDataTests(unittest.TestCase):
         self.assertEqual(dock.report_snapshot(data)['ships'], [])
         self.assertEqual(dock.report_snapshot(data)['source'], 'scan')
 
-    def test_心智限定名及特殊船排除不改变共享源(self):
-        result = snapshot([ship(30507), ship(30702), ship(10220)])
-        before = copy.deepcopy(result)
-        rows = dock.mind_ships(result)
-        for row in rows:
-            MindShip.model_validate(row)
-        self.assertEqual([row['name'] for row in rows[:2]], ['加贺（战列）', '加贺（正航）'])
-        report = calculate(rows)
-        self.assertEqual((report['included'], report['excluded']), (2, 1))
-        self.assertEqual(result, before)
 
     def test_科技合并保留人工阵营且只读(self):
         current = snapshot([dict(ship(), id=1)])
@@ -84,7 +73,6 @@ class DockDataTests(unittest.TestCase):
         state = tech.progress(record, 10102)
         self.assertFalse(state['owned'])
         self.assertEqual(state['current_count'], 1)
-        self.assertEqual(state['conflicts']['owned'], [1])
         self.assertFalse(tech.progress(record, 10103)['owned'])
         self.assertEqual(data, before)
 
@@ -100,18 +88,6 @@ class DockDataTests(unittest.TestCase):
         self.assertEqual(result['history']['current']['10102'], 125)
         self.assertFalse({'manual', 'nations', 'last_scan'} & result['history'].keys())
         self.assertFalse(tech.progress(dock.technology_record({'snapshot': result}), 10102)['owned'])
-
-    def test_心智合并确认副本而疑点卡位保持独立(self):
-        rows = [ship(level=105), ship(level=120), ship(None, 0), ship(None, 0)]
-        rows[2]['review'] = rows[3]['review'] = True
-        result = snapshot(rows)
-        projected = dock.mind_ships(result)
-        self.assertEqual(len(result['ships']), 4)
-        self.assertEqual(len(projected), 3)
-        self.assertEqual(projected[0]['level'], 120)
-        self.assertEqual(sum(row['review'] for row in projected), 2)
-        self.assertFalse(result['complete'])
-        self.assertEqual(result['review_count'], 2)
 
 
 if __name__ == '__main__':

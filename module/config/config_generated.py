@@ -1180,14 +1180,6 @@ class GeneratedConfig:
     Dock_MinLevel = 1
     Dock_MaxLevel = 125
 
-    # 配置组 `MindCalculator`
-    MindCalculator_MinLevel = 95
-    MindCalculator_MaxLevel = 125
-
-    # 配置组 `FleetTech`
-    FleetTech_MinLevel = 95
-    FleetTech_MaxLevel = 125
-
     # 配置组 `FleetRotation`
     FleetRotation_Enabled = False
     FleetRotation_Rules = '{}'

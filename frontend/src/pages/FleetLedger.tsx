@@ -160,7 +160,7 @@ export function FleetLedger({instance, report, onReport, onBusy, onDirty, locked
     if (disabled || !report) return
     const id = Math.min(-1, ...Object.keys(draft?.ships ?? {}).map(Number)) - 1
     change({id, name: '', group_type: null, level: 1, rarity: 'N', base_rarity: 'N', extra_exp: null,
-      full_star: null, form: null, review: true, excluded: false, source: 'manual'}, {})
+      full_star: null, form: null, review: true, source: 'manual'}, {})
     table.current?.scrollTo?.({top: 0})
   }
   function remove(row: DraftCard) {
@@ -183,7 +183,7 @@ export function FleetLedger({instance, report, onReport, onBusy, onDirty, locked
       changes.push({id: row.id > 0 ? row.id : undefined, name: row.name, group_type: row.group_type, level: row.level,
         rarity: row.rarity as Changes[number]['rarity'], base_rarity: row.base_rarity as Changes[number]['base_rarity'],
         full_star: row.full_star ?? null, form: row.form ?? null, review: row.review,
-        ...(row.id < 0 ? {extra_exp: null, excluded: false, source: 'manual'} : {})})
+        ...(row.id < 0 ? {extra_exp: null, source: 'manual'} : {})})
     }
     changes.push(...draft.deleted.map(id => ({id, delete: true})))
     setBusy(true); onBusy(true); setError('')

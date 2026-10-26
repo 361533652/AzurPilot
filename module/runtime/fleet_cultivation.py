@@ -35,7 +35,7 @@ def project(cards, ship_ids, target_level=120):
             info = matches[0] if len(matches) == 1 else None
         rarity = info['base_rarity'] if info else None
         row = dict(id=ship_id, name=card['name'], current_level=card['level'], level=level,
-                   target_level=target_level, hypothetical=False,
+                   target_level=target_level,
                    mind=None, mind2=None, gold=None,
                    status='unknown', notes=[], stages=[])
         if (card.get('review') or not info or card.get('group_type') != info['group_type']
@@ -62,6 +62,5 @@ def project(cards, ship_ids, target_level=120):
     return dict(ships=rows, target_level=target_level, included=len(rows),
                 mind_costs_100_to_120=mind_costs_100_to_120(),
                 unknown=sum(row['status'] == 'unknown' for row in rows),
-                estimated=0,
                 mind=sum(row['mind'] or 0 for row in rows), mind2=sum(row['mind2'] or 0 for row in rows),
                 gold=sum(row['gold'] or 0 for row in rows), rules_sha256=data['source_sha256'])

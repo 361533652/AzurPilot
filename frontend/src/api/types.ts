@@ -3,7 +3,7 @@
  */
 
 import type {Catalog, ProgramSaved, ProgramSimulation, ProgramValidation, RuntimeProgramState} from '../scheduler/types'
-import type {MindCalculation, MindCatalog, MindReport, MindShip} from '../mind/types'
+import type {MindCatalog, MindShip} from '../mind/types'
 import type {Catalog as FleetTechCatalog, Report as FleetTechReport} from '../fleet-tech/types'
 
 export type Scalar = string | number | boolean | null
@@ -150,11 +150,10 @@ export interface LauncherStatus {
 export interface DockCard {
   full_star?: boolean | null; form?: 'base' | 'retrofit' | null
   id: number; group_type: number | null; name: string; level: number
-  rarity: string; base_rarity: string; extra_exp: number | null; review: boolean; source: string; excluded: boolean
+  rarity: string; base_rarity: string; extra_exp: number | null; review: boolean; source: string
 }
 
 export interface LedgerDifference {
-  milestones?: ('owned' | 'full_star' | 'lv120')[]
   id: string; kind: 'ship' | 'technology' | 'nation'; operation: 'add' | 'update' | 'remove' | 'resolve'
   ship_id: number | null; group_type: number | null; name: string
   before: Record<string, unknown> | null; after: Record<string, unknown> | null; fields: string[]
@@ -185,15 +184,10 @@ export interface Results {
   'fleetTech.catalog': FleetTechCatalog
   'fleetTech.report': FleetTechReport
   'fleetTech.patch': FleetTechReport
-  'fleetTech.syncMind': FleetTechReport
   'fleetTech.mergeShips': FleetTechReport
-  'mind.report': MindReport
-  'mind.calculate': MindCalculation
   'mind.plan': import('../mind/cultivation').CultivationReport
-  'mind.save': MindReport
   'mind.import': {ships: MindShip[]}
   'mind.recognize': {ships: MindShip[]}
-  'mind.export': {filename: string; content: string}
   'statistics.resourceFlows': ResourceFlowReport
   'stock.status': StockExchangeStatus
   'stock.rebuild': StockExchangeRebuild

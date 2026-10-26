@@ -1,7 +1,6 @@
 """独立舰船数据库的纯分析投影；不读取旧任务配置中的舰船数据。"""
 import copy
 from module.runtime import fleet_tech as tech
-from module.runtime import mind_calculator as mind
 
 HISTORY_FIELDS = ('observed', 'current', 'absent')
 
@@ -23,8 +22,6 @@ def build_snapshot(ships, *, min_level, max_level, reached_bottom, filters_clear
         raise ValueError('扫描等级范围必须满足 1 ≤ 最低等级 ≤ 最高等级 ≤ 125')
     rows = copy.deepcopy(ships)
     for index, row in enumerate(rows):
-        for field in ('excluded', 'automatic_excluded', 'status', 'mind', 'gold'):
-            row.pop(field, None)
         row.setdefault('slot', index)
     merged = tech.merge_scan((previous or {}).get('history', {}), rows, min_level=min_level,
                              max_level=max_level, reached_bottom=reached_bottom,
@@ -51,32 +48,6 @@ def read_snapshot(data):
                 reached_bottom=False, filters_clear=False, physical_count=0,
                 expected_count=None, complete=False, review_count=0,
                 history={}, revision=tech.revision({}), source='empty')
-
-
-def mind_ships(snapshot):
-    """把已确认群组映射为心智限定名；歧义卡位仍独立留待核对。"""
-    by_group = {}
-    for info in mind.catalog()['ships'].values():
-        by_group.setdefault(info['group_type'], []).append(info)
-    output = []
-    for row in snapshot.get('ships', []):
-        level = row.get('level', 0)
-        if (type(level) is int and 1 <= level <= 125 and not row.get('review')
-                and not snapshot.get('min_level', 1) <= level <= snapshot.get('max_level', 125)):
-            continue
-        matches = by_group.get(row.get('group_type'), [])
-        info = next((item for item in matches if item['raw_name'] == row.get('name')), None)
-        if info is None and matches:
-            info = next((item for item in matches if item['group'] != '改造'), matches[0])
-        name = info['name'] if info else row.get('name', '未识别舰船')
-        level = row.get('level', 0)
-        valid_level = type(level) is int and 1 <= level <= 125
-        output.append(dict(name=name[:100], level=level if valid_level else 0,
-                           rarity=info['rarity'] if info else row.get('rarity', ''),
-                           base_rarity=info['base_rarity'] if info else row.get('base_rarity', ''),
-                           excluded=False, review=bool(row.get('review')) or not info or not valid_level,
-                           source=row.get('source', '')[:200]))
-    return mind.highest_ships(output)
 
 
 def technology_record(data):

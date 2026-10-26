@@ -245,7 +245,7 @@ class DockScan(Dock):
                 x = round(float(CARD_GRIDS.origin[0] + col * CARD_GRIDS.delta[0]))
                 recovered.append(Card(x, y, col, dict(
                     name=f'待核对舰船（{y}px 第 {col + 1} 列）', level=0, rarity='', base_rarity='',
-                    excluded=False, review=True, group_type=None, type=None, candidates=[], identity_ambiguous=True,
+                    review=True, group_type=None, type=None, candidates=[], identity_ambiguous=True,
                     source='当前卡位三帧仍未加载，保留位置待核对'), fleet=-1))
         return sorted(recovered, key=lambda card: (card.y, card.col))
 

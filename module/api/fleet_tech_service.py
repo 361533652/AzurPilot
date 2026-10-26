@@ -16,15 +16,8 @@ class FleetTechService:
         return dict(tech.public_catalog(), mind_costs_100_to_120=mind_costs_100_to_120())
 
     def report(self, instance):
-        data = FleetDatabase(self.configs.path(instance)).load(include_import_status=True)
-        snapshot = dock_data.read_snapshot(data)
-        fields = self.configs.read(instance)[0].get('DockScan', {}).get('Dock', {})
-        min_level = snapshot['min_level'] if dock_data.has_snapshot(data) else fields.get('MinLevel', 1)
-        max_level = snapshot['max_level'] if dock_data.has_snapshot(data) else fields.get('MaxLevel', 125)
-        record = dock_data.technology_record(data)
-        return dict(instance=instance, min_level=min_level, max_level=max_level,
-                    legacy_imported=data['legacy_imported'],
-                    **tech.report(record))
+        data = FleetDatabase(self.configs.path(instance)).load()
+        return dict(instance=instance, **tech.report(dock_data.technology_record(data)))
 
     def patch(self, instance, expected_revision, changes, nations):
         path = self.configs.path(instance)
@@ -39,9 +32,6 @@ class FleetTechService:
                 raise ApiError('INVALID_PARAMS', str(exc)) from exc
         return self.report(instance)
 
-    def sync_mind(self, instance):
-        """保留旧接口为只读报告；两个分析已经共用数据库，不再复制数据。"""
-        return self.report(instance)
 
     def merge_ships(self, instance, expected_revision):
         """用户显式合并舰船正向事实，保留已有科技里程碑。"""

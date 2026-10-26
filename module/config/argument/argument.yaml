@@ -2485,22 +2485,6 @@ Dock:
     value: 125
     validate: "^[1-9][0-9]?$|^1[01][0-9]$|^12[0-5]$"
 
-MindCalculator:
-  MinLevel:
-    value: 95
-    validate: "^[1-9][0-9]?$|^1[01][0-9]$|^12[0-5]$"
-  MaxLevel:
-    value: 125
-    validate: "^[1-9][0-9]?$|^1[01][0-9]$|^12[0-5]$"
-
-FleetTech:
-  MinLevel:
-    value: 95
-    validate: "^[1-9][0-9]?$|^1[01][0-9]$|^12[0-5]$"
-  MaxLevel:
-    value: 125
-    validate: "^[1-9][0-9]?$|^1[01][0-9]$|^12[0-5]$"
-
 FleetRotation:
   Enabled: false
   Rules:

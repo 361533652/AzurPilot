@@ -2,7 +2,7 @@
 import copy
 from collections import Counter
 
-CARD_FIELDS = ('group_type', 'name', 'level', 'rarity', 'base_rarity', 'extra_exp', 'excluded', 'review', 'source', 'full_star', 'form')
+CARD_FIELDS = ('group_type', 'name', 'level', 'rarity', 'base_rarity', 'extra_exp', 'review', 'source', 'full_star', 'form')
 RARITIES = ('', 'N', 'R', 'SR', 'SSR', 'UR')
 
 
@@ -16,7 +16,7 @@ def integer(value, label, low=0, high=None, *, nullable=False):
 
 def card(values, base=None):
     result = dict(group_type=None, name='', level=0, rarity='', base_rarity='', extra_exp=None,
-                  excluded=False, review=False, source='', full_star=None, form=None)
+                  review=False, source='', full_star=None, form=None)
     if base:
         result.update({key: base[key] for key in CARD_FIELDS if key in base})
     result.update({key: values[key] for key in CARD_FIELDS if key in values})
@@ -44,7 +44,7 @@ def card(values, base=None):
     for key in ('rarity', 'base_rarity'):
         if result[key] not in RARITIES:
             raise ValueError('稀有度无效')
-    for key in ('excluded', 'review'):
+    for key in ('review',):
         if type(result[key]) is not bool:
             raise ValueError(f'{key} 必须是布尔值')
     if not isinstance(result['source'], str) or len(result['source']) > 200:
@@ -55,7 +55,7 @@ def card(values, base=None):
 
 
 def observed_fields(raw):
-    # No experience observation means leave an existing manual experience untouched.
+    # Only supplied fields participate in a scan or import update.
     return tuple(key for key in CARD_FIELDS if key in raw)
 
 

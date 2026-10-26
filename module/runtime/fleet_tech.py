@@ -128,7 +128,7 @@ def progress(record, group_type):
                 status=status, points=0,
                 current_count=len(cards), current_level=max((row['level'] for row in cards), default=None),
                 evidence=evidence, historical_evidence=record.get('evidence_history', {}).get(gid, {}),
-                conflicts={}, source=saved.get('source', ''), updated_at=saved.get('updated_at', ''))
+                source=saved.get('source', ''), updated_at=saved.get('updated_at', ''))
 
 
 def merge_scan(record, ships, *, min_level, max_level, reached_bottom, filters_clear,
@@ -177,9 +177,8 @@ def ship_type(value):
 def report(record):
     """Count confirmed account milestones against technology-bearing catalog types."""
     rows, bonuses = [], defaultdict(lambda: defaultdict(int))
-    confirmed_points = completed = pending_star = 0
+    confirmed_points = completed = 0
     milestone_counts = {key: 0 for key in MILESTONES}
-    unknown_count = unknown_ships = 0
 
     def add(types, attr, value):
         for target in {ship_type(t) for t in types}:
@@ -191,14 +190,11 @@ def report(record):
         if info['technology']:
             for key in MILESTONES:
                 milestone_counts[key] += row[key] is True
-                unknown_count += row[key] is None
-            unknown_ships += any(row[key] is None for key in MILESTONES)
         tech = info['technology']
         if tech:
             if owned:
                 row['points'] += tech['pt_get']
                 add(tech['add_get_shiptype'], tech['add_get_attr'], tech['add_get_value'])
-                pending_star += full_star is None
             if full_star:
                 row['points'] += tech['pt_upgrage']
             if lv120:
@@ -217,8 +213,7 @@ def report(record):
                           if n - ship_bonuses.get(t, {}).get(a, 0)} for t, attrs in bonuses.items()}
     return dict(revision=revision(record), rules_version=1, data_version=record.get('snapshot_revision'),
                 ships=rows, nation_levels=levels,
-                milestone_counts=milestone_counts, unknown_count=unknown_count, unknown_ships=unknown_ships,
+                milestone_counts=milestone_counts,
                 ship_bonuses=ship_bonuses, nation_bonuses=nation_bonuses,
                 bonuses={t: dict(attrs) for t, attrs in bonuses.items()}, confirmed_points=confirmed_points,
-                completed=completed, pending_star=pending_star, last_scan=record.get('last_scan'),
-                review_ships=record.get('review_ships', []))
+                completed=completed)

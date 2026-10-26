@@ -9,7 +9,7 @@ from module.api.protocol import ApiError
 
 
 class MindCalculatorMockTest(unittest.TestCase):
-    def test_technology_patch_roundtrip_and_sync_are_independent_of_mind_list(self):
+    def test_technology_patch_roundtrip_is_independent_of_mind_list(self):
         request = dict(instance='fixture', record={}, ships=[dict(name='杜威', level=125)])
         initial = dispatch(dict(request, action='tech.report'))
         self.assertFalse(next(row for row in initial['result']['ships'] if row['group_type'] == 10102)['owned'])
@@ -17,8 +17,6 @@ class MindCalculatorMockTest(unittest.TestCase):
                               changes=[dict(group_type=10102, owned=True, full_star=False)], nations={'1': 2}))
         self.assertTrue(saved['record']['progress']['10102']['owned'])
         reloaded = dispatch(dict(request, action='tech.report', state=saved['state']))
-        synced = dispatch(dict(request, action='tech.syncMind', state=reloaded['state']))
-        self.assertEqual(reloaded, synced)
         self.assertEqual(reloaded['state']['_database'], saved['state']['_database'])
         self.assertEqual(reloaded['result']['nation_levels']['1'], 2)
         row = next(row for row in reloaded['result']['ships'] if row['group_type'] == 10102)
@@ -37,12 +35,6 @@ class MindCalculatorMockTest(unittest.TestCase):
         self.assertEqual(row['current_level'], 125)
         self.assertEqual(row['evidence']['lv120'], [1])
         self.assertTrue(row['lv120'])
-
-    def test_mind_export_reads_manual_database_entries(self):
-        exported = dispatch(dict(action='export', instance='fixture', format='json',
-                                 ships=[dict(name='杜威', level=105)]))
-        content = json.loads(base64.b64decode(exported['content']))
-        self.assertEqual([(ship['name'], ship['level']) for ship in content['ships']], [('杜威', 105)])
 
     def test_explicit_local_read_roundtrips_pending_changes_until_individual_review(self):
         def snapshot(level):
@@ -81,9 +73,8 @@ class MindCalculatorMockTest(unittest.TestCase):
         reloaded = dispatch(dict(persisted, action='dock.report'))
         self.assertEqual(reloaded['state']['_database'], migrated['state']['_database'])
         self.assertEqual(reloaded['result']['pending_changes'], pending)
-        before_review = dispatch(dict(persisted, action='mind.report'))['result']
-        self.assertEqual((before_review['ships'][0]['level'], before_review['ships'][0]['excluded']),
-                         (100, False))
+        before_review = dispatch(dict(persisted, action='dock.report'))['result']
+        self.assertEqual(before_review['ships'][0]['level'], 100)
         # Accept the card and observed achievements while keeping the existing
         # manual ownership and nation level by rejecting their separate changes.
         decisions = [dict(id=row['id'], accept=row['id'] not in ('technology:10102', 'nation:1'))
@@ -93,8 +84,8 @@ class MindCalculatorMockTest(unittest.TestCase):
         self.assertEqual(reviewed['result']['pending_changes'], [])
         self.assertEqual(reviewed['config'], local)
         persisted['state'] = reviewed['state']
-        mind = dispatch(dict(persisted, action='mind.report'))['result']
-        self.assertEqual((mind['ships'][0]['level'], mind['ships'][0]['excluded']), (125, True))
+        mind = dispatch(dict(persisted, action='dock.report'))['result']
+        self.assertEqual(mind['ships'][0]['level'], 125)
         tech = dispatch(dict(persisted, action='tech.report'))['result']
         rows = {row['group_type']: row for row in tech['ships']}
         self.assertTrue(rows[10102]['owned'])

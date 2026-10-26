@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 
 def dispatch(request):
-    from module.runtime.mind_calculator import calculate, catalog, revision
+    from module.runtime.mind_calculator import catalog
     from module.api.mind_calculator_service import MindCalculatorService, import_ships
     action = request['action']
     ships = request.get('ships', [])
@@ -27,7 +27,7 @@ def dispatch(request):
             }}})
             path.write_text(json.dumps(configuration), encoding='utf-8')
             database = FleetDatabase(path)
-            current = request.get('state') or dict(snapshot=request.get('snapshot'), mind={},
+            current = request.get('state') or dict(snapshot=request.get('snapshot'),
                                                    technology=request.get('record', {}))
             if current.get('_database'):
                 # Keep actual SQLite rows, pending IDs and revisions across mock
@@ -50,8 +50,8 @@ def dispatch(request):
                 result = service.catalog(request['instance'])
             elif action == 'tech.report':
                 result = service.report(request['instance'])
-            elif action == 'tech.syncMind':
-                result = service.sync_mind(request['instance'])
+            elif action == 'tech.mergeShips':
+                result = service.merge_ships(request['instance'], request['revision'])
             elif action == 'tech.patch':
                 result = service.patch(request['instance'], request['revision'],
                                        [FleetTechChange.model_validate(c) for c in request.get('changes', [])], request.get('nations', {}))
@@ -72,12 +72,6 @@ def dispatch(request):
             elif action == 'mind.plan':
                 result = MindCalculatorService(configs).plan(request['instance'], request['revision'],
                     request.get('ship_ids', []), request.get('target_level', 120))
-            elif action == 'mind.report':
-                result = MindCalculatorService(configs).report(request['instance'])
-            elif action == 'mind.save':
-                result = MindCalculatorService(configs).save(request['instance'], request['revision'], ships)
-            elif action == 'mind.export':
-                result = MindCalculatorService(configs).export(request['instance'], request.get('format', 'xlsx'))
             else:
                 raise ValueError('未知舰船模拟操作')
             stored = database.load(include_import_status=True)
@@ -88,11 +82,9 @@ def dispatch(request):
     if action == 'catalog':
         data = catalog()
         return dict(updated_at=data['updated_at'], ships=list(data['ships'].values()))
-    if action in ('report', 'calculate'):
-        return dict(revision=revision(ships), **calculate(ships))
     if action == 'import':
         return {'ships': import_ships(request['filename'], request['content'])}
-    if action in ('export', 'recognize'):
+    if action == 'recognize':
         from module.runtime.fleet_database import FleetDatabase
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'fixture.json'
@@ -102,8 +94,6 @@ def dispatch(request):
                 from module.runtime.dock_data import read_snapshot
                 database.patch_cards(ships, read_snapshot(database.load())['revision'])
             service = MindCalculatorService(SimpleNamespace(path=lambda _: path, read=lambda _: ({}, '')))
-            if action == 'export':
-                return service.export(request['instance'], request.get('format', 'xlsx'))
             return service.recognize(request['instance'], request['filename'], request['content'])
     raise ValueError('未知模拟操作')
 

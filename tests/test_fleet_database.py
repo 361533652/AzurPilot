@@ -97,7 +97,7 @@ class FleetDatabaseTest(unittest.TestCase):
         return current_revision(self.db)
 
     def empty(self, include_import_status=False):
-        value = dict(snapshot=None, mind={}, technology={}, pending_revision=None, pending_changes=[])
+        value = dict(snapshot=None, technology={}, pending_revision=None, pending_changes=[])
         if include_import_status:
             value['legacy_imported'] = False
         return value
@@ -127,11 +127,9 @@ class FleetDatabaseTest(unittest.TestCase):
                                      'pending_targets', 'technology_progress', 'technology_evidence'})
             columns = {row[1]: row for row in connection.execute('PRAGMA table_info(ships)')}
             self.assertEqual(set(columns), {'id', 'position', 'group_type', 'name', 'level',
-                'rarity', 'base_rarity', 'extra_exp', 'excluded', 'review', 'source', 'full_star', 'form'})
+                'rarity', 'base_rarity', 'review', 'source', 'full_star', 'form'})
             self.assertEqual(columns['id'][2], 'INTEGER')
             self.assertEqual(columns['id'][5], 1)
-            self.assertEqual(columns['extra_exp'][2], 'INTEGER')
-            self.assertEqual(columns['extra_exp'][3], 0)
             sql = connection.execute("SELECT sql FROM sqlite_master WHERE name='ships'").fetchone()[0]
             self.assertIn('AUTOINCREMENT', sql.upper())
             for table in tables:
@@ -187,16 +185,16 @@ class FleetDatabaseTest(unittest.TestCase):
             state['legacy_snapshot'] = snapshot('ignored')
             state['legacy_sources'] = {'raw': object()}
         self.assertEqual(self.db.load()['snapshot'], before)
-        self.assertEqual(self.db.load()['mind'], {})
+        self.assertNotIn('mind', self.db.load())
 
     def test_invalid_edits_roll_back_earlier_updates_in_the_same_batch(self):
         first = self.seed()['snapshot']['ships'][0]
         for invalid in (-1, 1.5, '100', True, object()):
             committed = self.db.load()
-            with self.subTest(extra_exp=repr(invalid)):
+            with self.subTest(level=repr(invalid)):
                 with self.assertRaises((TypeError, ValueError, sqlite3.Error)):
                     self.db.patch_cards([dict(id=first['id'], level=90),
-                        dict(name='invalid', level=100, extra_exp=invalid)], self.current_revision())
+                        dict(name='invalid', level=invalid)], self.current_revision())
                 self.assertEqual(self.db.load(), committed)
 
     def test_scan_proof_validation_is_strict_and_failed_stage_preserves_previous_candidates(self):

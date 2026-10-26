@@ -499,10 +499,6 @@ Tool:
     FleetScan: []
     DockScan:
       - Dock
-    MindCalculatorScan:
-      - MindCalculator
-    FleetTechScan:
-      - FleetTech
     Daemon:
       - Daemon
     OpsiDaemon:

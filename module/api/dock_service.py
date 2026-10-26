@@ -42,7 +42,7 @@ class DockService:
             try:
                 FleetDatabase(path).patch_cards(changes, expected_revision)
             except FleetDatabaseConflict as exc:
-                raise ApiError('CONFLICT', str(exc), getattr(exc, 'conflicts', None)) from exc
+                raise ApiError('CONFLICT', str(exc)) from exc
             except (ValueError, TypeError, KeyError) as exc:
                 raise ApiError('INVALID_PARAMS', f'舰船修改无效：{exc}') from exc
         return self.report(instance)
@@ -55,7 +55,7 @@ class DockService:
             try:
                 FleetDatabase(path).review(decisions, expected_revision, pending_revision)
             except FleetDatabaseConflict as exc:
-                raise ApiError('CONFLICT', str(exc), getattr(exc, 'conflicts', None)) from exc
+                raise ApiError('CONFLICT', str(exc)) from exc
             except (ValueError, TypeError, KeyError) as exc:
                 raise ApiError('INVALID_PARAMS', f'审核决定无效：{exc}') from exc
         return self.report(instance)

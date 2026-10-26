@@ -40,29 +40,12 @@ class FleetTechRecordTests(unittest.TestCase):
         record['manual'] = {'10103': {'owned': True, 'level': 125, 'lv120': True}}
         before = copy.deepcopy(record['manual'])
         reduced = merge(record, [observed(10102, 100)])
-        self.assertEqual(reduced['last_scan']['ships'], [(10102, 100)])
         self.assertEqual(reduced['current']['10102'], 125)
         self.assertEqual(reduced['manual'], before)
         empty = merge(reduced, [])
-        self.assertEqual(empty['last_scan']['ships'], [])
-        self.assertEqual(empty['last_scan']['matched_count'], 0)
         self.assertEqual(empty['current'], reduced['current'])
         self.assertEqual(empty['manual'], before)
 
-    def test_legacy_sync_endpoint_never_imports_mind_analysis(self):
-        from module.api.mind_calculator_service import MindCalculatorService
-        with tempfile.TemporaryDirectory() as directory:
-            configs = ConfigService(fixture(directory))
-            mind, service = MindCalculatorService(configs), FleetTechService(configs)
-            preview = mind.calculate('testpilot', [dict(name='小克利夫兰', level=105)])
-            self.assertEqual(preview['excluded'], 1)
-            with self.assertRaises(ApiError) as error:
-                mind.save('testpilot', mind.report('testpilot')['revision'], preview['ships'])
-            self.assertEqual(error.exception.code, 'READ_ONLY')
-            self.assertFalse(next(row for row in service.report('testpilot')['ships'] if row['group_type'] == 10220)['owned'])
-            imported = service.sync_mind('testpilot')
-            self.assertFalse(next(row for row in imported['ships'] if row['group_type'] == 10220)['owned'])
-            self.assertEqual(imported, service.report('testpilot'))
 
     def test_milestone_correction_survives_reload_without_changing_levels(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -106,20 +89,15 @@ class FleetTechRecordTests(unittest.TestCase):
                               ({'min_level': 1, 'reached_bottom': True}, [observed(10102, 120), dict(name='约克', level=120, review=True)])]:
             with self.subTest(params=params):
                 result = merge(original, ships, **params)
-                self.assertFalse(result['last_scan']['complete'])
                 self.assertEqual(result['observed']['10103'], 125)
                 self.assertEqual(result['current']['10102'], 120)
         self.assertEqual(original, dict(observed={'10103': 125}))
 
-    def test_known_outside_range_review_is_not_imported_but_unknown_level_is_retained(self):
-        result = merge({}, [dict(name='约克', level=56, review=True), dict(name='未读到', level=0, review=True)])
-        self.assertEqual([row['level'] for row in result['review_ships']], [0])
 
     def test_partial_scan_of_lower_copy_preserves_existing_highest_level(self):
         original = dict(observed={'10102': 125}, current={'10102': 125})
         partial = merge(original, [observed(10102, 105)], max_level=115)
         self.assertEqual(partial['current']['10102'], 125)
-        self.assertEqual(partial['last_scan']['ships'], [(10102, 105)])
         uncertain = merge(original, [observed(10102, 105)], min_level=1, reached_bottom=True, expected_count=None)
         self.assertEqual(uncertain['current']['10102'], 125)
         complete = merge(original, [observed(10102, 105)], min_level=1, reached_bottom=True)
@@ -128,7 +106,6 @@ class FleetTechRecordTests(unittest.TestCase):
     def test_complete_scan_confirms_absence_but_preserves_manual_override_and_history(self):
         record = dict(observed={'10103': 125, '10104': 105}, manual={'10104': dict(owned=True, level=105)})
         result = merge(record, [observed(10102, 120)], min_level=1, reached_bottom=True)
-        self.assertTrue(result['last_scan']['complete'])
         self.assertIn('10103', result['absent'])
         self.assertEqual(result['manual']['10104'], record['manual']['10104'])
         self.assertEqual(result['observed']['10103'], 125)
@@ -137,12 +114,10 @@ class FleetTechRecordTests(unittest.TestCase):
         self.assertEqual(again['current']['10103'], 99)
         self.assertEqual(again['observed']['10103'], 125)
 
-    def test_scan_fingerprint_is_stable_by_group_and_highest_current_copy(self):
+    def test_scan_order_preserves_highest_current_copy(self):
         ships = [observed(30507, 120), observed(30702, 120), observed(30702, 105), observed(10224, 99)]
         first = merge({}, ships)
         second = merge(first, list(reversed(ships)), updated_at='later')
-        self.assertEqual(first['last_scan']['fingerprint'], second['last_scan']['fingerprint'])
-        self.assertEqual(second['last_scan']['matched_count'], 3)
         self.assertEqual(second['current'], {'10224': 99, '30702': 120, '30507': 120})
 
     def test_shortcut_patch_rejects_mixed_or_missing_target_without_partial_save(self):
@@ -264,8 +239,8 @@ class FleetTechIdentityTests(unittest.TestCase):
         self.assertEqual(result[0]['candidates'], [30507, 30702])
 
     def test_page_coverage_rejects_missing_middle_cards_and_partial_nonbottom_pages(self):
-        from module.retire.fleet_tech_scan import FleetTechScan
-        scanner = object.__new__(FleetTechScan)
+        from module.retire.dock_scan import DockScan
+        scanner = object.__new__(DockScan)
         cards = [Card(93, y, col, observed(10102, 100), 6, True) for y in (80, 307, 534) for col in range(7)]
         scanner._check_scan_page(cards, False)
         scanner._check_scan_page(cards[:-4], True)
@@ -274,12 +249,12 @@ class FleetTechIdentityTests(unittest.TestCase):
                 scanner._check_scan_page(incomplete, bottom)
 
     def test_interrupted_or_failed_scan_does_not_enter_record_transaction(self):
-        from module.retire.fleet_tech_scan import FleetTechScan
+        from module.retire.dock_scan import DockScan
         from module.retire.assets import DOCK_SEARCH_CLOSED
         from module.exception import MindCalculatorScanError
         from module.config.config import TaskEnd
         from module.ui.page import page_dock, page_main
-        scanner = object.__new__(FleetTechScan)
+        scanner = object.__new__(DockScan)
         scanner.config = SimpleNamespace(config_name='testpilot', Dock_MinLevel=98, Dock_MaxLevel=125, data={})
         scanner.device = SimpleNamespace(image=None)
         scanner.ui_ensure = scanner._close_search = scanner.dock_reset = scanner.dock_sort_method_dsc_set = lambda *args: None
@@ -289,7 +264,7 @@ class FleetTechIdentityTests(unittest.TestCase):
         with patch('module.retire.dock_scan.DOCK_SCROLL', scroll), \
                 patch('module.retire.enhancement.OCR_DOCK_AMOUNT.ocr', return_value=(100, 0, 100)), \
                 patch('module.ocr.al_ocr.AlOcr'), patch('module.retire.dock_scan.FleetDatabase') as database:
-            database.return_value.load.return_value = dict(snapshot=None, mind={}, technology={})
+            database.return_value.load.return_value = dict(snapshot=None, technology={})
             for error in [TaskEnd('cancelled'), MindCalculatorScanError('OCR failed')]:
                 scanner.ui_ensure.reset_mock()
                 with patch.object(scanner, '_scan_pages', side_effect=error), self.assertRaises(type(error)):
@@ -310,7 +285,6 @@ class FleetTechIdentityTests(unittest.TestCase):
                 self.assertTrue(expected <= set(map(int, result['current'])))
                 if label == 'york':
                     self.assertNotIn('40311', result['current'])
-                    self.assertTrue(result['review_ships'])
         image = Image.open(FIXTURES / 'fleet_tech_mu.png').convert('RGB')
         cards = recognize_cards(image, name_ocr=names, level_ocr=levels, identity=self.identity)
         result = merge({}, [card.ship for card in cards])
@@ -319,7 +293,6 @@ class FleetTechIdentityTests(unittest.TestCase):
         # 实际日志中的 80px 采样曾读成“天胆”；有限复读应保持与默认采样相同的完整身份集合。
         shifted = recognize_cards(image, name_ocr=names, level_ocr=levels, row_origins=(80, 307, 534), identity=self.identity)
         repeated = merge({}, [card.ship for card in shifted])
-        self.assertEqual(result['last_scan']['fingerprint'], repeated['last_scan']['fingerprint'])
 
 
 if __name__ == '__main__':

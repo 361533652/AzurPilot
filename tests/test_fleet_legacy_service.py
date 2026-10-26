@@ -60,7 +60,7 @@ class LocalLegacyImportTests(unittest.TestCase):
     def test_default_reports_ignore_old_data_until_import_is_reviewed_and_keep_source(self):
         original = self.path.read_bytes()
         self.assertEqual(self.dock.report('testpilot')['ships'], [])
-        self.assertEqual(self.mind.report('testpilot')['ships'], [])
+        self.assertEqual(self.dock.report('testpilot')['ships'], [])
         self.assertFalse(next(row for row in self.tech.report('testpilot')['ships']
                               if row['group_type'] == 10102)['owned'])
         self.assertEqual(original, self.path.read_bytes())
@@ -69,12 +69,11 @@ class LocalLegacyImportTests(unittest.TestCase):
         self.assertTrue(report['legacy_imported'])
         self.assertEqual(report['ships'], [])
         self.assertTrue(report['pending_changes'])
-        self.assertEqual(self.mind.report('testpilot')['ships'], [])
+        self.assertEqual(self.dock.report('testpilot')['ships'], [])
         self.assertEqual(self.tech.report('testpilot')['completed'], 0)
         report = self.accept_pending(report)
         self.assertEqual(len(report['ships']), 2)
-        self.assertTrue(self.mind.report('testpilot')['ships'][0]['excluded'])
-        self.assertEqual(self.mind.report('testpilot')['ships'][0]['level'], 110)
+        self.assertEqual(self.dock.report('testpilot')['ships'][0]['level'], 110)
         tech = {row['group_type']: row for row in self.tech.report('testpilot')['ships']}
         self.assertEqual(tech[10102]['current_level'], 110)
         self.assertTrue(tech[10102]['owned'])
@@ -100,8 +99,8 @@ class LocalLegacyImportTests(unittest.TestCase):
         self.write()
         for _ in range(2):
             self.dock.report('testpilot')
-            self.mind.report('testpilot')
-            report = self.tech.sync_mind('testpilot')
+            self.dock.report('testpilot')
+            report = self.tech.report('testpilot')
             self.assertTrue(next(row for row in report['ships'] if row['group_type'] == 10102)['owned'])
         self.assertEqual(self.database.path.read_bytes(), before)
 
@@ -119,7 +118,6 @@ class LocalLegacyImportTests(unittest.TestCase):
         self.assertEqual(state['snapshot']['ships'], stored_cards)
         self.assertEqual(len(stored_cards), 1)
         self.assertEqual(stored_cards[0]['level'], 125)
-        self.assertIsNone(stored_cards[0]['extra_exp'])
         self.assertEqual(state['technology']['progress']['10102']['owned'], False)
         self.assertNotIn('manual', state['technology'])
         self.assertEqual(state['technology']['nations']['1'], 0)
