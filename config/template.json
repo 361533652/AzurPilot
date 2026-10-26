@@ -3881,22 +3881,10 @@
       "Storage": {}
     }
   },
-  "MindCalculatorScan": {
-    "MindCalculator": {
-      "MinLevel": 95,
-      "MaxLevel": 125,
-      "Result": {},
-      "FleetTechRecord": {}
-    },
-    "Storage": {
-      "Storage": {}
-    }
-  },
-  "FleetTechScan": {
-    "FleetTech": {
-      "MinLevel": 95,
-      "MaxLevel": 125,
-      "Record": {}
+  "DockScan": {
+    "Dock": {
+      "MinLevel": 1,
+      "MaxLevel": 125
     },
     "Storage": {
       "Storage": {}

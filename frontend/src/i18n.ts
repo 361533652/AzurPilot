@@ -1,3 +1,4 @@
+import {analysisZhCN, analysisZhTW, analysisEnUS, analysisJaJP} from './fleet-analysis-i18n'
 import {rotationZhCN, rotationZhTW, rotationEnUS, rotationJaJP} from './fleet-rotation-i18n'
 import {trainingZhCN, trainingZhTW, trainingEnUS, trainingJaJP} from './fleet-training-i18n'
 import {equipmentZhCN, equipmentZhTW, equipmentEnUS, equipmentJaJP} from './fleet-equipment-i18n'
@@ -22,6 +23,7 @@ export const languages: Record<Language, string> = {
 
 const zhCN = {
   ...resourceZhCN,
+  ...analysisZhCN,
   ...mindZhCN,
   ...fleetTechZhCN,
   ...rotationZhCN,
@@ -602,6 +604,7 @@ export type UiTranslator = (key: UiKey, params?: TranslationParams) => string
 
 const enUS: Record<UiKey, string> = {
   ...resourceEnUS,
+  ...analysisEnUS,
   ...mindEnUS,
   ...fleetTechEnUS,
   ...rotationEnUS,
@@ -756,6 +759,7 @@ const enUS: Record<UiKey, string> = {
 
 const jaJP: Record<UiKey, string> = {
   ...resourceJaJP,
+  ...analysisJaJP,
   ...mindJaJP,
   ...fleetTechJaJP,
   ...rotationJaJP,
@@ -971,6 +975,7 @@ const jaJP: Record<UiKey, string> = {
 
 const zhTW: Record<UiKey, string> = {
   ...resourceZhTW,
+  ...analysisZhTW,
   ...mindZhTW,
   ...fleetTechZhTW,
   ...rotationZhTW,

@@ -437,7 +437,7 @@ class VisualTargetTests(unittest.TestCase):
         from module.retire.assets import DOCK_CHECK
         tool.appear = lambda button, **kwargs: button is DOCK_CHECK
         tool.loop = images
-        with patch('module.retire.mind_scan.MindCalculatorScan._drag_rows', side_effect=drag) as move:
+        with patch('module.retire.dock_scan.DockScan._drag_rows', side_effect=drag) as move:
             pages = list(tool._dock_pages(VisualDockScanner(), max_rows=3))
         self.assertEqual(len(pages), 2)
         self.assertEqual(tool._dock_offset, 231)
@@ -721,7 +721,7 @@ class ScanNavigationTests(unittest.TestCase):
             stage = 1
 
         tool.loop = images
-        with patch('module.retire.mind_scan.MindCalculatorScan._drag_rows', side_effect=drag):
+        with patch('module.retire.dock_scan.DockScan._drag_rows', side_effect=drag):
             pages = list(tool._dock_pages(VisualDockScanner()))
         self.assertEqual(len(pages), 2)
         self.assertEqual(len(pages[-1][1]), 21)

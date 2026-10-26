@@ -1176,16 +1176,9 @@ class GeneratedConfig:
     IslandBusinessShop5_Product5 = 'None'  # None, cheese, citrus_coffee, strawberry_milkshake, morning_light, wake_up_call, fruity_fruitier
     IslandBusinessShop5_BoostReplaceFilter = '30 > 20 > cheese > 10'
 
-    # 配置组 `MindCalculator`
-    MindCalculator_MinLevel = 95
-    MindCalculator_MaxLevel = 125
-    MindCalculator_Result = {}
-    MindCalculator_FleetTechRecord = {}
-
-    # 配置组 `FleetTech`
-    FleetTech_MinLevel = 95
-    FleetTech_MaxLevel = 125
-    FleetTech_Record = {}
+    # 配置组 `Dock`
+    Dock_MinLevel = 1
+    Dock_MaxLevel = 125
 
     # 配置组 `FleetRotation`
     FleetRotation_Enabled = False

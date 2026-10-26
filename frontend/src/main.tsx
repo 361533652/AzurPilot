@@ -38,8 +38,7 @@ class ErrorBoundary extends Component<{children: ReactNode}, {failed: boolean}> 
 }
 const SchedulerProgram = lazy(() => import('./pages/SchedulerProgram').then(module => ({default: module.SchedulerProgram})))
 const StockExchange = lazy(() => import('./pages/StockExchange').then(module => ({default: module.StockExchange})))
-const MindCalculator = lazy(() => import('./pages/MindCalculator').then(module => ({default: module.MindCalculator})))
-const FleetTechnology = lazy(() => import('./pages/FleetTechnology').then(module => ({default: module.FleetTechnology})))
+const FleetAnalysis = lazy(() => import('./pages/FleetAnalysis').then(module => ({default: module.FleetAnalysis})))
 const FleetRotation = lazy(() => import('./pages/FleetRotation').then(module => ({default: module.FleetRotation})))
 const FleetTraining = lazy(() => import('./pages/FleetTraining').then(module => ({default: module.FleetTraining})))
 const FleetEquipment = lazy(() => import('./pages/FleetEquipment').then(module => ({default: module.FleetEquipment})))
@@ -49,13 +48,11 @@ const router = createHashRouter([
   {path: '/i/:instance', element: <App/>, errorElement: <ErrorPage/>, children: [
     {index: true, element: <Navigate to="overview" replace/>},
     {path: 'overview', element: <Overview/>}, {path: 'task/:task', element: <TaskConfig/>},
-    {path: 'mind-calculator', element: <Navigate to="../task/MindCalculator" replace/>},
     {path: 'resources', element: <Navigate to="../statistics?view=management" replace/>},
     {path: 'stock-exchange', element: <StockExchangeBoundary><Suspense fallback={<StockExchangeFallback/>}><StockExchange/></Suspense></StockExchangeBoundary>},
     {path: 'logs', element: <Navigate to="../overview" replace/>}, {path: 'statistics', element: <Statistics/>}, {path: 'scheduler', element: <Navigate to="../task/SchedulerProgram" replace/>}, {path: 'settings', element: <Navigate to="/settings" replace/>},
     {path: 'task/SchedulerProgram', element: <Suspense fallback={<div>{translateCurrentUi('common.loading')}</div>}><SchedulerProgram/></Suspense>},
-    {path: 'task/MindCalculator', element: <Suspense fallback={<div>{translateCurrentUi('common.loading')}</div>}><MindCalculator/></Suspense>},
-    {path: 'task/FleetTechnology', element: <Suspense fallback={<div>{translateCurrentUi('common.loading')}</div>}><FleetTechnology/></Suspense>},
+    {path: 'task/FleetAnalysis', element: <Suspense fallback={<div>{translateCurrentUi('common.loading')}</div>}><FleetAnalysis/></Suspense>},
     {path: 'task/FleetRotation', element: <Suspense fallback={<div>{translateCurrentUi('common.loading')}</div>}><FleetRotation/></Suspense>},
     {path: 'task/FleetTraining', element: <Suspense fallback={<div>{translateCurrentUi('common.loading')}</div>}><FleetTraining/></Suspense>},
     {path: 'task/FleetLevelTraining', element: <Navigate to="../FleetTraining" relative="path" replace/>},

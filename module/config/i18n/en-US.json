@@ -398,13 +398,9 @@
       "name": "Fleet Scan",
       "help": "Scan ships assigned to fleets"
     },
-    "MindCalculatorScan": {
-      "name": "Cognitive chip dock scan",
-      "help": "Scan a CN dock at 1280×720 and review results in the cognitive chip calculator. Keeps old data until completion; resets dock filters."
-    },
-    "FleetTechScan": {
-      "name": "Fleet technology scan",
-      "help": "Record ship identities and levels independently of cognitive chip exclusions."
+    "DockScan": {
+      "name": "Dock data scan",
+      "help": "Read dock cards into shared data for mental-chip and fleet-technology analysis; does not upgrade or swap ships."
     },
     "Daemon": {
       "name": "Semi-Auto Click",
@@ -6749,44 +6745,18 @@
       "help": "When multiple boosted products are detected, the first one in filter order is prioritized for replacement; the replacement slot is the last non-empty slot searched from Product5→1"
     }
   },
-  "MindCalculator": {
+  "Dock": {
     "_info": {
-      "name": "Cognitive chip calculator",
-      "help": "Calculate Cognitive Chips I and coins to reach level 120."
+      "name": "Shared dock data",
+      "help": "Read dock cards into shared data for mental-chip and fleet-technology analysis; does not upgrade or swap ships."
     },
     "MinLevel": {
       "name": "Minimum scan level",
-      "help": "Inclusive. Import ships at or above this level."
+      "help": "Read dock cards into shared data for mental-chip and fleet-technology analysis; does not upgrade or swap ships."
     },
     "MaxLevel": {
       "name": "Maximum scan level",
-      "help": "Inclusive. Import ships at or below this level."
-    },
-    "Result": {
-      "name": "Ship scan results",
-      "help": "Stores ships, levels and review states per instance."
-    },
-    "FleetTechRecord": {
-      "name": "Fleet technology records",
-      "help": "Stores cumulative scan evidence, manual overrides and faction technology levels per instance."
-    }
-  },
-  "FleetTech": {
-    "_info": {
-      "name": "Technology scan",
-      "help": "Defaults to 95–125. Only a complete unfiltered 1–125 scan can confirm absence."
-    },
-    "MinLevel": {
-      "name": "Minimum level",
-      "help": "Inclusive; preserve existing records outside the range."
-    },
-    "MaxLevel": {
-      "name": "Maximum level",
-      "help": "Inclusive, up to level 125."
-    },
-    "Record": {
-      "name": "Fleet technology records",
-      "help": "Store groups, manual corrections, level toggle history and scan coverage per instance."
+      "help": "Read dock cards into shared data for mental-chip and fleet-technology analysis; does not upgrade or swap ships."
     }
   },
   "FleetRotation": {

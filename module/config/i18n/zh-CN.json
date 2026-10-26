@@ -398,13 +398,9 @@
       "name": "舰队扫描",
       "help": "扫描当前编入舰队的舰娘信息"
     },
-    "MindCalculatorScan": {
-      "name": "心智单元船坞扫描",
-      "help": "扫描国服 1280×720 船坞，结果在心智单元计算器中核对。完成前保留旧数据；会重置船坞筛选。"
-    },
-    "FleetTechScan": {
-      "name": "舰船科技扫描",
-      "help": "独立记录舰船身份和等级，不按心智计费条件排除。"
+    "DockScan": {
+      "name": "船坞数据扫描",
+      "help": "读取船坞卡片，保存共享数据供心智与舰船科技分析；不执行养成或换船。"
     },
     "Daemon": {
       "name": "半自动点击",
@@ -6749,44 +6745,18 @@
       "help": "多个加成餐品时按过滤顺序优先替换第一个；替换槽位从餐品5→1倒查替换最后一个非空餐品\n可用餐品key对照：cheese:芝士, strawberry_milkshake:草莓奶绿, morning_light:晨光活力组合, wake_up_call:醒神套餐, fruity_fruitier:果香双杯乐\n示例：fruity_fruitier > wake_up_call > 30 > morning_light > strawberry_milkshake > 20 > cheese > 10"
     }
   },
-  "MindCalculator": {
+  "Dock": {
     "_info": {
-      "name": "心智单元计算器",
-      "help": "统计升至 120 级的心智单元Ⅰ与物资。"
+      "name": "共享船坞数据",
+      "help": "读取船坞卡片，保存共享数据供心智与舰船科技分析；不执行养成或换船。"
     },
     "MinLevel": {
       "name": "最低扫描等级",
-      "help": "包含边界。仅录入此等级及以上的舰船。"
+      "help": "读取船坞卡片，保存共享数据供心智与舰船科技分析；不执行养成或换船。"
     },
     "MaxLevel": {
       "name": "最高扫描等级",
-      "help": "包含边界。仅录入此等级及以下的舰船。"
-    },
-    "Result": {
-      "name": "舰船扫描结果",
-      "help": "按实例保存舰船、等级与核对状态。"
-    },
-    "FleetTechRecord": {
-      "name": "舰队科技记录",
-      "help": "按实例保存累计扫描证据、人工校正及阵营科技等级。"
-    }
-  },
-  "FleetTech": {
-    "_info": {
-      "name": "科技扫描",
-      "help": "默认 95–125，完整 1–125 无过滤扫描才可确认未发现。"
-    },
-    "MinLevel": {
-      "name": "最低等级",
-      "help": "包含边界，范围外的已有记录保留。"
-    },
-    "MaxLevel": {
-      "name": "最高等级",
-      "help": "包含边界，最高 125 级。"
-    },
-    "Record": {
-      "name": "舰船科技记录",
-      "help": "按实例保存群组、人工校正、等级切换历史和扫描范围证据。"
+      "help": "读取船坞卡片，保存共享数据供心智与舰船科技分析；不执行养成或换船。"
     }
   },
   "FleetRotation": {

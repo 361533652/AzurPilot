@@ -79,8 +79,6 @@ def _get_task_display_name(task_command):
     return _i18n_task_names.get(task_command, task_command)
 
 
-
-
 class AzurLaneAutoScript:
     """碧蓝航线自动化脚本调度器核心类。
 
@@ -1157,7 +1155,7 @@ class AzurLaneAutoScript:
         except (MindCalculatorScanError, FleetManagementError) as e:
             logger.error_context(
                 title=('舰队管理未完成' if isinstance(e, FleetManagementError) else
-                       '舰船科技扫描未完成' if command == 'fleet_tech_scan' else '心智单元船坞扫描未完成'),
+                       '共享船坞扫描未完成'),
                 reason=str(e), exc=e,
                 impact=('本次舰队任务结束，不重启模拟器或重复换船；已操作但未核验的舰队参考记录会失效。'
                         if isinstance(e, FleetManagementError) else
@@ -2028,13 +2026,9 @@ class AzurLaneAutoScript:
         from module.retire.fleet_management import FleetManagement
         FleetManagement(config=self.config, device=self.device, task="FleetScan").run()
 
-    def mind_calculator_scan(self):
-        from module.retire.mind_scan import MindCalculatorScan
-        MindCalculatorScan(config=self.config, device=self.device, task="MindCalculatorScan").run()
-
-    def fleet_tech_scan(self):
-        from module.retire.fleet_tech_scan import FleetTechScan
-        FleetTechScan(config=self.config, device=self.device, task="FleetTechScan").run()
+    def dock_scan(self):
+        from module.retire.dock_scan import DockScan
+        DockScan(config=self.config, device=self.device, task="DockScan").run()
 
     def game_manager(self):
         from module.daemon.game_manager import GameManager
