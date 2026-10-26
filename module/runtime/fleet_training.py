@@ -1,7 +1,7 @@
 """普通舰队培养条件与持久记录；不操作设备，不估算等级或好感。"""
 
 from copy import deepcopy
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from module.config.time_source import now
 from module.exception import FleetManagementError
@@ -20,8 +20,11 @@ def goals(config):
 
 
 def interval(config):
-    return min((config.cross_get(path + '.CheckInterval', 30) for path in (LEVEL_PATH, AFFINITY_PATH)
-                if config.cross_get(path + '.Enabled', False) is True), default=30)
+    """以小时返回最短启用间隔；兼容尚未迁移的分钟配置。"""
+    return min((config.cross_get(path + '.CheckIntervalHours',
+                                config.cross_get(path + '.CheckInterval', 30) / 60)
+                for path in (LEVEL_PATH, AFFINITY_PATH)
+                if config.cross_get(path + '.Enabled', False) is True), default=0.5)
 
 
 def due(config, context):
@@ -32,7 +35,7 @@ def due(config, context):
     return (context.get('training_goals') != signature
             or context.get('training_rules') != config.cross_get(ROTATION_PATH + '.Rules', '{}')
             or context.get('training_fleets') != active_fleets(config) or not isinstance(checked, datetime)
-            or now() >= checked + timedelta(minutes=interval(config)))
+            or (now() - checked).total_seconds() / 3600 >= interval(config))
 
 
 def state(config):
@@ -78,10 +81,17 @@ def excluded(record, targets):
     return bool(targets) and isinstance(done, dict) and bool(done)
 
 
-def observe(saved, name, reading, targets):
+def observe(saved, name, reading, targets, *, fleet=None, slot=None, emotion=None):
     record = dict(saved['records'].get(name, {}), name=name, checked_at=now().isoformat(timespec='seconds'))
     # 同次检查重新写入全部已启用条件，不能把旧高好感与新等级拼成完成。
     record.update({metric: reading.get(metric) for metric in targets})
+    if 'level' in targets:
+        # 经验已经随等级实读，独立保存供页面展示，不参与完成判定。
+        record['exp'] = reading.get('exp')
+    if type(fleet) is int and 1 <= fleet <= 6 and type(slot) is int and 1 <= slot <= 6:
+        # 保存当次已确认的位置和已有心情读数，仅用于记录展示，不额外操作游戏。
+        record.update(fleet=fleet, slot=slot,
+                      emotion=emotion if type(emotion) is int and 0 <= emotion <= 150 else None)
     if completed(record, targets) and not record.get('completed_for'):
         record['completed_for'] = dict(targets)
         record['completed_at'] = now().isoformat(timespec='seconds')

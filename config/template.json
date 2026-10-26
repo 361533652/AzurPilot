@@ -3800,12 +3800,12 @@
     "FleetLevelTraining": {
       "Enabled": false,
       "Target": 120,
-      "CheckInterval": 30
+      "CheckIntervalHours": 0.5
     },
     "FleetAffinityTraining": {
       "Enabled": false,
       "Target": 100,
-      "CheckInterval": 30
+      "CheckIntervalHours": 0.5
     },
     "FleetTraining": {
       "State": {}

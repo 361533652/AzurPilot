@@ -32,6 +32,17 @@ class AffinityText(Ocr):
         return cv2.resize(255 - gray, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
 
 
+class TrainingExp(ShipExp):
+    """沿用经验识别与文本修正，解析失败保留未知，避免展示成实际的零经验。"""
+
+    def ocr(self, image, direct_ocr=False):
+        text = Ocr.ocr(self, image, direct_ocr=direct_ocr)
+        if isinstance(text, list):
+            text = text[0] if text else ''
+        match = re.search(r'(\d+)/', str(text))
+        return int(match[1]) if match else None
+
+
 class AffinityReader:
     def __init__(self):
         # 未达成时数字是金色，已达成时为白色；两条通道均须解析“当前”后的数值。
@@ -126,7 +137,7 @@ class FleetTrainingReader(FleetShipDetail):
                 continue
             values = {}
             if 'level' in targets:
-                level_reader, exp_reader = ShipLevel(OCR_SHIP_LEVEL, name='培养等级'), ShipExp(OCR_SHIP_EXP, name='培养经验')
+                level_reader, exp_reader = ShipLevel(OCR_SHIP_LEVEL, name='培养等级'), TrainingExp(OCR_SHIP_EXP, name='培养经验')
                 category = 'main' if slot <= 3 else 'vanguard'
                 reference = next((ship.get('level', 0) for ship in self.config.cross_get(self.manager.RESULT_PATH, {})
                                   .get(category, {}).get(str(fleet), []) if ship.get('slot') == slot), 0)

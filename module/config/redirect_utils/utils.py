@@ -16,6 +16,11 @@
 from module.config.server import to_server
 
 
+def fleet_training_hours_redirect(value):
+    """旧培养间隔从分钟换算为小时，保持原有实际等待时间。"""
+    return value / 60
+
+
 def upload_redirect(value):
     """重定向上传配置属性（Upload）。
 
