@@ -68,39 +68,42 @@ test('侵蚀一资源检查配置位于献祭流下方且通用页不再显示',
 
 test('舰队科技完整图鉴区分累计里程碑与当前持有', async ({page}) => {
   await page.addInitScript(() => localStorage.setItem('azurpilot.language', 'zh-CN'))
+  let catalogCount = 0
   await page.routeWebSocket('**/api/v1/ws', socket => {
     const server = socket.connectToServer(), methods = new Map<string, string>()
     socket.onMessage(message => {const request = JSON.parse(String(message)); methods.set(request.id, request.method); server.send(message)})
     server.onMessage(message => {
       const response = JSON.parse(String(message))
+      if (response.ok && methods.get(response.id) === 'fleetTech.catalog') catalogCount = response.result.ships.filter((ship: any) => ship.technology).length
       if (response.ok && methods.get(response.id) === 'fleetTech.report') {
         response.result.ships = response.result.ships.map((ship: any) => ({...ship,
-          owned: ship.group_type === 10102 ? true : null,
-          full_star: null, lv120: ship.group_type === 10102 ? true : null,
+          owned: ship.group_type === 10102,
+          full_star: ship.group_type === 10102, lv120: ship.group_type === 10102,
           current_count: 0, current_level: null, evidence: {owned: [], full_star: [], lv120: []},
-          points: ship.group_type === 10102 ? 8 : 0, status: 'unknown',
+          points: ship.group_type === 10102 ? 15 : 0, status: ship.group_type === 10102 ? 'complete' : 'unowned',
         }))
-        response.result.milestone_counts = {owned: 1, full_star: 0, lv120: 1}
-        response.result.confirmed_points = 8
+        response.result.milestone_counts = {owned: 1, full_star: 1, lv120: 1}
+        response.result.confirmed_points = 15
         response.result.ship_bonuses = {}; response.result.nation_bonuses = {}
       }
       socket.send(JSON.stringify(response))
     })
   })
-  await page.goto('/#/i/demo-main/task/FleetTechnology')
+  await page.goto('/#/i/demo-main/task/FleetAnalysis?tab=technology')
   const table = page.locator('.ft-table-wrap')
-  await expect(table.locator('tbody tr')).toHaveCount(50)
-  await expect(page.locator('.ft-summary')).toContainText('账号累计科技进度')
+  await expect.poll(() => catalogCount).toBeGreaterThan(50)
+  await expect(table.locator('tbody tr')).toHaveCount(catalogCount)
+  await expect(page.locator('.ft-summary')).toContainText('里程碑独立保存')
   await expect(page.getByRole('button', {name: '舰船底账', exact: true})).toHaveCount(0)
   await expect(page.getByRole('button', {name: '合并记录', exact: true})).toHaveCount(0)
   await page.getByLabel('搜索舰名', {exact: true}).fill('杜威')
   await expect(table.locator('tr[data-group="10102"]')).toHaveCount(1)
-  await expect(table).toContainText('未持有')
-  await expect(table.getByRole('button', {name: '杜威 · 满星 · 未核实', exact: true})).toBeVisible()
+  await expect(table.getByRole('link', {name: '杜威', exact: true})).toHaveAttribute('title', /当前持有: 0/)
+  await expect(table.getByRole('button', {name: '杜威 · 满星 · 已完成', exact: true})).toHaveAttribute('aria-pressed', 'true')
   await page.getByRole('button', {name: '未获得', exact: true}).click()
   await expect(table.locator('tbody tr')).toHaveCount(0)
   await page.getByRole('button', {name: '未获得', exact: true}).click()
-  await page.getByRole('button', {name: '未持有', exact: true}).click()
+  await page.locator('.ft-filters').getByRole('button', {name: 'Lv.120', exact: true}).click()
   await expect(table.locator('tr[data-group="10102"]')).toHaveCount(1)
   await page.setViewportSize({width: 412, height: 950})
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
@@ -1252,14 +1255,14 @@ test('关闭背景后切回填写 URL 直接铺上，不必再点应用背景', 
   await expect(page.locator('.wallpaper img')).toBeVisible()
 })
 
-test('舰船数据四页与旧路由兼容，扫描控件只在扫描更新页', async ({page}) => {
+test('舰船数据四页直接导航，扫描控件只在扫描更新页', async ({page}) => {
   const requests: string[] = [], tasks: string[] = []
   page.on('websocket', socket => socket.on('framesent', ({payload}) => {
     const request = JSON.parse(String(payload)); if (request.type !== 'request') return
     requests.push(request.method); if (request.method === 'tasks.run') tasks.push(request.params.task)
   }))
   await page.addInitScript(() => {localStorage.setItem('azurpilot.language', 'zh-CN'); localStorage.setItem('azurpilot.theme', 'light')})
-  await page.goto('/#/i/demo-main/task/MindCalculator')
+  await page.goto('/#/i/demo-main/task/FleetAnalysis?tab=mind')
   await expect(page).toHaveURL(/task\/FleetAnalysis\?tab=mind/)
   await expect(page.getByRole('tab')).toHaveCount(4)
   await expect(page.getByRole('tab', {name: '养成计算', exact: true})).toHaveAttribute('aria-selected', 'true')
@@ -1285,10 +1288,12 @@ test('舰船数据四页与旧路由兼容，扫描控件只在扫描更新页',
   expect(requests).toContain('dock.configure')
 })
 
-test('旧舰队科技入口直接跳转到统一分析的科技标签', async ({page}) => {
+test('舰队科技直达路由刷新保持科技标签', async ({page}) => {
   await page.addInitScript(() => localStorage.setItem('azurpilot.language', 'zh-CN'))
-  await page.goto('/#/i/demo-main/task/FleetTechnology')
+  await page.goto('/#/i/demo-main/task/FleetAnalysis?tab=technology')
   await expect(page).toHaveURL(/task\/FleetAnalysis\?tab=technology/)
   await expect(page.getByRole('tab', {name: '舰队科技', exact: true})).toHaveAttribute('aria-selected', 'true')
   await expect(page.locator('.fleet-technology table')).toBeVisible()
+  await page.reload()
+  await expect(page.getByRole('tab', {name: '舰队科技', exact: true})).toHaveAttribute('aria-selected', 'true')
 })

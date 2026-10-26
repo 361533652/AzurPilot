@@ -24,7 +24,7 @@ test.beforeEach(async ({page}) => {
 
 test('import keeps duplicate cards pending until confirmation', async ({page}, info) => {
   const instance = `import-${info.testId.replace(/[^a-z0-9]/gi, '').slice(-12)}-${info.retry}`
-  await page.goto('/'); await rpc(page, 'instances.create', {name: instance})
+  await page.goto('/'); await rpc(page, 'instances.create', {name: instance}); await page.goto('about:blank'); await page.goto('/')
   await page.goto(`/#/i/${instance}/task/FleetAnalysis?tab=scan`)
   const file = page.locator('input[type=file][accept=".json,.csv,.xlsx"]')
   await expect(file).toBeEnabled()
@@ -46,9 +46,9 @@ test('import keeps duplicate cards pending until confirmation', async ({page}, i
   expect(new Set(saved.ships.map((row: any) => row.id)).size).toBe(2)
 })
 
-test('automatic cultivation uses the highest copy and editing drafts never change facts', async ({page}, info) => {
+test('automatic cultivation follows committed copies while inline drafts persist and discard independently', async ({page}, info) => {
   const instance = `plan-${info.testId.replace(/[^a-z0-9]/gi, '').slice(-12)}-${info.retry}`
-  await page.goto('/'); await rpc(page, 'instances.create', {name: instance})
+  await page.goto('/'); await rpc(page, 'instances.create', {name: instance}); await page.goto('about:blank'); await page.goto('/')
   const empty = await rpc(page, 'dock.report', {instance})
   const saved = await rpc(page, 'dock.patch', {instance, revision: empty.revision, changes: [
     {name: '杜威', group_type: 10102, level: 100, rarity: 'R', base_rarity: 'R', extra_exp: 0},
@@ -56,23 +56,26 @@ test('automatic cultivation uses the highest copy and editing drafts never chang
   ]})
   const [first, second] = saved.ships
   await page.goto(`/#/i/${instance}/task/FleetAnalysis?tab=mind`)
-  await expect(page.getByText(/参与 1 艘/)).toBeVisible()
+  const selected = page.getByRole('link', {name: '杜威', exact: true})
+  await expect(page.getByText('计入 1 种舰船', {exact: false})).toBeVisible()
   await expect(page.locator('tbody tr')).toHaveCount(1)
-  await expect(page.locator('tbody')).toContainText(`杜威 · #${second.id}`)
-  const row = page.locator('tbody tr')
-  await row.locator('summary').click()
-  await page.getByLabel(`假设等级 ${second.id}`, {exact: true}).fill('119')
-  await expect(row.getByText('已启用试算条件', {exact: true})).toBeVisible()
-  const afterTrial = await rpc(page, 'dock.report', {instance})
-  expect(afterTrial.revision).toBe(saved.revision)
-  expect(afterTrial.ships).toEqual(saved.ships)
+  await expect(selected).toHaveAttribute('href', `?tab=data&ship=${second.id}`)
   await page.getByRole('tab', {name: '我的舰船', exact: true}).click()
-  await page.locator(`a[href$="ship=${first.id}&edit=1"]`).click()
-  await page.getByRole('dialog').getByLabel('等级', {exact: true}).fill('112')
-  await page.getByRole('tab', {name: '扫描更新', exact: true}).click()
+  const level = page.getByLabel(`等级 · 杜威 #${first.id}`, {exact: true})
+  await level.fill('112')
+  expect((await rpc(page, 'dock.report', {instance})).ships).toEqual(saved.ships)
+  await page.getByRole('tab', {name: '养成计算', exact: true}).click()
+  await expect(selected).toHaveAttribute('href', `?tab=data&ship=${second.id}`)
   await page.getByRole('tab', {name: '我的舰船', exact: true}).click()
-  await page.locator(`a[href$="ship=${first.id}&edit=1"]`).click()
-  await expect(page.getByRole('dialog').getByLabel('等级', {exact: true})).toHaveValue('112')
-  await page.getByRole('dialog').getByRole('button', {name: '放弃草稿', exact: true}).click()
-  await expect(page.getByRole('dialog').getByLabel('等级', {exact: true})).toHaveValue('100')
+  await expect(level).toHaveValue('112')
+  await page.getByRole('button', {name: '放弃草稿', exact: true}).click()
+  await expect(level).toHaveValue('100')
+  await level.fill('112')
+  await page.getByRole('button', {name: '保存', exact: true}).click()
+  await expect(page.getByText('舰船数据已保存', {exact: true})).toBeVisible()
+  const committed = await rpc(page, 'dock.report', {instance})
+  expect(committed.ships.find((card: any) => card.id === first.id).level).toBe(112)
+  expect(committed.ships.find((card: any) => card.id === second.id).level).toBe(110)
+  await page.getByRole('tab', {name: '养成计算', exact: true}).click()
+  await expect(selected).toHaveAttribute('href', `?tab=data&ship=${first.id}`)
 })

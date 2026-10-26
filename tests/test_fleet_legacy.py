@@ -82,7 +82,7 @@ class FleetLegacyTests(unittest.TestCase):
 
     def test_raw_positive_levels_cannot_be_lowered_by_old_history(self):
         dock = snapshot(125)
-        dock['history']['observed']['10102'] = 100
+        dock['history'] = {'observed': {'10102': 100}}
         converted = convert_legacy({'DockScan': {'Dock': {'Result': dock}},
             'FleetTechScan': {'FleetTech': {'Record': {'observed': {'10103': 100},
                 'last_scan': {'ships': [[10103, 125]]}}}}})
@@ -101,6 +101,36 @@ class FleetLegacyTests(unittest.TestCase):
         data['MindCalculatorScan']['MindCalculator']['Analysis']['snapshot_revision'] = original['revision']
         matching = sqlite_payload(convert_legacy(data))
         self.assertEqual(matching['ships'][0]['level'], 105)
+
+    def test_numbered_review_overrides_bind_to_original_physical_cards(self):
+        # The old calculator canonicalized both names to 杜威 and kept review copies
+        # separately; its numbered keys must never be recomputed from edited rows.
+        for raw_name in ('杜威', '未确认卡片'):
+            with self.subTest(raw_name=raw_name):
+                original = dock_data.build_snapshot([
+                    dict(row(name=raw_name, level=0), group_type=10102, review=True),
+                    dict(row(name='富特', level=50), group_type=10103),
+                    dict(row(name=raw_name, level=80), group_type=10102, review=True)],
+                    min_level=98, max_level=125, reached_bottom=True, filters_clear=True,
+                    physical_count=3, expected_count=3, updated_at='2026-10-25T10:00:00')
+                keys = [key for key, _ in _keyed(_mind_ships(original))]
+                self.assertEqual(len(keys), 2)
+                self.assertEqual(keys[1], keys[0] + ':1')
+                data = {'DockScan': {'Dock': {'Result': original}}, 'MindCalculatorScan': {'MindCalculator': {
+                    'Analysis': {'overrides': {keys[0]: {'name': '富特', 'level': 115, 'review': False},
+                                               keys[1]: {'level': 95, 'source': '第二张的校正'}},
+                                 'extra': [dict(row(name=raw_name, level=0), review=True)],
+                                 'snapshot_revision': original['revision']}}}}
+                before = copy.deepcopy(data)
+                rows = sqlite_payload(convert_legacy(data))['ships']
+                self.assertEqual([(item['name'], item['level']) for item in rows],
+                                 [('富特', 115), ('富特', 50), (raw_name, 95), (raw_name, 0)])
+                self.assertFalse(rows[0]['review'])
+                self.assertEqual(rows[2]['source'], '第二张的校正')
+                self.assertEqual(data, before)
+                data['MindCalculatorScan']['MindCalculator']['Analysis']['snapshot_revision'] = 'stale'
+                stale = sqlite_payload(convert_legacy(data))['ships']
+                self.assertEqual([item['level'] for item in stale], [0, 50, 80, 0])
 
     def test_unknown_manual_extra_without_snapshots_remains_visible(self):
         data = {'MindCalculatorScan': {'MindCalculator': {'Analysis': {'extra': [

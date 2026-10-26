@@ -469,9 +469,8 @@ class FleetDatabase:
             connection.execute('INSERT INTO pending_nations VALUES (?, ?)', (key, value))
         connection.execute('UPDATE fleet_info SET reading_count=?, reading_review_count=?, reading_complete=? WHERE id=1',
                            (len(rows), sum(ledger.card(row)['review'] for row in rows), int(complete)))
-        has_changes = bool(self._differences(connection))
-        connection.execute('UPDATE fleet_info SET pending_revision=?, pending_source=?, pending_updated_at=? WHERE id=1',
-                           (tech.revision(uuid4().hex) if has_changes else None, source, updated_at))
+        connection.execute('UPDATE fleet_info SET pending_source=?, pending_updated_at=? WHERE id=1',
+                           (source, updated_at))
         self._prune_pending(connection)
 
     def _prune_pending(self, connection):
@@ -498,10 +497,10 @@ class FleetDatabase:
         rows = [row for row in snapshot['ships']
                 if not (type(row.get('level')) is int and 1 <= row['level'] <= 125
                         and not metadata['min_level'] <= row['level'] <= metadata['max_level'])]
-        derived = tech.merge_scan({}, rows, **metadata)
+        summary = tech.scan_summary(rows, **{key: value for key, value in metadata.items() if key != 'updated_at'})
         with self._transaction() as connection:
             self._check_revision(connection, expected_revision)
-            self._stage(connection, rows, complete=derived['last_scan']['complete'],
+            self._stage(connection, rows, complete=summary['complete'],
                         source='scan', updated_at=metadata['updated_at'])
 
     def stage_import(self, rows, expected_revision):

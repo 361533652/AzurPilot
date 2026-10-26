@@ -54,7 +54,7 @@ export function createMockState({ empty = false } = {}) {
   function fleetStatePython(action, params) {
     const output = mindPython(action, {...params, state: fleetStates.get(params.instance),
       config: get(params.instance).values})
-    if (['tech.patch', 'dock.patch', 'dock.review', 'dock.importLegacy', 'dock.stageImport'].includes(action)) fleetStates.set(params.instance, output.state)
+    if (['tech.patch', 'tech.mergeShips', 'dock.patch', 'dock.review', 'dock.importLegacy', 'dock.stageImport'].includes(action)) fleetStates.set(params.instance, output.state)
     if (action === 'dock.importLegacy') get(params.instance).values = output.config
     return output.result
   }
@@ -567,14 +567,10 @@ export function createMockState({ empty = false } = {}) {
       case 'fleetTech.catalog': return fleetPython('catalog', params)
       case 'fleetTech.report': return fleetPython('report', params)
       case 'fleetTech.patch': return fleetPython('patch', params)
-      case 'fleetTech.syncMind': return fleetPython('syncMind', params)
-      case 'mind.calculate': return mindPython('calculate', params)
-      case 'mind.report': return fleetStatePython('mind.report', params)
-      case 'mind.save': return fleetStatePython('mind.save', params)
+      case 'fleetTech.mergeShips': return fleetPython('mergeShips', params)
       case 'mind.plan': return fleetStatePython('mind.plan', params)
       case 'mind.import': return mindPython('import', params)
       case 'mind.recognize': return mindPython('recognize', params)
-      case 'mind.export': return fleetStatePython('mind.export', params)
       case 'stock.status': return stock.status(name)
       case 'stock.rebuild': return stock.rebuild(name,params)
       case 'stock.request': return stock.request(name,params)

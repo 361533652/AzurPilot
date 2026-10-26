@@ -40,7 +40,7 @@ test('舰队管理打开四页舰船数据与舰队信息，扫描开关只运�
       socket.send(JSON.stringify(response))
     })
   })
-  await page.goto('/#/i/demo-alt/mind-calculator')
+  await page.goto('/#/i/demo-alt/task/FleetAnalysis?tab=mind')
   await expect(page).toHaveURL(/task\/FleetAnalysis\?tab=mind$/)
   await expect(page.getByRole('heading', {name: '养成计算', exact: true})).toBeVisible()
   await expect(page.locator('.primary-nav').getByRole('link', {name: '养成计算', exact: true})).toHaveCount(0)

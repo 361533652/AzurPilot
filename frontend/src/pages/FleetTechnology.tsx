@@ -1,3 +1,4 @@
+import {FleetFilterRow, fleetShipTypes as types, fleetAttributes as attrs, fleetRarities as rarities} from '../fleet-tech/filters'
 import {useEffect, useMemo, useRef, useState} from 'react'
 import {Link, useParams, useSearchParams} from 'react-router-dom'
 import {api} from '../api/client'
@@ -8,9 +9,6 @@ import {catalogRows, changeMilestone, complete, matches, milestones, recordField
 import {technologyEfficiency} from '../mind/cultivation'
 import '../fleet-tech/style.css'
 
-const types = [1, 2, 3, 18, 4, 5, 7, 6, 13, 12, 10, 8, 17, 19, 22]
-const attrs = [1, 2, 3, 4, 5, 6, 9, 8, 12]
-const rarities = ['N', 'R', 'SR', 'SSR', 'UR', 'PR', 'DR']
 const stageLabel = {owned: 'get', full_star: 'star', lv120: 'Lv.120'}
 const stateKey = (value: State) => value ? 'finished' : 'notFinished'
 const stateSymbol = (value: State) => value ? '✓' : '—'
@@ -142,16 +140,16 @@ export function FleetTechnology() {
   useEffect(() => {
     if (targetGroup && report && catalog) document.getElementById(`technology-${targetGroup}`)?.scrollIntoView?.({block: 'center'})
   }, [targetGroup, report, catalog])
-  async function reload() {
+  async function reload(includeCatalog = false) {
     const token = scope.current
     try {
-      const [data, value] = await Promise.all([api.request('fleetTech.catalog', {instance}), api.request('fleetTech.report', {instance})])
-      if (scope.current === token) {setCatalog(data); setReport(value); setError('')}
+      const [data, value] = await Promise.all([includeCatalog ? api.request('fleetTech.catalog', {instance}) : Promise.resolve(undefined), api.request('fleetTech.report', {instance})])
+      if (scope.current === token) {if (data) setCatalog(data); setReport(value); setError('')}
     } catch (e) {if (scope.current === token) setError((e as Error).message)}
   }
   useEffect(() => {
     scope.current++; setCatalog(undefined); setReport(undefined); setError(''); setBusy(false); writing.current = false
-    if (connection === 'ready') void reload()
+    if (connection === 'ready') void reload(true)
     return () => {scope.current++}
   }, [instance, connection])
   function change(row: Row, key: RecordField, value: State) {
@@ -209,10 +207,10 @@ export function FleetTechnology() {
     finally {if (token === scope.current) {writing.current = false; setBusy(false)}}
   }
   function group(key: string, options: [string, string][], label = tr(key === 'type' ? 'category' : key)) {
-    return <div className="ft-filter-row"><strong>{label}</strong><div className="ft-chips">{[['', tr('all')], ...options].map(([value, label]) => <button key={value} aria-pressed={value ? filters[key]?.includes(value) ?? false : !filters[key]?.length} onClick={() => setFilters(previous => ({...previous, [key]: value ? previous[key]?.includes(value) ? previous[key]!.filter(item => item !== value) : [...previous[key] ?? [], value] : []}))}>{label}</button>)}</div></div>
+    return <FleetFilterRow filter={key} label={label} options={options} filters={filters} setFilters={setFilters} all={tr('all')}/>
   }
   function bonusList(values: Bonuses) {return <div className="ft-bonus-grid">{types.filter(type => values[String(type)] && Object.keys(values[String(type)]!).length).map(type => <div key={type}><b>{tr(`type.${type}`)}</b> {attrs.filter(attr => values[String(type)]![String(attr)]).map(attr => `${tr(`attr.${attr}`)}+${values[String(type)]![String(attr)]}`).join(' · ')}</div>)}</div>}
-  if (!catalog || !report) return error ? <ErrorBox message={error} retry={() => void reload()}/> : <Loading/>
+  if (!catalog || !report) return error ? <ErrorBox message={error} retry={() => void reload(!catalog)}/> : <Loading/>
   const disabled = busy || connection !== 'ready'
   return <div className="fleet-technology">
     <PageTitle title={tr('title')} actions={<button className="button secondary" disabled={disabled} onClick={() => void reload()}>{ui('mind.reload')}</button>}/>

@@ -122,7 +122,7 @@ class DockScan(Dock):
         snapshot = dock_data.build_snapshot(
             self._scan_slots, min_level=self._policy.min_level, max_level=self._policy.max_level,
             filters_clear=True, expected_count=expected_count,
-            updated_at=datetime.now().isoformat(timespec='seconds'), previous=original, **self._scan_metadata)
+            updated_at=datetime.now().isoformat(timespec='seconds'), **self._scan_metadata)
         try:
             # 与实例删除共用生命周期锁；扫描期间不持有配置锁。
             with config_transaction(filepath_config(self.config.config_name)):

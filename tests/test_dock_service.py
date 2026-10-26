@@ -39,8 +39,7 @@ class SharedAnalysisTests(unittest.TestCase):
             rows = [dict(name='杜威', group_type=10102, level=level, review=False,
                          rarity='R', base_rarity='R', source='自动扫描第 1 页')]
         params = dict(min_level=1, max_level=125, reached_bottom=True, filters_clear=True,
-                      physical_count=len(rows), expected_count=len(rows), updated_at=f'fixture-{level}',
-                      previous=dock_data.read_snapshot(state))
+                      physical_count=len(rows), expected_count=len(rows), updated_at=f'fixture-{level}')
         params.update(extra)
         snapshot = dock_data.build_snapshot(rows, **params)
         database.save_scan(snapshot, dock_data.read_snapshot(state)['revision'])

@@ -131,42 +131,21 @@ def progress(record, group_type):
                 source=saved.get('source', ''), updated_at=saved.get('updated_at', ''))
 
 
-def merge_scan(record, ships, *, min_level, max_level, reached_bottom, filters_clear,
-               physical_count, expected_count, updated_at):
-    """科技扫描按群组合并；仅完整、无过滤、无疑点且数量吻合时确认缺失。"""
-    output = copy.deepcopy(record)
+def scan_summary(ships, *, min_level, max_level, reached_bottom, filters_clear,
+                 physical_count, expected_count):
+    """Count uncertain cards and require full dock coverage before suggesting removals."""
     known = {row['group_type'] for row in catalog()['ships']}
-    seen, reviews = {}, []
+    reviews = 0
     for ship in ships:
         gid, level = ship.get('group_type'), ship.get('level')
         if type(level) is int and 1 <= level <= 125 and not min_level <= level <= max_level:
             continue
         if (ship.get('review') or type(gid) is not int or gid not in known
                 or type(level) is not int or not 1 <= level <= 125):
-            reviews.append(copy.deepcopy(ship))
-            continue
-        if min_level <= level <= max_level:
-            seen[str(gid)] = max(seen.get(str(gid), 0), level)
+            reviews += 1
     complete = (min_level == 1 and max_level == 125 and reached_bottom and filters_clear
                 and type(expected_count) is int and physical_count == expected_count == len(ships) and not reviews)
-    observed = output.setdefault('observed', {})
-    current = output.setdefault('current', {})
-    for gid, level in seen.items():
-        previous = current.get(gid, observed.get(gid, 0))
-        # 局部范围可能只读到低级副本，不能据此降低范围外的既有最高等级。
-        current[gid] = level if complete or gid in output.get('absent', []) else max(previous, level)
-        observed[gid] = max(observed.get(gid, 0), level)
-    absent = {str(gid) for gid in known} - seen.keys() if complete else set(output.get('absent', [])) - seen.keys()
-    output['absent'] = sorted(absent, key=int)
-    evidence = sorted(((int(gid), level) for gid, level in seen.items()))
-    output['last_scan'] = dict(min_level=min_level, max_level=max_level, complete=bool(complete),
-                               reached_bottom=bool(reached_bottom), filters_clear=bool(filters_clear),
-                               physical_count=physical_count, expected_count=expected_count,
-                               matched_count=len(seen), review_count=len(reviews), updated_at=updated_at,
-                               fingerprint=revision(evidence), ships=evidence)
-    output['review_ships'] = reviews
-    output['version'] = 2
-    return output
+    return dict(complete=bool(complete), review_count=reviews)
 
 
 def ship_type(value):

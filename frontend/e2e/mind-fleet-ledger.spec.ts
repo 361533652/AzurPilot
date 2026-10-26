@@ -36,19 +36,23 @@ test('four flat pages preserve per-copy edits and never start a scan on navigati
   const [first, second] = saved.ships
   // Fixtures are seeded through an external socket; reload the app's instance list.
   await page.goto('about:blank')
-  await page.goto(`/#/i/${instance}/task/FleetAnalysis?tab=data`)
+  await page.goto(`/#/i/${instance}/task/FleetAnalysis?tab=data&ship=${second.id}`)
   await expect(page.getByRole('tab')).toHaveCount(4)
-  await expect(page.locator('tbody input')).toHaveCount(0)
-  await page.locator(`a[href$="ship=${first.id}&edit=1"]`).click()
-  const details = page.getByRole('dialog')
-  await expect(details.getByLabel('额外经验（未知留空）')).toHaveValue('')
-  await details.getByLabel('等级', {exact: true}).fill('110')
-  await details.getByRole('button', {name: '保存舰船数据', exact: true}).click()
-  await expect(details).toHaveCount(0)
+  await expect(page.locator(`#ledger-ship-${second.id}`)).toHaveClass(/ledger-highlight/)
+  await expect(page.getByLabel(`等级 · 杜威 #${second.id}`, {exact: true})).toHaveValue('100')
+  await expect(page.getByRole('button', {name: '保存', exact: true})).toHaveCount(1)
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  const level = page.getByLabel(`等级 · 杜威 #${first.id}`, {exact: true})
+  await expect(level).toHaveValue('100')
+  await level.fill('110')
+  await page.getByRole('button', {name: '保存', exact: true}).click()
+  await expect(page.getByText('舰船数据已保存', {exact: true})).toBeVisible()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.reload()
   const reloaded = await rpc(page, 'dock.report', {instance})
   expect(reloaded.ships.find((row: any) => row.id === first.id)).toMatchObject({level: 110, extra_exp: null})
   expect(reloaded.ships.find((row: any) => row.id === second.id)).toMatchObject({level: 100, extra_exp: 0})
+  const navigationStart = methods.length
   for (const tab of ['舰队科技', '养成计算', '我的舰船']) {
     await page.getByRole('tab', {name: tab, exact: true}).click()
     await expect(page.getByRole('button', {name: '扫描船坞', exact: true})).toHaveCount(0)
@@ -57,13 +61,13 @@ test('four flat pages preserve per-copy edits and never start a scan on navigati
   }
   await page.getByRole('tab', {name: '扫描更新', exact: true}).click()
   await expect(page.getByRole('button', {name: '扫描船坞', exact: true})).toBeVisible()
-  expect(methods.filter(method => ['tasks.run', 'dock.importLegacy', 'mind.save', 'fleetTech.syncMind'].includes(method))).toEqual([])
+  expect(methods.slice(navigationStart).filter(method => ['tasks.run', 'dock.importLegacy', 'dock.patch', 'dock.review', 'fleetTech.patch', 'fleetTech.mergeShips'].includes(method))).toEqual([])
 })
 
 test('safe batch excludes removals and unresolved duplicates', async ({page}, info) => {
   const instance = `safe-${info.testId.replace(/[^a-z0-9]/gi, '').slice(-12)}-${info.retry}`
   await page.goto('/'); await rpc(page, 'instances.create', {name: instance}); await page.goto('about:blank')
-  const card = (id: number, level: number) => ({id, name: '杜威', level, group_type: 10102, rarity: 'R', base_rarity: 'R', extra_exp: null, excluded: false, review: false, source: 'manual'})
+  const card = (id: number, level: number) => ({id, name: '杜威', level, group_type: 10102, rarity: 'R', base_rarity: 'R', extra_exp: null, review: false, source: 'manual'})
   const decisions: any[] = []
   const report: any = {instance, revision: 'a'.repeat(64), ships: [card(10, 100), card(11, 100)], legacy_imported: false, min_level: 1, max_level: 125, updated_at: '', complete: true, review_count: 0, source: 'manual', pending_revision: 'b'.repeat(64), pending_changes: [
     {id: 'update', kind: 'ship', operation: 'update', ship_id: 10, name: '杜威', before: card(10, 100), after: card(10, 110), candidates: [], milestones: ['owned']},

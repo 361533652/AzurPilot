@@ -16,6 +16,7 @@ from module.api.protocol import ApiError, FleetTechChange
 from module.config.deep import deep_set
 from module.runtime.fleet_database import FleetDatabase
 from module.runtime import fleet_tech as tech
+from module.runtime.fleet_legacy import _merge_scan_history
 from module.runtime.fleet_tech_identity import FleetTechIdentity, surface_icon
 from module.runtime.mind_recognition import Card, ScanMerger, aircraft_icon, color_rows, recognize_cards
 from tests.test_api import fixture
@@ -29,9 +30,9 @@ def observed(gid, level, **extra):
 
 def merge(record, ships, **extra):
     params = dict(min_level=98, max_level=125, reached_bottom=False, filters_clear=True,
-                  physical_count=len(ships), expected_count=len(ships), updated_at='fixture')
+                  physical_count=len(ships), expected_count=len(ships))
     params.update(extra)
-    return tech.merge_scan(record, ships, **params)
+    return _merge_scan_history(record, ships, **params)
 
 
 class FleetTechRecordTests(unittest.TestCase):
@@ -117,7 +118,7 @@ class FleetTechRecordTests(unittest.TestCase):
     def test_scan_order_preserves_highest_current_copy(self):
         ships = [observed(30507, 120), observed(30702, 120), observed(30702, 105), observed(10224, 99)]
         first = merge({}, ships)
-        second = merge(first, list(reversed(ships)), updated_at='later')
+        second = merge(first, list(reversed(ships)))
         self.assertEqual(second['current'], {'10224': 99, '30702': 120, '30507': 120})
 
     def test_shortcut_patch_rejects_mixed_or_missing_target_without_partial_save(self):

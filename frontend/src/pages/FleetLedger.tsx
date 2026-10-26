@@ -1,3 +1,4 @@
+import {FleetFilterRow, fleetRarities, ledgerShipTypes as shipTypes, ledgerTypeIds as typeIds} from '../fleet-tech/filters'
 import {useEffect, useId, useMemo, useRef, useState} from 'react'
 import {Link, useSearchParams} from 'react-router-dom'
 import {api} from '../api/client'
@@ -5,25 +6,25 @@ import type {DockCard, DockReport} from '../api/types'
 import {useApp, useConnection} from '../app/context'
 import {ErrorBox, Loading} from '../components/ui'
 import type {CatalogShip, MindCatalog} from '../mind/types'
+import type {UiKey} from '../i18n'
 import {fleetFactionOrder, translateFleetTech} from '../fleet-tech/i18n'
 import '../fleet-tech/style.css'
 import './fleet-ledger.css'
 
-const shipTypes = ['驱逐', '轻巡', '重巡', '超巡', '战巡', '战列', '正航', '轻航', '重炮', '维修', '航战', '潜艇', '潜母', '运输', '导驱', '风帆']
-const typeIds: Record<string, number> = {'驱逐': 1, '轻巡': 2, '重巡': 3, '超巡': 18, '战巡': 4, '战列': 5, '正航': 7, '轻航': 6, '重炮': 13, '维修': 12, '航战': 10, '潜艇': 8, '潜母': 17, '运输': 19, '导驱': 1, '风帆': 22}
-const rarities = ['N', 'R', 'SR', 'SSR', 'UR']
+const rarities = fleetRarities.slice(0, 5)
 const nationValue = (ship?: CatalogShip) => ship?.nationality == null ? ship?.nation ?? '' : String(ship.nationality)
 const nationOrder = (value: string) => {const index = fleetFactionOrder.indexOf(Number(value)); return index < 0 ? fleetFactionOrder.length : index}
 const sortColumns = ['code', 'name', 'level', 'breakthrough', 'type', 'nation', 'rarity', 'reviewFlag'] as const
 type SortColumn = typeof sortColumns[number]
+const sortLabels = {code: 'fleetTech.code', name: 'analysis.name', level: 'analysis.level', breakthrough: 'analysis.breakthrough', type: 'analysis.type', nation: 'analysis.nation', rarity: 'analysis.rarity', reviewFlag: 'analysis.reviewFlag'} as const satisfies Record<SortColumn, UiKey>
 type Sort = {column: SortColumn; direction: 'ascending' | 'descending'}
 type DraftCard = Omit<DockCard, 'level'> & {level: number | ''}
 type Draft = {revision: string; ships: Record<number, DraftCard>; deleted: number[]}
 type Changes = Parameters<typeof api.request<'dock.patch'>>[1]['changes']
 
-export function FleetLedger({instance, report, onReport, onBusy, onDirty, locked = false}: {
+export function FleetLedger({instance, report, onReport, onBusy, locked = false}: {
   instance: string; report?: DockReport; locked?: boolean; onReport: (report: DockReport) => void
-  onBusy: (busy: boolean) => void; onDirty: (dirty: boolean) => void
+  onBusy: (busy: boolean) => void
 }) {
   const alive = useRef(true), list = useId(), table = useRef<HTMLDivElement>(null), focusedShip = useRef('')
   useEffect(() => {alive.current = true; return () => {alive.current = false}}, [])
@@ -41,7 +42,6 @@ export function FleetLedger({instance, report, onReport, onBusy, onDirty, locked
   useEffect(() => {
     try {if (dirty) sessionStorage.setItem(storageKey, JSON.stringify(draft)); else sessionStorage.removeItem(storageKey)} catch { /* Optional browser draft. */ }
   }, [draft, dirty, storageKey])
-  useEffect(() => {onDirty(dirty)}, [dirty, onDirty])
   useEffect(() => {
     const guard = (event: BeforeUnloadEvent) => {if (dirty) {event.preventDefault(); event.returnValue = ''}}
     window.addEventListener('beforeunload', guard)
@@ -60,8 +60,17 @@ export function FleetLedger({instance, report, onReport, onBusy, onDirty, locked
   }, [instance, connection])
   const tr = (key: string) => translateFleetTech(language, key)
   const typeName = (value: string) => value === '导驱' ? value : typeIds[value] ? tr(`type.${typeIds[value]}`) : value
-  const infoFor = (row: Pick<DockCard, 'name' | 'group_type'>) => catalog?.ships.find(ship => ship.name === row.name && ship.group_type === row.group_type)
-    ?? catalog?.ships.find(ship => ship.group_type === row.group_type && ship.group !== '改造')
+  const catalogIndex = useMemo(() => {
+    const exact = new Map<string, CatalogShip>(), base = new Map<number, CatalogShip>()
+    for (const ship of catalog?.ships ?? []) {
+      const key = `${ship.group_type}:${ship.name}`
+      if (!exact.has(key)) exact.set(key, ship)
+      if (ship.group_type != null && ship.group !== '改造' && !base.has(ship.group_type)) base.set(ship.group_type, ship)
+    }
+    return {exact, base}
+  }, [catalog])
+  const infoFor = (row: Pick<DockCard, 'name' | 'group_type'>) => catalogIndex.exact.get(`${row.group_type}:${row.name}`)
+    ?? (row.group_type == null ? undefined : catalogIndex.base.get(row.group_type))
   const nationName = (value: string) => {
     const key = `nation.${value}`, label = translateFleetTech(language, key)
     return label === key ? value : label
@@ -76,8 +85,7 @@ export function FleetLedger({instance, report, onReport, onBusy, onDirty, locked
     const shipInfo = new Map<number, CatalogShip | undefined>()
     for (const row of report?.ships ?? []) {const key = String(row.group_type ?? row.name); counts.set(key, (counts.get(key) ?? 0) + 1)}
     const result = (report?.ships ?? []).filter(row => {
-      const ship = catalog?.ships.find(ship => ship.name === row.name && ship.group_type === row.group_type)
-        ?? catalog?.ships.find(ship => ship.group_type === row.group_type && ship.group !== '改造')
+      const ship = infoFor(row)
       shipInfo.set(row.id, ship)
       const statuses = [
         ...(row.level > 0 && row.level < 120 ? ['unfinished'] : []),
@@ -120,7 +128,7 @@ export function FleetLedger({instance, report, onReport, onBusy, onDirty, locked
       return difference * (sort.direction === 'ascending' ? 1 : -1)
         || collator.compare(a.name, b.name) || a.id - b.id
     })
-  }, [report?.ships, catalog, query, minimum, maximum, filters, sort, groupFilter, language])
+  }, [report?.ships, catalogIndex, query, minimum, maximum, filters, sort, groupFilter, language])
   const additions = Object.values(draft?.ships ?? {}).filter(row => row.id < 0)
   const displayRows: DraftCard[] = [...additions, ...rows]
   useEffect(() => {
@@ -194,7 +202,7 @@ export function FleetLedger({instance, report, onReport, onBusy, onDirty, locked
     finally {if (alive.current) {setBusy(false); onBusy(false)}}
   }
   function filterGroup(key: string, label: string, options: [string, string][]) {
-    return <div className="ft-filter-row"><strong>{label}</strong><div className="ft-chips">{[['', tr('all')], ...options].map(([value, label]) => <button type="button" key={value} aria-pressed={value ? filters[key]?.includes(value) ?? false : !filters[key]?.length} onClick={() => setFilters(current => ({...current, [key]: value ? current[key]?.includes(value) ? current[key]!.filter(item => item !== value) : [...current[key] ?? [], value] : []}))}>{label}</button>)}</div></div>
+    return <FleetFilterRow filter={key} label={label} options={options} filters={filters} setFilters={setFilters} all={tr('all')}/>
   }
   const changedCount = new Set([...Object.keys(draft?.ships ?? {}).map(Number), ...draft?.deleted ?? []]).size
   if (!report || !catalog) return error ? <ErrorBox message={error}/> : <Loading/>
@@ -225,9 +233,9 @@ export function FleetLedger({instance, report, onReport, onBusy, onDirty, locked
     </div>
     <p className="ledger-hint">{ui('analysis.inlineHint')} {ui('analysis.fullStarRule')}</p>
     <datalist id={list}>{catalog?.ships.map(info => <option key={`${info.group_type}:${info.name}`} value={info.name}/>)}</datalist>
-    <div className="ft-table-wrap ledger-table-wrap" ref={table}><table><thead><tr>{batch && <th scope="col">{ui('analysis.batch')}</th>}{sortColumns.map(column => <th key={column} scope="col" aria-sort={sort.column === column ? sort.direction : 'none'}><button type="button" className="ft-sort" onClick={() => sortBy(column)}>{column === 'code' ? tr('code') : ui(`analysis.${column}`)}<span aria-hidden="true">{sort.column === column ? sort.direction === 'ascending' ? '↑' : '↓' : '↕'}</span></button></th>)}<th scope="col">{ui('analysis.delete')}</th></tr></thead><tbody>{displayRows.map(original => {
+    <div className="ft-table-wrap ledger-table-wrap" ref={table}><table><thead><tr>{batch && <th scope="col">{ui('analysis.batch')}</th>}{sortColumns.map(column => <th key={column} scope="col" aria-sort={sort.column === column ? sort.direction : 'none'}><button type="button" className="ft-sort" onClick={() => sortBy(column)}>{ui(sortLabels[column])}<span aria-hidden="true">{sort.column === column ? sort.direction === 'ascending' ? '↑' : '↓' : '↕'}</span></button></th>)}<th scope="col">{ui('analysis.delete')}</th></tr></thead><tbody>{displayRows.map(original => {
       const row = draft?.ships[original.id] ?? original, deleted = draft?.deleted.includes(row.id), info = infoFor(row)
-      const label = (key: string) => `${ui(key)} · ${row.name || ui('analysis.new')} #${row.id}`
+      const label = (key: UiKey) => `${ui(key)} · ${row.name || ui('analysis.new')} #${row.id}`
       return <tr key={row.id} id={`ledger-ship-${row.id}`} className={[deleted ? 'ledger-deleted' : '', draft?.ships[row.id] ? 'ledger-modified' : '', shipFilter === String(row.id) ? 'ledger-highlight' : ''].filter(Boolean).join(' ')}>
         {batch && <td><input type="checkbox" disabled={disabled || deleted} aria-label={label('analysis.batch')} checked={selected.includes(row.id)} onChange={e => setSelected(e.target.checked ? [...selected, row.id] : selected.filter(id => id !== row.id))}/></td>}
         <td>{info?.code == null ? '—' : String(info.code).padStart(3, '0')}</td>

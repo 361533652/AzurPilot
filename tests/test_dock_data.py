@@ -27,21 +27,23 @@ class DockDataTests(unittest.TestCase):
         self.assertEqual(rows, before)
         self.assertEqual(len(result['ships']), 2)
         self.assertEqual([row['slot'] for row in result['ships']], [0, 1])
-        self.assertEqual(result['history']['current'], {'10102': 120})
         self.assertTrue(result['complete'])
-        self.assertEqual(set(result['history']), {'observed', 'current', 'absent'})
+        self.assertEqual(result['review_count'], 0)
+        self.assertNotIn('history', result)
 
-    def test_范围和缺失证明不能降低历史(self):
-        previous = snapshot([ship(level=125)])
+    def test_完整扫描需要全范围无过滤无疑点且数量吻合(self):
         for extra in [dict(min_level=95), dict(filters_clear=False), dict(reached_bottom=False),
                       dict(expected_count=None), dict(physical_count=2)]:
             with self.subTest(extra=extra):
-                result = snapshot([ship(level=105)], previous=previous, **extra)
+                result = snapshot([ship(level=105)], **extra)
                 self.assertFalse(result['complete'])
-                self.assertEqual(result['history']['current']['10102'], 125)
-        result = snapshot([ship(level=105)], previous=previous)
-        self.assertEqual(result['history']['current']['10102'], 105)
-        self.assertEqual(result['history']['observed']['10102'], 125)
+                self.assertNotIn('history', result)
+        for uncertain in [dict(ship(), review=True), ship(gid=None), dict(ship(), level=0)]:
+            with self.subTest(uncertain=uncertain):
+                result = snapshot([uncertain])
+                self.assertFalse(result['complete'])
+                self.assertEqual(result['review_count'], 1)
+        self.assertTrue(snapshot([ship(level=105)])['complete'])
 
     def test_旧配置全部忽略且显式空快照有效(self):
         data = {
@@ -82,11 +84,11 @@ class DockDataTests(unittest.TestCase):
         report = dock.report_snapshot(data)
         self.assertEqual((report['min_level'], report['max_level'], report['source']), (1, 125, 'empty'))
 
-    def test_局部扫描继承自动历史且不携带人工字段(self):
-        previous = snapshot([ship(level=125)])
-        result = snapshot([ship(level=105)], min_level=95, previous=previous)
-        self.assertEqual(result['history']['current']['10102'], 125)
-        self.assertFalse({'manual', 'nations', 'last_scan'} & result['history'].keys())
+    def test_局部扫描只提供本次卡片且不派生科技历史(self):
+        result = snapshot([ship(level=105)], min_level=95)
+        self.assertEqual(result['ships'][0]['level'], 105)
+        self.assertFalse(result['complete'])
+        self.assertNotIn('history', result)
         self.assertFalse(tech.progress(dock.technology_record({'snapshot': result}), 10102)['owned'])
 
 

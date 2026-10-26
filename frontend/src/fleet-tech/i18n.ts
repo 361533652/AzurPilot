@@ -30,7 +30,7 @@ const messages = {
   "rarity.SSR": ["超稀有", "超稀有", "Super Rare", "SSレア", "超稀有喵"],
   "rarity.UR": ["海上传奇", "海上傳奇", "Ultra Rare", "Uレア", "海上传奇喵"],
   "rarity.PR": ["最高方案", "最高方案", "Priority", "特別計画", "最高方案喵"],
-  "rarity.DR": ["决战方案", "決戰方案", "Decisive", "特別計画（DR）", "决战方案喵"],
+  "rarity.DR": ["决战方案", "決戰方案", "Decisive", "決戦計画", "决战方案喵"],
   accountSummary: ["账号累计科技进度", "帳號累計科技進度", "Cumulative account technology", "累積艦隊技術", "账号累计科技进度喵"],
   accountHint: ["仅统计已完成里程碑；未记录的项目默认未完成，退役保留累计进度。", "僅統計已完成里程碑；未記錄的項目預設未完成，退役保留累計進度。", "Only completed milestones count. Unrecorded milestones start incomplete; retirement preserves progress.", "達成済みの実績のみ集計。未記録は未達成とし、退役後も実績を保持します。", "仅统计已完成里程碑；未记录的项目默认未完成，退役保留累计进度。喵"],
   held: ["当前持有", "目前持有", "Currently held", "現在の所持", "当前持有喵"],
@@ -150,8 +150,6 @@ const messages = {
   'nation.115': ['约会大作战', '約會大作戰', 'Date A Live', 'デート・ア・ライブ', '约会大作战喵'],
   'nation.117': ['尼尔', '尼爾', 'NieR', 'ニーア', '尼尔喵'],
   collaboration: ['联动', '聯動', 'Collaboration', 'コラボ', '联动喵'],
-  'rarity.PR': ['最高方案', '最高方案', 'Priority', '特別計画', '最高方案喵'],
-  'rarity.DR': ['决战方案', '決戰方案', 'Decisive', '決戦計画', '决战方案喵'],
 } as const
 type Key = keyof typeof messages
 type Dictionary = {[K in Key as `fleetTech.${K}`]: string}

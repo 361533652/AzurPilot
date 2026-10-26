@@ -8,13 +8,13 @@ from module.config.fleet_legacy import LEGACY_PATHS
 from module.runtime import dock_data, fleet_ledger as ledger, fleet_tech as tech, mind_calculator as mind
 
 
-def _mind_ships(snapshot):
+def _mind_projection(snapshot):
     """把已确认群组映射为心智限定名；歧义卡位仍独立留待核对。"""
     by_group = {}
     for info in mind.catalog()['ships'].values():
         by_group.setdefault(info['group_type'], []).append(info)
     output = []
-    for row in snapshot.get('ships', []):
+    for index, row in enumerate(snapshot.get('ships', [])):
         level = row.get('level', 0)
         if (type(level) is int and 1 <= level <= 125 and not row.get('review')
                 and not snapshot.get('min_level', 1) <= level <= snapshot.get('max_level', 125)):
@@ -30,8 +30,12 @@ def _mind_ships(snapshot):
                            rarity=info['rarity'] if info else row.get('rarity', ''),
                            base_rarity=info['base_rarity'] if info else row.get('base_rarity', ''),
                            excluded=False, review=bool(row.get('review')) or not info or not valid_level,
-                           source=row.get('source', '')[:200]))
-    return mind.highest_ships(output)
+                           source=row.get('source', '')[:200], _legacy_index=index))
+    return [(ship.pop('_legacy_index'), ship) for ship in mind.highest_ships(output)]
+
+
+def _mind_ships(snapshot):
+    return [ship for _, ship in _mind_projection(snapshot)]
 
 
 _FIELDS = ('name', 'level', 'rarity', 'base_rarity', 'excluded', 'review', 'source')
@@ -58,19 +62,11 @@ def _base_ships(data):
     return _mind_ships(dock_data.read_snapshot(data))
 
 
-def _settings(data):
-    """读取本次 JSON 转换的旧覆盖设置。"""
-    return copy.deepcopy(data.get('mind') or dict(overrides={}, removed=[], extra=[]))
-
-
 def _save_settings(data, submitted, updated_at):
     """把旧清单折叠为 JSON 转换所需的差异。"""
     base = dict(_keyed(_base_ships(data)))
     incoming = list(_keyed(submitted))
-    previous = _settings(data)
-    overrides = copy.deepcopy(previous.get('overrides', {}))
-    for key in base:
-        overrides.pop(key, None)
+    overrides = {}
     extra, present = [], set()
     for key, ship in incoming:
         if key in base:
@@ -80,7 +76,7 @@ def _save_settings(data, submitted, updated_at):
                 overrides[key] = delta
         else:
             extra.append(ship)
-    removed = (set(previous.get('removed', [])) - base.keys()) | (base.keys() - present)
+    removed = base.keys() - present
     return dict(overrides=overrides, removed=sorted(removed), extra=extra, updated_at=updated_at,
                 snapshot_revision=dock_data.read_snapshot(data)['revision'])
 
@@ -193,6 +189,33 @@ def _merge_options(target, source):
         target.setdefault('nations', {}).setdefault(nation, value)
 
 
+def _merge_scan_history(record, ships, *, min_level, max_level, reached_bottom, filters_clear,
+                        physical_count, expected_count):
+    """Convert legacy group-level evidence only during explicit JSON import."""
+    output = copy.deepcopy(record)
+    known = {row['group_type'] for row in tech.catalog()['ships']}
+    seen = {}
+    for ship in ships:
+        gid, level = ship.get('group_type'), ship.get('level')
+        if (ship.get('review') or type(gid) is not int or gid not in known
+                or type(level) is not int or not min_level <= level <= max_level):
+            continue
+        seen[str(gid)] = max(seen.get(str(gid), 0), level)
+    summary = tech.scan_summary(ships, min_level=min_level, max_level=max_level,
+        reached_bottom=reached_bottom, filters_clear=filters_clear,
+        physical_count=physical_count, expected_count=expected_count)
+    observed = output.setdefault('observed', {})
+    current = output.setdefault('current', {})
+    for gid, level in seen.items():
+        previous = current.get(gid, observed.get(gid, 0))
+        current[gid] = level if summary['complete'] or gid in output.get('absent', []) else max(previous, level)
+        observed[gid] = max(observed.get(gid, 0), level)
+    absent = ({str(gid) for gid in known} - seen.keys() if summary['complete']
+              else set(output.get('absent', [])) - seen.keys())
+    output['absent'] = sorted(absent, key=int)
+    return output
+
+
 def _snapshot(rows, original, source, *, dock=False):
     low, high = original.get('min_level', 1), original.get('max_level', 125)
     if not _integer(low) or not _integer(high) or low > high:
@@ -217,6 +240,9 @@ def _snapshot(rows, original, source, *, dock=False):
     if isinstance(original.get('revision'), str):
         result['legacy_revision'] = original['revision']
     original_history = _history(original.get('history', {}))
+    result['history'] = _merge_scan_history({}, result['ships'],
+        **{field: result[field] for field in ('min_level', 'max_level', 'reached_bottom',
+                                            'filters_clear', 'physical_count', 'expected_count')})
     observed = result['history']['observed'].copy()
     result['history'].update(original_history)
     for gid, level in observed.items():
@@ -344,24 +370,20 @@ def _cards(converted):
             if matches:
                 target = max(matches, key=lambda row: row.get('level', 0))
                 target.update({field: value for field, value in override.items() if field in ledger.CARD_FIELDS})
-    for key in options.get('removed', []):
-        if key.startswith('group:'):
-            gid = int(key.split(':')[1])
-            for row in rows:
-                if row.get('group_type') == gid:
-                    row['excluded'] = True
     for raw in options.get('extra', []):
         row = copy.deepcopy(raw)
         info = mind.find_ship(row.get('name', ''))
         row['group_type'] = info['group_type'] if info else aliases.get(mind.normalize_name(row.get('name', '')))
         rows.append(row)
-    # Review-specific fixes only bind to the exact old snapshot they were made against.
+    # Bind the numbered keys from the old calculator projection to physical rows
+    # independently of edited names, source text, or newly appended manual cards.
     if snapshot and options.get('snapshot_revision') == snapshot.get('revision'):
+        projection = _mind_projection(snapshot)
+        bindings = {key: rows[index] for (index, _), (key, _) in
+                    zip(projection, _keyed([ship for _, ship in projection]))}
         for key, override in options.get('overrides', {}).items():
-            if key.startswith('review:'):
-                for row in rows:
-                    if _ship_key(row) == key:
-                        row.update({field: value for field, value in override.items() if field in ledger.CARD_FIELDS})
+            if key.startswith('review:') and key in bindings:
+                bindings[key].update({field: value for field, value in override.items() if field in ledger.CARD_FIELDS})
     return rows
 
 

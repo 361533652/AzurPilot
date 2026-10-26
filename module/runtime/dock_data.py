@@ -2,20 +2,14 @@
 import copy
 from module.runtime import fleet_tech as tech
 
-HISTORY_FIELDS = ('observed', 'current', 'absent')
-
 
 def has_snapshot(data):
     value = data.get('snapshot')
     return isinstance(value, dict) and isinstance(value.get('ships'), list)
 
 
-def _history(record):
-    return {key: copy.deepcopy(record[key]) for key in HISTORY_FIELDS if key in record}
-
-
 def build_snapshot(ships, *, min_level, max_level, reached_bottom, filters_clear,
-                   physical_count, expected_count, updated_at, previous=None):
+                   physical_count, expected_count, updated_at):
     """保留每个物理副本，完整性与科技扫描的缺失保护使用同一规则。"""
     if (type(min_level) is not int or type(max_level) is not int
             or not 1 <= min_level <= max_level <= 125):
@@ -23,16 +17,14 @@ def build_snapshot(ships, *, min_level, max_level, reached_bottom, filters_clear
     rows = copy.deepcopy(ships)
     for index, row in enumerate(rows):
         row.setdefault('slot', index)
-    merged = tech.merge_scan((previous or {}).get('history', {}), rows, min_level=min_level,
-                             max_level=max_level, reached_bottom=reached_bottom,
-                             filters_clear=filters_clear, physical_count=physical_count,
-                             expected_count=expected_count, updated_at=updated_at)
-    scan = merged['last_scan']
+    scan = tech.scan_summary(rows, min_level=min_level, max_level=max_level,
+                             reached_bottom=reached_bottom, filters_clear=filters_clear,
+                             physical_count=physical_count, expected_count=expected_count)
     output = dict(version=1, ships=rows, updated_at=updated_at, min_level=min_level,
                   max_level=max_level, reached_bottom=bool(reached_bottom),
                   filters_clear=bool(filters_clear), physical_count=physical_count,
                   expected_count=expected_count, complete=scan['complete'],
-                  review_count=scan['review_count'], history=_history(merged), source='scan')
+                  review_count=scan['review_count'], source='scan')
     output['revision'] = tech.revision(output)
     return output
 
@@ -47,7 +39,7 @@ def read_snapshot(data):
     return dict(version=1, ships=[], updated_at='', min_level=1, max_level=125,
                 reached_bottom=False, filters_clear=False, physical_count=0,
                 expected_count=None, complete=False, review_count=0,
-                history={}, revision=tech.revision({}), source='empty')
+                revision=tech.revision({}), source='empty')
 
 
 def technology_record(data):
