@@ -7,6 +7,7 @@ from module.combat.emotion_state import EmotionRecoveryState
 from module.config.time_source import now
 from module.exception import FleetManagementError
 from module.runtime.fleet_rotation import ROTATION_PATH, minimum_morale
+from module.runtime.fleet_training import goals
 
 
 def selected_morale(readings, slots):
@@ -27,11 +28,13 @@ class RotationEmotion(Emotion):
 
     @property
     def rotation_enabled(self):
-        return bool(self.selected) and self.config.cross_get(ROTATION_PATH + '.Enabled', False) is True
+        return bool(self.selected) and (self.config.cross_get(ROTATION_PATH + '.Enabled', False) is True
+                                        or bool(goals(self.config)))
 
     @property
     def selected_only(self):
         return (self.rotation_enabled
+                and self.config.cross_get(ROTATION_PATH + '.Enabled', False) is True
                 and self.config.cross_get(ROTATION_PATH + '.SelectedOnly', False) is True)
 
     @property

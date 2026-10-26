@@ -20088,6 +20088,57 @@
         "value": {}
       }
     },
+    "FleetLevelTraining": {
+      "Enabled": {
+        "type": "checkbox",
+        "value": false
+      },
+      "Target": {
+        "type": "input",
+        "value": 120,
+        "validate": [
+          1,
+          125
+        ]
+      },
+      "CheckInterval": {
+        "type": "input",
+        "value": 30,
+        "validate": [
+          0,
+          1440
+        ]
+      }
+    },
+    "FleetAffinityTraining": {
+      "Enabled": {
+        "type": "checkbox",
+        "value": false
+      },
+      "Target": {
+        "type": "input",
+        "value": 100,
+        "validate": [
+          1,
+          200
+        ]
+      },
+      "CheckInterval": {
+        "type": "input",
+        "value": 30,
+        "validate": [
+          0,
+          1440
+        ]
+      }
+    },
+    "FleetTraining": {
+      "State": {
+        "type": "stored",
+        "value": {},
+        "display": "hide"
+      }
+    },
     "FleetEquipment": {
       "Enabled": {
         "type": "checkbox",

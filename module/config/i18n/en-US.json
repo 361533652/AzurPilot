@@ -6811,6 +6811,52 @@
       "help": "Stores the last reserve and completed slots. Check the in-game formation before clearing."
     }
   },
+  "FleetLevelTraining": {
+    "_info": {
+      "name": "Level training",
+      "help": "Off by default. Uses training slots and reserves. Verify every enabled goal on the same ship before completion; morale swaps keep progress."
+    },
+    "Enabled": {
+      "name": "Enabled",
+      "help": "Off by default. Uses training slots and reserves. Verify every enabled goal on the same ship before completion; morale swaps keep progress."
+    },
+    "Target": {
+      "name": "Target level",
+      "help": "Off by default. Uses training slots and reserves. Verify every enabled goal on the same ship before completion; morale swaps keep progress."
+    },
+    "CheckInterval": {
+      "name": "Read interval (minutes)",
+      "help": "0 checks every battle result. Any due interval verifies all enabled goals."
+    }
+  },
+  "FleetAffinityTraining": {
+    "_info": {
+      "name": "Affinity training",
+      "help": "Off by default. Uses training slots and reserves. Verify every enabled goal on the same ship before completion; morale swaps keep progress."
+    },
+    "Enabled": {
+      "name": "Enabled",
+      "help": "Off by default. Uses training slots and reserves. Verify every enabled goal on the same ship before completion; morale swaps keep progress."
+    },
+    "Target": {
+      "name": "Target affinity",
+      "help": "Off by default. Uses training slots and reserves. Verify every enabled goal on the same ship before completion; morale swaps keep progress."
+    },
+    "CheckInterval": {
+      "name": "Read interval (minutes)",
+      "help": "0 checks every battle result. Any due interval verifies all enabled goals."
+    }
+  },
+  "FleetTraining": {
+    "_info": {
+      "name": "Training records",
+      "help": "Persists verified readings, completed goals and pending swaps across restarts."
+    },
+    "State": {
+      "name": "Training records",
+      "help": "Persists verified readings, completed goals and pending swaps across restarts."
+    }
+  },
   "FleetEquipment": {
     "_info": {
       "name": "Automatic equipment",

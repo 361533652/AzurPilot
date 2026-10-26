@@ -2515,6 +2515,30 @@ FleetRotation:
     type: storage
     value: {}
 
+FleetLevelTraining:
+  Enabled: false
+  Target:
+    value: 120
+    validate: [1, 125]
+  CheckInterval:
+    value: 30
+    validate: [0, 1440]
+
+FleetAffinityTraining:
+  Enabled: false
+  Target:
+    value: 100
+    validate: [1, 200]
+  CheckInterval:
+    value: 30
+    validate: [0, 1440]
+
+FleetTraining:
+  State:
+    type: stored
+    value: {}
+    display: hide
+
 FleetEquipment:
   Enabled: false
   Codes:

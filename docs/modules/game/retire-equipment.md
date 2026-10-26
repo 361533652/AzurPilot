@@ -217,6 +217,12 @@ FleetManagement(config=config, device=device).swap_slots(
 
 ### 智能换船-心情控制
 
+等级/好感调度复用同一舰位、卡面互换和可选装备流程。角色详情导航提取到
+`module/retire/fleet_detail.py::FleetShipDetail`，装备子类沿用原入口、状态循环和返回条件；
+培养读取不会初始化装备码或卸装。等级复用大世界识别，好感按固定位置打开信息并读取
+当前数值，可靠数据不足时不记录完成。完整组合、持久状态及延时语义见
+[战役培养调度](../campaign.md#等级好感培养调度)。
+
 `module/campaign/fleet_rotation.py` 在普通主线/活动出击前调用本模块。策略配置保存在
 `FleetInfo.FleetRotation`，不是调度任务：`Enabled` 默认关闭，`Rules` 默认JSON空对象，
 表示所有舰位不变。规则以实际水面舰队号为键，例如

@@ -12,6 +12,7 @@ from module.retire.fleet_management import FleetManagement
 from module.runtime.fleet_rotation import (ROTATION_PATH, active_fleets, begin_round, calibration_changes,
                                          minimum_morale, parse_rules, rank_sources, recorded_morale, supported)
 from module.runtime.fleet_equipment import EQUIPMENT_PATH
+from module.runtime.fleet_training import goals
 
 
 def _required(emotion, role, battle):
@@ -37,7 +38,12 @@ def preflight_rotation(runner, battle, mode):
     """
     campaign = runner.campaign
     config = campaign.config
-    if (config.cross_get(ROTATION_PATH + '.Enabled', False) is not True
+    mood_enabled = config.cross_get(ROTATION_PATH + '.Enabled', False) is True
+    if not goals(config):
+        previous_context = runner.__dict__.get('_fleet_rotation_context', {})
+        previous_context.pop('training_checked_at', None)
+        previous_context.pop('training_goals', None)
+    if ((not mood_enabled and not goals(config))
             or not supported(config.task.command, mode, runner.folder, runner.stage)
             or campaign.config.Campaign_Mode != 'normal'):
         if isinstance(campaign.emotion, RotationEmotion):
@@ -45,6 +51,9 @@ def preflight_rotation(runner, battle, mode):
             campaign.emotion = Emotion(config)
             campaign.emotion.map_is_2x_book = book
         return False
+    if not mood_enabled:
+        from module.campaign.fleet_training import training_only
+        return training_only(runner, battle, mode)
     try:
         rules = parse_rules(config.cross_get(ROTATION_PATH + '.Rules', '{}'))
     except ValueError as exc:
@@ -102,6 +111,11 @@ def preflight_rotation(runner, battle, mode):
         if fresh:
             if manager is None:
                 manager = FleetManagement(config=config, device=runner.device)
+            if goals(config):
+                from module.runtime.fleet_training import state
+                if state(config).get('reading'):
+                    from module.retire.fleet_training import FleetTrainingReader
+                    FleetTrainingReader(manager).recover_page()
             visited = True
             manager.run(update_emotion=True)
             result = config.cross_get('FleetInfo.FleetInfo.Result', {})
@@ -120,6 +134,17 @@ def preflight_rotation(runner, battle, mode):
             visited = True
             FleetRotationEquipment(manager).apply_pending()
             equipment_used = True
+        training = None
+        if goals(config):
+            from module.campaign.fleet_training import TrainingSession
+            training = TrainingSession(runner, manager or FleetManagement(config=config, device=runner.device),
+                                       context, rules, selected)
+            manager = training.manager
+            if training.process(fresh=fresh):
+                visited = True
+                equipment_used |= training.equipment_used
+                result = config.cross_get('FleetInfo.FleetInfo.Result', {})
+                fresh_readings = {number: recorded_morale(result, number) for number in range(1, 7)}
         for role, fleet in selected.items():
             current_fleet = fleet
             # 前一个角色可能刚从本角色的实际舰队换走舰船，不能继续使用旧快照。
@@ -169,6 +194,8 @@ def preflight_rotation(runner, battle, mode):
                     raise FleetManagementError(str(exc)) from exc
             else:
                 order = rank_sources(rule, snapshots, needed, selected_only=emotion.selected_only)
+                if training is not None:
+                    order = training.filter_sources(order, rule, fleet)
                 progress = begin_round(rule, previous, order)
                 if progress is None:
                     logger.warning('候补队没有满足心情及对应舰位的舰船，保留当前编队并沿用原心情检查')

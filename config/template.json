@@ -3797,6 +3797,19 @@
       "Rules": "{}",
       "State": {}
     },
+    "FleetLevelTraining": {
+      "Enabled": false,
+      "Target": 120,
+      "CheckInterval": 30
+    },
+    "FleetAffinityTraining": {
+      "Enabled": false,
+      "Target": 100,
+      "CheckInterval": 30
+    },
+    "FleetTraining": {
+      "State": {}
+    },
     "FleetEquipment": {
       "Enabled": false,
       "Codes": "{}",

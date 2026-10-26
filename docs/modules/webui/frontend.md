@@ -27,6 +27,14 @@
 [桌面截图](images/fleet-rotation-desktop.png)与[手机截图](images/fleet-rotation-mobile.png)，
 均为隔离服务和合成配置。实际刷图触发由战役出击前策略负责。
 
+同组新增`/i/:instance/task/FleetLevelTraining`等级调度和
+`/i/:instance/task/FleetAffinityTraining`好感调度，由`pages/FleetTraining.tsx`复用配置表单。
+各自独立保存启用、目标、分钟间隔，默认关闭；链接到原舰位与候补页面。培养完成记录只读，
+从`FleetInfo.FleetTraining.State`显示，运行时刷新记录不覆盖尚未保存的输入。两页不显示任务
+运行侧栏，不调用`tasks.run`，不改写心智计算器的费用/排除状态。真实模拟器仍需验收。
+模拟服务效果：[等级页](images/fleet-level-training-desktop.png)、
+[好感页](images/fleet-affinity-training-desktop.png)、[手机](images/fleet-training-mobile.png)。
+
 frontend/ 是 AzurPilot 的浏览器控制台，替代旧版 PyWebIO 界面，覆盖主页与实例导航、任务配置表单、总览日志与截图预览、统计图表、系统设置、远程访问与更新器。前端不包含任何游戏逻辑，所有业务操作都通过 WebSocket API 交给 [API 服务](api.md)执行。
 
 frontend/README.md 与 frontend/API.md 已经是本前端的详细文档：前者覆盖界面行为、主题材质、启动开发与迁移边界，后者定义消息协议。本文不重复其内容，只作为模块文档体系的索引篇，说明目录分工、构建测试入口与生成产物红线。

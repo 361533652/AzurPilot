@@ -1193,6 +1193,19 @@ class GeneratedConfig:
     FleetRotation_Rules = '{}'
     FleetRotation_State = {}
 
+    # 配置组 `FleetLevelTraining`
+    FleetLevelTraining_Enabled = False
+    FleetLevelTraining_Target = 120
+    FleetLevelTraining_CheckInterval = 30
+
+    # 配置组 `FleetAffinityTraining`
+    FleetAffinityTraining_Enabled = False
+    FleetAffinityTraining_Target = 100
+    FleetAffinityTraining_CheckInterval = 30
+
+    # 配置组 `FleetTraining`
+    FleetTraining_State = {}
+
     # 配置组 `FleetEquipment`
     FleetEquipment_Enabled = False
     FleetEquipment_Codes = '{}'
