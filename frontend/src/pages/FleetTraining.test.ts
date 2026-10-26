@@ -105,6 +105,7 @@ describe('统一换船调度入口', () => {
       for (const key of ['training.title', 'training.moraleTitle', 'training.exp', 'training.checkedAt', 'training.unread', 'training.interval'] as const)
         expect(translateUi(language, key)).not.toBe(key)
     expect(translateUi('zh-CN', 'training.interval')).toContain('小时')
+    expect(translateUi('zh-CN', 'training.interval')).toContain('共用')
     expect(translateUi('zh-CN', 'training.interval')).toContain('无上限')
   })
 })

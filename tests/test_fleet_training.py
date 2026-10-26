@@ -20,7 +20,7 @@ from module.os.ship_exp import ShipLevel
 from module.awaken.assets import OCR_SHIP_LEVEL
 from module.retire.fleet_training import AffinityReader, FleetTrainingReader, TrainingExp, parse_affinity
 from module.runtime.fleet_rotation import ROTATION_PATH
-from module.runtime.fleet_training import (LEVEL_PATH, AFFINITY_PATH, TRAINING_PATH, completed,
+from module.runtime.fleet_training import (LEVEL_PATH, AFFINITY_PATH, TRAINING_PATH, INTERVAL_PATH, completed,
                                            excluded, goals, due, interval, observe, state)
 from module.runtime.mind_calculator import catalog
 from types import SimpleNamespace
@@ -29,6 +29,32 @@ import tests.test_fleet_rotation as rotation_cases
 
 
 class TrainingRuleTests(unittest.TestCase):
+    def test_inventory_always_reads_names_and_morale_from_dock_before_training(self):
+        from module.retire.fleet_management import FleetManagement
+        saved = {}
+        config = SimpleNamespace(cross_get=lambda path, default=None: saved.get(path, default))
+        manager = Mock(config=config, RESULT_PATH='FleetInfo.FleetInfo.Result')
+        manager._save_result.side_effect = lambda result: saved.update({manager.RESULT_PATH: deepcopy(result)})
+        manager._capture_formation.return_value = (object(), {}, {})
+        formation = {slot: dict(slot=slot, occupied=slot in (1, 4), name=f'参考舰船{slot}', level=100)
+                     for slot in range(1, 7)}
+        def scan(category):
+            for ship in saved[manager.RESULT_PATH][category]['5']:
+                ship.update(name=f'已确认舰船{ship["slot"]}', emotion=145)
+        manager._formation_visible.return_value = False
+        manager._scan_rotation_category.side_effect = scan
+        manager.prepare_rotation.side_effect = lambda fleet: FleetManagement.prepare_rotation(manager, fleet)
+        reader = FleetTrainingReader.__new__(FleetTrainingReader)
+        reader.manager, reader.config = manager, config
+        with patch('module.retire.fleet_training.FormationDetailScanner') as scanner:
+            scanner.return_value.scan.return_value = formation
+            result = reader.inventory({5})
+        manager.prepare_rotation.assert_called_once_with(5)
+        self.assertEqual([((4,), {}), ((1,), {})], manager._open_slot.call_args_list)
+        manager.finish_rotation.assert_called_once()
+        self.assertEqual('已确认舰船1', result['main']['5'][0]['name'])
+        self.assertEqual(145, result['vanguard']['5'][0]['emotion'])
+
     def test_observe_keeps_confirmed_position_and_zero_morale_without_changing_completion(self):
         saved = {'records': {}}
         self.assertTrue(observe(saved, '舰船A', {'level': 120}, {'level': 120}, fleet=2, slot=6, emotion=0))
@@ -224,7 +250,7 @@ class TrainingIntegrationTests(unittest.TestCase):
                 if not level and not affinity:
                     self.assertNotIn('completed_for', saved)
 
-    def test_reading_keeps_position_and_existing_morale_without_extra_scan_or_swap(self):
+    def test_reading_keeps_position_and_fresh_morale_without_global_scan_or_swap(self):
         self.configure()
         self.live[1][4] = 77
         preflight_rotation(self.runner, 5, 'normal')
@@ -254,13 +280,15 @@ class TrainingIntegrationTests(unittest.TestCase):
         self.assertFalse(excluded(records[second], goals(self.config)))
         self.assertNotIn(fixed, records)
 
-    def test_level_only_uses_detail_inventory_and_does_not_read_morale_until_a_swap_is_needed(self):
+    def test_level_only_calibrates_actual_morale_before_profile_without_a_temporary_swap(self):
         self.configure()
         self.config.set_record(Emotion_Fleet1Value=150)
         preflight_rotation(self.runner, 5, 'normal')
         self.manager.run.assert_not_called()
         self.manager.prepare_rotation.assert_not_called()
         self.assertEqual([(1, [4], {'level': 120})], self.read_calls)
+        self.assertEqual(150, self.campaign.emotion.training_lower(1))
+        self.assertEqual(150, self.config.Emotion_Fleet1Value)
         self.campaign.emotion.check_reduce(5)
 
     def test_unknown_reading_delays_without_marking_completion(self):
@@ -377,17 +405,20 @@ class TrainingIntegrationTests(unittest.TestCase):
         self.runner._fleet_rotation_context['training_checked_at'] -= timedelta(hours=1)
         self.assertTrue(after_battle_due(self.runner, 'normal'))
 
-    def test_config_flags_targets_and_intervals_are_independent_and_state_is_read_only(self):
+    def test_config_flags_targets_are_independent_and_interval_is_shared_with_read_only_state(self):
         changes = [ConfigChange(path=LEVEL_PATH + '.Enabled', value=True),
                    ConfigChange(path=LEVEL_PATH + '.Target', value=125),
-                   ConfigChange(path=LEVEL_PATH + '.CheckIntervalHours', value=0),
+                   ConfigChange(path=INTERVAL_PATH, value=0),
                    ConfigChange(path=AFFINITY_PATH + '.Enabled', value=True),
                    ConfigChange(path=AFFINITY_PATH + '.Target', value=200)]
         values = self.service.patch('testpilot', None, changes)['values']['FleetInfo']
         self.assertEqual(125, values['FleetLevelTraining']['Target'])
         self.assertEqual(200, values['FleetAffinityTraining']['Target'])
+        self.assertEqual(0, values['FleetTraining']['CheckIntervalHours'])
+        self.assertNotIn('CheckIntervalHours', values['FleetLevelTraining'])
+        self.assertNotIn('CheckIntervalHours', values['FleetAffinityTraining'])
         for path, value in ((LEVEL_PATH + '.Target', 126), (AFFINITY_PATH + '.Target', 201),
-                            (LEVEL_PATH + '.CheckIntervalHours', -1), (TRAINING_PATH, {'records': {}})):
+                            (INTERVAL_PATH, -1), (TRAINING_PATH, {'records': {}})):
             with self.assertRaises(ApiError):
                 self.service.patch('testpilot', None, [ConfigChange(path=path, value=value)])
 
@@ -397,43 +428,87 @@ class TrainingIntegrationTests(unittest.TestCase):
         context = self.runner._fleet_rotation_context
         for hours in (0, 0.25, 48, 1000000, 1e20):
             values = self.service.patch('testpilot', None, [
-                ConfigChange(path=LEVEL_PATH + '.CheckIntervalHours', value=hours)])['values']
-            self.assertEqual(hours, values['FleetInfo']['FleetLevelTraining']['CheckIntervalHours'])
+                ConfigChange(path=INTERVAL_PATH, value=hours)])['values']
+            self.assertEqual(hours, values['FleetInfo']['FleetTraining']['CheckIntervalHours'])
         self.config.update()
         self.assertEqual(1e20, interval(self.config))
         self.assertFalse(due(self.config, context))
-        self.config.cross_set(LEVEL_PATH + '.CheckIntervalHours', 48)
+        self.config.cross_set(INTERVAL_PATH, 48)
         context['training_checked_at'] -= timedelta(hours=47)
         self.assertFalse(due(self.config, context))
         context['training_checked_at'] -= timedelta(hours=1, seconds=1)
         self.assertTrue(due(self.config, context))
-        self.config.cross_set_many({LEVEL_PATH + '.CheckIntervalHours': 48,
-                                   AFFINITY_PATH + '.Enabled': True,
-                                   AFFINITY_PATH + '.CheckIntervalHours': 0.25})
+        self.config.cross_set_many({INTERVAL_PATH: 0.25, AFFINITY_PATH + '.Enabled': True})
         self.assertEqual(0.25, interval(self.config))
 
-    def test_old_minutes_migrate_in_read_only_api_and_runtime_without_losing_records(self):
+    def test_old_intervals_merge_in_read_only_api_and_runtime_without_losing_records(self):
         from module.config.config_updater import ConfigUpdater
-        raw = self.service.read_json(self.path)
+        original = self.service.read_json(self.path)
         original_state = {'records': {'旧舰船': {'level': 119, 'affinity': 99, 'exp': 123}}}
-        raw['FleetInfo']['FleetTraining']['State'] = original_state
-        for group, minutes in (('FleetLevelTraining', 30), ('FleetAffinityTraining', 0)):
-            raw['FleetInfo'][group].pop('CheckIntervalHours', None)
-            raw['FleetInfo'][group]['CheckInterval'] = minutes
+        for level, affinity, shared, expected in (
+            ({'Enabled': True, 'CheckInterval': 30}, {'Enabled': False, 'CheckInterval': 0}, None, 0.5),
+            ({'Enabled': True, 'CheckIntervalHours': 6}, {'Enabled': True, 'CheckIntervalHours': 6}, None, 6),
+            ({'Enabled': True, 'CheckIntervalHours': 48}, {'Enabled': True, 'CheckIntervalHours': 0.25}, None, 0.25),
+            ({'Enabled': True, 'CheckIntervalHours': 48}, {'Enabled': False, 'CheckIntervalHours': 0.25}, None, 48),
+            ({'Enabled': False, 'CheckIntervalHours': 6}, {'Enabled': False, 'CheckIntervalHours': 12}, None, 6),
+            ({}, {'Enabled': True, 'CheckInterval': 60}, None, 1),
+            ({'Enabled': True, 'CheckIntervalHours': 6}, {}, 72, 72),
+        ):
+            with self.subTest(level=level, affinity=affinity, shared=shared):
+                raw = deepcopy(original)
+                fleet = raw['FleetInfo']
+                fleet['FleetLevelTraining'], fleet['FleetAffinityTraining'] = level, affinity
+                fleet['FleetTraining'] = {'State': deepcopy(original_state)}
+                if shared is not None:
+                    fleet['FleetTraining']['CheckIntervalHours'] = shared
+                self.path.write_text(json.dumps(raw), encoding='utf-8')
+                before = self.path.read_bytes()
+                values = self.service.get('testpilot')['values']
+                self.assertEqual(before, self.path.read_bytes())
+                migrated = ConfigUpdater().config_update(raw)
+                for result in (values, migrated):
+                    self.assertEqual(expected, result['FleetInfo']['FleetTraining']['CheckIntervalHours'])
+                    self.assertEqual(original_state, result['FleetInfo']['FleetTraining']['State'])
+                    for group in ('FleetLevelTraining', 'FleetAffinityTraining'):
+                        self.assertNotIn('CheckIntervalHours', result['FleetInfo'][group])
+                        self.assertNotIn('CheckInterval', result['FleetInfo'][group])
+
+    def test_configuration_without_fleet_groups_remains_readable(self):
+        raw = self.service.read_json(self.path)
+        raw.pop('FleetInfo', None)
+        self.service.template.pop('FleetInfo', None)
         self.path.write_text(json.dumps(raw), encoding='utf-8')
         before = self.path.read_bytes()
-        values = self.service.get('testpilot')['values']
-        self.assertEqual(0.5, values['FleetInfo']['FleetLevelTraining']['CheckIntervalHours'])
-        self.assertEqual(0, values['FleetInfo']['FleetAffinityTraining']['CheckIntervalHours'])
-        self.assertEqual(original_state, values['FleetInfo']['FleetTraining']['State'])
+        values, _ = self.service.read('testpilot')
+        self.assertNotIn('FleetInfo', values)
         self.assertEqual(before, self.path.read_bytes())
-        migrated = ConfigUpdater().config_update(raw)
-        self.assertEqual(0.5, migrated['FleetInfo']['FleetLevelTraining']['CheckIntervalHours'])
-        self.assertEqual(original_state, migrated['FleetInfo']['FleetTraining']['State'])
-        raw['FleetInfo']['FleetLevelTraining']['CheckIntervalHours'] = 72
-        self.path.write_text(json.dumps(raw), encoding='utf-8')
-        self.assertEqual(72, self.service.get('testpilot')['values']['FleetInfo']['FleetLevelTraining']['CheckIntervalHours'])
-        self.assertEqual(72, ConfigUpdater().config_update(raw)['FleetInfo']['FleetLevelTraining']['CheckIntervalHours'])
+
+    def test_all_seven_modes_use_the_shared_reading_clock(self):
+        for mood, level, affinity in product((False, True), repeat=3):
+            if not (mood or level or affinity):
+                continue
+            with self.subTest(mood=mood, level=level, affinity=affinity):
+                self.configure(mood=mood, level=level, affinity=affinity)
+                self.config.cross_set(INTERVAL_PATH, 6)
+                preflight_rotation(self.runner, 5, 'normal')
+                context = self.runner._fleet_rotation_context
+                self.assertFalse(due(self.config, context))
+                self.assertFalse(preflight_rotation(self.runner, 5, 'normal'))
+                context['training_checked_at'] -= timedelta(hours=6, seconds=1)
+                self.campaign._map_battle = 5
+                self.assertTrue(after_battle_due(self.runner, 'normal'))
+                self.assertTrue(preflight_rotation(self.runner, 5, 'normal'))
+                self.assertFalse(due(self.config, context))
+                self.manager.rotate_slot.assert_not_called()
+
+    def test_morale_only_zero_interval_rereads_on_each_preflight(self):
+        self.configure(mood=True, level=False)
+        self.config.cross_set(INTERVAL_PATH, 0)
+        preflight_rotation(self.runner, 5, 'normal')
+        self.manager.run.reset_mock()
+        self.assertTrue(preflight_rotation(self.runner, 5, 'normal'))
+        self.manager.run.assert_called_once_with(update_emotion=True)
+        self.manager.rotate_slot.assert_not_called()
 
     def test_recorded_reading_is_recovered_before_stage_navigation_even_after_disable(self):
         self.configure(level=False)
@@ -464,6 +539,7 @@ class TrainingIntegrationTests(unittest.TestCase):
         for level, affinity in ((True, False), (False, True), (True, True)):
             self.configure(level=level, affinity=affinity)
             self.config.set_record(Emotion_Fleet1Value=2)
+            self.live[1][4] = 2
             preflight_rotation(self.runner, 5, 'normal')
             self.manager.rotate_slot.assert_not_called()
             with self.assertRaises(ScriptEnd):
@@ -490,10 +566,12 @@ class TrainingIntegrationTests(unittest.TestCase):
         preflight_rotation(self.runner, 5, 'normal')
         self.assertFalse(due(self.config, self.runner._fleet_rotation_context))
         self.manager.prepare_rotation.reset_mock()
+        self.inventory_calls.clear()
         self.config.cross_set(ROTATION_PATH + '.SelectedOnly', True)
         self.live[1][1] = 0
         preflight_rotation(self.runner, 5, 'normal')
-        self.manager.prepare_rotation.assert_called_once_with(1)
+        self.assertEqual([{1}], self.inventory_calls)
+        self.manager.prepare_rotation.assert_not_called()
         self.campaign.emotion.check_reduce(5)
         self.manager.rotate_slot.assert_not_called()
         self.assertFalse(preflight_rotation(self.runner, 5, 'normal'))

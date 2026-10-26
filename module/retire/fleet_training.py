@@ -75,15 +75,16 @@ class FleetTrainingReader(FleetShipDetail):
             self._back_to_formation()
 
     def inventory(self, fleets):
-        """只读所需舰队详情，等级单独开启时不额外进入船坞读心情。
+        """按详情固定舰位定位，再从编队舰位4、1进入选船页实读舰名和心情。
 
         Pages:
             in: Any
             out: 最后一个舰队的编队页
         """
+        fleets = sorted(fleets)
         result = deepcopy(self.config.cross_get(self.manager.RESULT_PATH, {}))
         scanner = FormationDetailScanner()
-        for fleet in sorted(fleets):
+        for fleet in fleets:
             image, _, _ = self.manager._capture_formation(fleet)
             formation = scanner.scan(image)
             for category in ('main', 'vanguard'):
@@ -99,7 +100,10 @@ class FleetTrainingReader(FleetShipDetail):
                     records.append(ship)
                 result.setdefault(category, {})[str(fleet)] = records
         self.manager._save_result(result)
-        return result
+        for fleet in fleets:
+            self.manager.prepare_rotation(fleet)
+            self.manager.finish_rotation()
+        return self.config.cross_get(self.manager.RESULT_PATH, {})
 
     def _affinity(self):
         reader = AffinityReader()

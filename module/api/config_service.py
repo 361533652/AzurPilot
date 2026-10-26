@@ -19,7 +19,7 @@ from module.api.protocol import ApiError
 from module.combat.emotion_state import EmotionRecoveryState
 from module.config.config_updater import campaign_event_options, refresh_campaign_events
 from module.config.redirect_utils.utils import (
-    fleet_training_hours_redirect, meta_assist_limit_redirect, sea_miles_interval_redirect,
+    fleet_training_interval_redirect, meta_assist_limit_redirect, sea_miles_interval_redirect,
 )
 from module.config.time_source import now as current_time
 from module.config.transaction import config_transaction
@@ -284,11 +284,6 @@ class ConfigService:
                 for group, fields in groups.items():
                     if isinstance(fields, dict):
                         merged.setdefault(task, {}).setdefault(group, {}).update(fields)
-                        if task == 'FleetInfo' and group in ('FleetLevelTraining', 'FleetAffinityTraining'):
-                            if 'CheckIntervalHours' not in fields and 'CheckInterval' in fields:
-                                merged[task][group]['CheckIntervalHours'] = fleet_training_hours_redirect(
-                                    fields['CheckInterval'])
-                            merged[task][group].pop('CheckInterval', None)
                         # 新名称出现前，WebUI 也要显示旧航母开关的实际值。
                         if task == 'General' and group == 'Enhance':
                             legacy = fields.get('SkipSingleCommonCV')
@@ -304,6 +299,12 @@ class ConfigService:
                             if 'RecordSeaMiles' in fields:
                                 merged[task][group]['RecordSeaMiles'] = sea_miles_interval_redirect(
                                     fields['RecordSeaMiles'])
+        fleet = data.get('FleetInfo')
+        if isinstance(fleet, dict):
+            merged['FleetInfo']['FleetTraining']['CheckIntervalHours'] = fleet_training_interval_redirect(fleet)
+            for group in ('FleetLevelTraining', 'FleetAffinityTraining'):
+                merged['FleetInfo'][group].pop('CheckIntervalHours', None)
+                merged['FleetInfo'][group].pop('CheckInterval', None)
         from module.config.redirect_utils.shop import migrate_shop_options
 
         merged, shop_warnings = migrate_shop_options(data, merged)

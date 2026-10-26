@@ -1196,14 +1196,13 @@ class GeneratedConfig:
     # 配置组 `FleetLevelTraining`
     FleetLevelTraining_Enabled = False
     FleetLevelTraining_Target = 120
-    FleetLevelTraining_CheckIntervalHours = 0.5
 
     # 配置组 `FleetAffinityTraining`
     FleetAffinityTraining_Enabled = False
     FleetAffinityTraining_Target = 100
-    FleetAffinityTraining_CheckIntervalHours = 0.5
 
     # 配置组 `FleetTraining`
+    FleetTraining_CheckIntervalHours = 0.5
     FleetTraining_State = {}
 
     # 配置组 `FleetEquipment`

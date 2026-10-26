@@ -21,6 +21,28 @@ def fleet_training_hours_redirect(value):
     return value / 60
 
 
+def fleet_training_interval_redirect(value):
+    """合并旧独立间隔；优先启用项的最短间隔，已有共用值保持不变。"""
+    if not isinstance(value, dict):
+        return 0.5
+    shared = value.get('FleetTraining', {})
+    if isinstance(shared, dict) and 'CheckIntervalHours' in shared:
+        return shared['CheckIntervalHours']
+    configured, enabled = [], []
+    for name in ('FleetLevelTraining', 'FleetAffinityTraining'):
+        fields = value.get(name, {})
+        if not isinstance(fields, dict):
+            continue
+        hours = fields.get('CheckIntervalHours')
+        if hours is None and type(fields.get('CheckInterval')) in (int, float):
+            hours = fleet_training_hours_redirect(fields['CheckInterval'])
+        if type(hours) in (int, float) and 0 <= hours < float('inf'):
+            configured.append(hours)
+            if fields.get('Enabled') is True:
+                enabled.append(hours)
+    return min(enabled or configured, default=0.5)
+
+
 def upload_redirect(value):
     """重定向上传配置属性（Upload）。
 
