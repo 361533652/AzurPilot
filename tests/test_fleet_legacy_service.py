@@ -111,8 +111,9 @@ class LocalLegacyImportTests(unittest.TestCase):
         snapshot['revision'] = 'new-snapshot'
         self.database.patch_cards(snapshot['ships'], dock_data.read_snapshot(self.database.load())['revision'])
         stored_cards = self.database.load()['snapshot']['ships']
-        with self.database.edit() as state:
-            state['technology'] = {'progress': {'10102': {'owned': False}}, 'nations': {'1': 0}}
+        from module.runtime import fleet_tech
+        self.database.patch_technology([dict(group_type=10102, owned=False)], {'1': 0},
+            fleet_tech.revision(dock_data.technology_record(self.database.load())))
         self.migrate()
         state = self.database.load()
         self.assertEqual(state['snapshot']['ships'], stored_cards)

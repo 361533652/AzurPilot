@@ -5,6 +5,19 @@ import type {DockReport, LedgerDifference} from '../api/types'
 import {useApp, useConnection} from '../app/context'
 import {ErrorBox, Loading} from '../components/ui'
 import type {MindShip} from '../mind/types'
+import type {UiKey} from '../i18n'
+
+const operationLabels = {
+  add: 'analysis.operationAdd', update: 'analysis.operationUpdate',
+  remove: 'analysis.operationRemove', resolve: 'analysis.operationResolve',
+} as const satisfies Record<LedgerDifference['operation'], UiKey>
+const fieldLabels = {
+  name: 'analysis.name', level: 'analysis.level', extra_exp: 'analysis.extraExp',
+  form: 'analysis.form', owned: 'analysis.owned', full_star: 'analysis.fullStar', lv120: 'analysis.lv120',
+} as const satisfies Record<string, UiKey>
+function isDisplayField(key: string): key is keyof typeof fieldLabels {
+  return Object.hasOwn(fieldLabels, key)
+}
 
 export function safeScanChanges(changes: LedgerDifference[]) {return changes.filter(item => item.operation === 'add' || item.operation === 'update')}
 export function ScanUpdate({instance, report, locked, onReport, onBusy}: {instance: string; report?: DockReport; locked: boolean; onReport: (report: DockReport) => void; onBusy: (busy: boolean) => void}) {
@@ -17,7 +30,7 @@ export function ScanUpdate({instance, report, locked, onReport, onBusy}: {instan
   useEffect(() => {setTargets({}); setRemoval('')}, [report?.pending_revision])
   const current = instances.find(item => item.name === instance), scanning = current?.status === 'running' && ['DockScan', 'dock_scan'].includes(current.currentTask ?? '')
   const pending = report?.pending_changes ?? [], safe = safeScanChanges(pending)
-  const reading = (report as DockReport & {pending_read?: {source: string; updated_at: string; observed_count: number; review_count: number; complete: boolean}} | undefined)?.pending_read
+  const reading = report?.pending_read
   const disabled = locked || connection !== 'ready' || !report
   const startReason = pending.length ? ui('analysis.pendingBlock') : !current || current.status === 'running' || current.status === 'updating' ? ui('mind.scanRunning') : current.region && current.region !== 'cn' ? ui('mind.scanUnsupported') : ''
   async function action(work: () => Promise<void>) {
@@ -57,8 +70,20 @@ export function ScanUpdate({instance, report, locked, onReport, onBusy}: {instan
       publish(await api.request('dock.review', {instance, revision: report!.revision, pending_revision: report!.pending_revision!, decisions: items.map(item => ({id: item.id, accept, ...(accept && item.operation === 'resolve' ? {ship_id: targets[item.id] === 'new' ? null : Number(targets[item.id])} : {})}))}))
     })
   }
-  const display = (value: unknown): string => value === null || value === undefined || value === '' ? ui('analysis.unknownValue') : typeof value === 'object' ? Object.entries(value).map(([key, item]) => `${key}: ${key === 'full_star' ? ui(item === true ? 'analysis.fullStarYes' : item === false ? 'analysis.fullStarNo' : 'analysis.unknownValue') : display(item)}`).join(' / ') : String(value)
-  const text = (value: Record<string, unknown> | null) => value ? Object.entries(value).filter(([key]) => ['name', 'level', 'extra_exp', 'form', 'owned', 'full_star', 'lv120'].includes(key)).map(([key, item]) => `${ui(({name: 'analysis.name', level: 'analysis.level', extra_exp: 'analysis.extraExp', form: 'analysis.form', owned: 'analysis.owned', full_star: 'analysis.fullStar', lv120: 'analysis.lv120'} as const)[key as 'name'])}: ${key === 'full_star' ? ui(item === true ? 'analysis.fullStarYes' : item === false ? 'analysis.fullStarNo' : 'analysis.unknownValue') : display(item)}`).join(' / ') : '—'
+  function fieldValue(key: string, value: unknown): string {
+    if (key === 'full_star') return ui(value === true ? 'analysis.fullStarYes' : value === false ? 'analysis.fullStarNo' : 'analysis.unknownValue')
+    return display(value)
+  }
+  function display(value: unknown): string {
+    if (value === null || value === undefined || value === '') return ui('analysis.unknownValue')
+    if (typeof value === 'object') return Object.entries(value).map(([key, item]) => `${key}: ${fieldValue(key, item)}`).join(' / ')
+    return String(value)
+  }
+  function text(value: Record<string, unknown> | null): string {
+    if (!value) return '—'
+    return Object.entries(value).flatMap(([key, item]) => isDisplayField(key)
+      ? [`${ui(fieldLabels[key])}: ${fieldValue(key, item)}`] : []).join(' / ')
+  }
   return <div className="fleet-ledger">
     {error && <ErrorBox message={error}/>}{!report && <Loading/>}
     <section className="mind-panel"><h2>1. {ui('analysis.startRead')}</h2><p>{ui('analysis.readFields')}</p><p>{ui('analysis.scanHint')}</p>
@@ -69,10 +94,10 @@ export function ScanUpdate({instance, report, locked, onReport, onBusy}: {instan
     </section>
     <section className="mind-panel"><h2>2. {ui('analysis.progress')}</h2><p role="status">{scanning ? ui('mind.scanInProgress') : pending.length ? ui('analysis.received') : reading ? ui('analysis.readSaved') : progress || ui('analysis.empty')}</p><p>{ui('analysis.readCount')}: {reading?.observed_count ?? '—'} · {ui('analysis.review')}: {reading?.review_count ?? '—'} · {ui(reading?.complete ? 'analysis.complete' : 'analysis.partial')}</p>{reading && <p>{ui('analysis.time')}: {reading.updated_at} · {reading.source}</p>}<p>{ui('analysis.confirmedCount')}: {report?.ships.length ?? 0} · {ui('analysis.pendingCount')}: {pending.length}</p></section>
     <section className="mind-panel"><h2>3. {ui('analysis.pending')}</h2><p>{ui('analysis.pendingHint')}</p>
-      <p>{(['add', 'update', 'remove', 'resolve'] as const).map(operation => `${ui(({add: 'analysis.operationAdd', update: 'analysis.operationUpdate', remove: 'analysis.operationRemove', resolve: 'analysis.operationResolve'} as const)[operation])}: ${pending.filter(item => item.operation === operation).length}`).join(' · ')}</p>
+      <p>{Object.entries(operationLabels).map(([operation, label]) => `${ui(label)}: ${pending.filter(item => item.operation === operation).length}`).join(' · ')}</p>
       <div className="mind-toolbar"><button className="button primary" disabled={disabled || !safe.length} onClick={() => void review(true, safe)}>{ui('analysis.safeAccept')} ({safe.length})</button><button className="button secondary" disabled={disabled || !pending.length} onClick={() => void review(false, pending)}>{ui('analysis.rejectAll')}</button></div>
       {!pending.length && <p>{ui('analysis.noPending')}</p>}
-      {pending.map(item => <article className="ledger-difference" key={item.id}><h3>{item.name || ui(item.kind === 'technology' ? 'analysis.technologyKind' : item.kind === 'nation' ? 'analysis.nationKind' : 'analysis.shipKind')} · {ui(({add: 'analysis.operationAdd', update: 'analysis.operationUpdate', remove: 'analysis.operationRemove', resolve: 'analysis.operationResolve'} as const)[item.operation])}</h3><p>{ui('analysis.before')}: {text(item.before)}</p><p>{ui('analysis.after')}: {text(item.after)}</p>
+      {pending.map(item => <article className="ledger-difference" key={item.id}><h3>{item.name || ui(item.kind === 'technology' ? 'analysis.technologyKind' : item.kind === 'nation' ? 'analysis.nationKind' : 'analysis.shipKind')} · {ui(operationLabels[item.operation])}</h3><p>{ui('analysis.before')}: {text(item.before)}</p><p>{ui('analysis.after')}: {text(item.after)}</p>
         {item.operation === 'resolve' && <label>{ui('analysis.target')}<select aria-label={`${ui('analysis.target')} ${item.id}`} disabled={disabled} value={targets[item.id] ?? ''} onChange={e => setTargets({...targets, [item.id]: e.target.value})}><option value="">{ui('analysis.chooseTarget')}</option><option value="new">{ui('analysis.addAsNew')}</option>{item.candidates.map(candidate => <option key={candidate.id} value={candidate.id}>{candidate.name} #{candidate.id} · Lv.{candidate.level}</option>)}</select></label>}
         {item.operation === 'remove' && <p>{ui('analysis.retireHint')}</p>}
         <button className="button primary" disabled={disabled || item.operation === 'resolve' && !targets[item.id]} aria-label={`${ui('analysis.accept')} ${item.id}`} onClick={() => {if (item.operation === 'remove' && removal !== item.id) setRemoval(item.id); else void review(true, [item])}}>{ui(item.operation === 'remove' && removal === item.id ? 'analysis.retireConfirm' : 'analysis.accept')}</button>{' '}<button className="button secondary" disabled={disabled} onClick={() => void review(false, [item])}>{ui('analysis.reject')}</button>

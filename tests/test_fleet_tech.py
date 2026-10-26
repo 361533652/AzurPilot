@@ -168,7 +168,7 @@ class FleetTechTests(unittest.TestCase):
             from module.exception import MindCalculatorScanError
             with self.assertRaises(MindCalculatorScanError):
                 runner.run()
-            saved = FleetDatabase(path).load()
+            saved = FleetDatabase(path).load(include_pending=True)
             self.assertEqual(saved['snapshot']['ships'], [])
             self.assertEqual(saved['pending_changes'], [])
             self.assertFalse(saved['technology']['progress']['10102']['owned'])

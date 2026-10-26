@@ -1,5 +1,4 @@
 """玩家编辑的舰船数据；设备读取仅产生待确认更新。"""
-import copy
 import os
 import sqlite3
 import stat
@@ -153,10 +152,12 @@ class FleetDatabase:
     def _legacy_imported(connection):
         return connection.execute('SELECT imported_at IS NOT NULL FROM fleet_info WHERE id=1').fetchone()[0] == 1
 
-    def _load(self, connection, *, include_import_status=False):
+    def _load(self, connection, *, include_pending=False, include_import_status=False):
         info = self._info(connection)
         value = dict(snapshot=self._snapshot(connection), technology=self._options(connection),
-                     pending_revision=info['pending_revision'], pending_changes=self._differences(connection))
+                     pending_revision=info['pending_revision'])
+        if include_pending:
+            value['pending_changes'] = self._differences(connection)
         if info['reading_count'] is not None:
             value['pending_read'] = dict(source=info['pending_source'], updated_at=info['pending_updated_at'],
                                         observed_count=info['reading_count'], review_count=info['reading_review_count'],
@@ -165,9 +166,9 @@ class FleetDatabase:
             value['legacy_imported'] = self._legacy_imported(connection)
         return value
 
-    def load(self, *, include_import_status=False):
+    def load(self, *, include_pending=False, include_import_status=False):
         try:
-            return self._read_only(include_import_status=include_import_status)
+            return self._read_only(include_pending=include_pending, include_import_status=include_import_status)
         except sqlite3.OperationalError as exc:
             if getattr(exc, 'sqlite_errorcode', None) != sqlite3.SQLITE_READONLY_ROLLBACK:
                 raise
@@ -180,19 +181,21 @@ class FleetDatabase:
                 connection.rollback()
             finally:
                 connection.close()
-        return self.load(include_import_status=include_import_status)
+        return self.load(include_pending=include_pending, include_import_status=include_import_status)
 
-    def _read_only(self, *, include_import_status=False):
+    def _read_only(self, *, include_pending=False, include_import_status=False):
         connection = self._connect(write=False)
         if connection is None:
-            value = dict(snapshot=None, technology={}, pending_revision=None, pending_changes=[])
+            value = dict(snapshot=None, technology={}, pending_revision=None)
+            if include_pending:
+                value['pending_changes'] = []
             if include_import_status:
                 value['legacy_imported'] = False
             return value
         try:
             connection.execute('BEGIN')
             self._schema(connection)
-            return self._load(connection, include_import_status=include_import_status)
+            return self._load(connection, include_pending=include_pending, include_import_status=include_import_status)
         finally:
             connection.close()
 
@@ -223,28 +226,6 @@ class FleetDatabase:
 
     def _touch(self, connection):
         connection.execute('UPDATE fleet_info SET revision=?, updated_at=? WHERE id=1', (tech.revision(uuid4().hex), self._now()))
-
-    def _write_options(self, connection, options):
-        if options.keys() - {'progress', 'nations'}:
-            raise ValueError('科技数据只支持里程碑和阵营等级')
-        if 'progress' in options:
-            for gid, entry in options['progress'].items():
-                self._set_progress(connection, gid, entry, source=entry.get('source', 'manual'))
-            connection.execute('UPDATE fleet_info SET technology_initialized=1 WHERE id=1')
-        connection.execute('DELETE FROM nation_technology')
-        for key, value in options.get('nations', {}).items():
-            ledger.integer(value, '阵营等级', nullable=True)
-            connection.execute('INSERT INTO nation_technology VALUES (?, ?)', (key, value))
-
-    @contextmanager
-    def edit(self):
-        with self._transaction() as connection:
-            state = self._load(connection)
-            original = copy.deepcopy(state['technology'])
-            yield state
-            if original != state['technology']:
-                self._write_options(connection, state['technology'])
-                self._touch(connection)
 
     @staticmethod
     def _insert_card(connection, values):

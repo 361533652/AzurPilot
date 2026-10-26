@@ -43,7 +43,7 @@ class SharedAnalysisTests(unittest.TestCase):
         params.update(extra)
         snapshot = dock_data.build_snapshot(rows, **params)
         database.save_scan(snapshot, dock_data.read_snapshot(state)['revision'])
-        pending = database.load()
+        pending = database.load(include_pending=True)
         if confirm and pending['pending_changes']:
             database.review([dict(id=row['id'], accept=True) for row in pending['pending_changes']],
                             dock_data.read_snapshot(pending)['revision'], pending['pending_revision'])
@@ -143,12 +143,12 @@ class SharedAnalysisTests(unittest.TestCase):
         remaining = next(row for row in report['pending_changes'] if row['id'] == proposals[1]['id'])
         self.assertEqual([row['id'] for row in remaining['candidates']], [second_id])
         database = FleetDatabase(self.configs.path('testpilot'))
-        before = database.load()
+        before = database.load(include_pending=True)
         with self.assertRaises(ApiError) as error:
             self.dock.review('testpilot', report['revision'], report['pending_revision'],
                 [dict(id=remaining['id'], accept=True, ship_id=first_id)])
         self.assertEqual(error.exception.code, 'INVALID_PARAMS')
-        self.assertEqual(database.load(), before)
+        self.assertEqual(database.load(include_pending=True), before)
         report = self.dock.review('testpilot', report['revision'], report['pending_revision'],
             [dict(id=remaining['id'], accept=True, ship_id=second_id)])
         self.assertEqual([(row['id'], row['level']) for row in report['ships']],
@@ -164,11 +164,11 @@ class SharedAnalysisTests(unittest.TestCase):
         ambiguous, = [row for row in staged['pending_changes'] if row['kind'] == 'ship']
         self.assertEqual(ambiguous['operation'], 'resolve')
         self.assertEqual({row['id'] for row in ambiguous['candidates']}, set(ids[1:]))
-        before = FleetDatabase(self.configs.path('testpilot')).load()
+        before = FleetDatabase(self.configs.path('testpilot')).load(include_pending=True)
         with self.assertRaises(ApiError):
             self.dock.review('testpilot', staged['revision'], staged['pending_revision'],
                 [dict(id=ambiguous['id'], accept=True, ship_id=ids[0])])
-        self.assertEqual(FleetDatabase(self.configs.path('testpilot')).load(), before)
+        self.assertEqual(FleetDatabase(self.configs.path('testpilot')).load(include_pending=True), before)
 
     def test_同批重复匹配失败时回滚已经处理的前一条决定(self):
         report = self.dock.patch('testpilot', self.dock.report('testpilot')['revision'], [
@@ -180,11 +180,11 @@ class SharedAnalysisTests(unittest.TestCase):
         staged = self.dock.report('testpilot')
         proposals = [row for row in staged['pending_changes'] if row['kind'] == 'ship']
         database = FleetDatabase(self.configs.path('testpilot'))
-        before = database.load()
+        before = database.load(include_pending=True)
         with self.assertRaises(ApiError):
             self.dock.review('testpilot', staged['revision'], staged['pending_revision'],
                 [dict(id=row['id'], accept=True, ship_id=card_id) for row in proposals])
-        self.assertEqual(database.load(), before)
+        self.assertEqual(database.load(include_pending=True), before)
 
     def test_空扫描不会复活旧清单(self):
         data, _ = self.configs.read('testpilot')

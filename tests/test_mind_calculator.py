@@ -382,7 +382,7 @@ class ServiceTests(unittest.TestCase):
             with self.subTest(changed=changed):
                 path = str(self.configs.path('testpilot'))
                 database = FleetDatabase(self.configs.path('testpilot'))
-                pending = database.load()
+                pending = database.load(include_pending=True)
                 if pending['pending_revision']:
                     database.review([dict(id=row['id'], accept=False) for row in pending['pending_changes']],
                                     pending['snapshot']['revision'], pending['pending_revision'])
@@ -423,7 +423,7 @@ class ServiceTests(unittest.TestCase):
                     else:
                         scanner.run()
                         scanner._prune_scan_evidence.assert_called_once_with()
-                    state = database.load()
+                    state = database.load(include_pending=True)
                     self.assertEqual(state['snapshot']['ships'][0]['level'], 100)
                     self.assertEqual(state['snapshot']['ships'][0]['review'], changed)
                     if not changed:

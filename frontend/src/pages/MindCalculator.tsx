@@ -25,7 +25,6 @@ export function MindCalculator({report: dock, onRefresh}: {report?: DockReport; 
   const [filters, setFilters] = useState<Record<string, string[]>>({}), [extra, setExtra] = useState(false)
   const tr = (key: string) => translateFleetTech(language, key)
   const [sort, setSort] = useState<Sort>({column: 'efficiency', direction: 'descending'})
-  const [mindCosts, setMindCosts] = useState<Record<string, number>>({})
   const [reload, setReload] = useState(0), [calculating, setCalculating] = useState(false)
   const [catalog, setCatalog] = useState<Catalog>(), [technology, setTechnology] = useState<Report>()
   const [catalogError, setCatalogError] = useState(''), [catalogAttempt, setCatalogAttempt] = useState(0)
@@ -84,7 +83,7 @@ export function MindCalculator({report: dock, onRefresh}: {report?: DockReport; 
     const timer = setTimeout(() => {
       void api.request('mind.plan', {instance, revision: facts.dock.revision, ship_ids: ids,
         target_level: 120}).then(value => {
-        if (active) {setResult(value); setMindCosts(value.mind_costs_100_to_120); setCalculating(false); setError('')}
+        if (active) {setResult(value); setCalculating(false); setError('')}
       }).catch(e => {
         if (!active) return
         setCalculating(false)
@@ -98,8 +97,9 @@ export function MindCalculator({report: dock, onRefresh}: {report?: DockReport; 
   const estimates = useMemo(() => new Map(result?.ships.map(row => [row.id, row])), [result])
   const efficiencies = useMemo(() => {
     const ships = new Map(facts?.catalog.ships.map(ship => [ship.group_type, ship]))
+    const mindCosts = result?.mind_costs_100_to_120 ?? {}
     return new Map(candidates.map(card => [card.id, technologyEfficiency(ships.get(card.group_type!), mindCosts)]))
-  }, [candidates, facts?.catalog, mindCosts])
+  }, [candidates, facts?.catalog, result?.mind_costs_100_to_120])
   const rows = useMemo(() => {
     const collator = new Intl.Collator(language, {numeric: true})
     const valueFor = (card: DockReport['ships'][number]): string | number | null => {
@@ -155,45 +155,43 @@ export function MindCalculator({report: dock, onRefresh}: {report?: DockReport; 
   return <div className="fleet-technology cultivation-calculator">
     {technologyError && <ErrorBox message={technologyError} retry={retry}/>}
     {error && <ErrorBox message={error} retry={retry}/>}
-    {facts && plan && <>
-      <section className="ft-summary" aria-busy={calculating}>
-        <h2>{ui('mind.title')}</h2>
-        {calculating && <p role="status">{ui('mind.calculating')}</p>}
-        {result && <><div className="cultivation-totals">
-          <div>{ui('mind.units')}<strong>{amount(result.mind)}</strong></div><div>{ui('mind.gold')}<strong>{amount(result.gold)}</strong></div>
-        </div><p role="status">{ui('mind.includedCount', {count: result.included - result.unknown})}{result.unknown > 0 && ui('mind.unknownCount', {count: result.unknown})}{candidates.length > ids.length && ui('mind.excludedCount', {count: candidates.length - ids.length})}</p></>}
-        <small>{ui('mind.autoHint')}</small>
-        {review > 0 && <p className="cultivation-review">{ui('mind.reviewCount', {count: review})}<Link to="?tab=data">{ui('mind.reviewLink')}</Link></p>}
-      </section>
-      <section className="ft-filters" aria-label={ui('mind.filters')}>
-        {group('type', [['front', tr('front')], ['back', tr('back')], ...types.map(value => [String(value), tr(`type.${value}`)] as [string, string])])}
-        {group('rarity', rarities.map(value => [value, tr(`rarity.${value}`)]))}
-        {group('nation', [...new Set([...technologyRows.values()].filter(row => row.technology).map(row => row.nationality))].sort((a, b) => nationOrder(a) - nationOrder(b) || a - b).map(value => [String(value), tr(`nation.${value}`)]))}
-        {group('bonusType', types.map(value => [String(value), tr(`type.${value}`)]))}
-        {group('attr', attrs.map(value => [String(value), tr(`attr.${value}`)]))}
-        {extra && <>{group('getBonusType', types.map(value => [String(value), tr(`type.${value}`)]), `${tr('unlock')} · ${tr('shipClass')}`)}{group('getAttr', attrs.map(value => [String(value), tr(`attr.${value}`)]), `${tr('unlock')} · ${tr('attr')}`)}{group('levelBonusType', types.map(value => [String(value), tr(`type.${value}`)]), `${tr('completionBonus')} · ${tr('shipClass')}`)}{group('levelAttr', attrs.map(value => [String(value), tr(`attr.${value}`)]), `${tr('completionBonus')} · ${tr('attr')}`)}</>}
-        {group('status', ['notTrained120', 'missingStar', 'awakening_pending'].map(key => [key, tr(key)]))}
-        <div className="ft-filter-row"><strong>{ui('mind.filterFunctions')}</strong><div className="ft-chips"><button type="button" aria-expanded={extra} onClick={toggleExtra}>{tr('extra')}</button></div></div>
-      </section>
-      <p className="ft-edit-hint">{ui('mind.costHint')}</p>
-      <p className="ft-edit-hint">{ui('mind.efficiencyHint')}</p>
-      <div className="ft-search"><input type="search" aria-label={ui('mind.search')} placeholder={ui('mind.searchPlaceholder')} value={query} onChange={event => setQuery(event.target.value)}/><span title={ui('mind.detailHint')}>{ui('mind.shownCount', {shown: rows.length, total: candidates.length})}</span>
-        <label className="cultivation-included"><input type="checkbox" checked={includedOnly} onChange={event => setIncludedOnly(event.target.checked)}/>{ui('mind.includedOnly')}</label>
-        <button className="button secondary" disabled={!plan.excluded_groups.length} onClick={() => setPlan({excluded_groups: []})}>{ui('mind.restore')}</button>
-      </div>
-      <div className="ft-table-wrap cultivation-table"><table><thead><tr><th scope="col">{ui('mind.participating')}</th>{(Object.entries(columns) as [Column, typeof columns[Column]][]).map(([column, label]) => <th key={column} scope="col" aria-sort={sort.column === column ? sort.direction : 'none'} title={column === 'efficiency' ? ui('mind.efficiencyHint') : undefined}><button type="button" className="ft-sort" onClick={() => sortBy(column)}>{ui(`mind.${label}`)}<span aria-hidden="true">{sort.column === column ? sort.direction === 'ascending' ? '↑' : '↓' : '↕'}</span></button></th>)}<th scope="col">{tr('awakening_pending')}</th></tr></thead><tbody>
-        {rows.map(card => {
-          const row = estimates.get(card.id), participating = included.has(card.id), efficiency = efficiencies.get(card.id), awakeningPending = technologyRows.get(card.group_type!)?.awakening_pending === true
-          return <tr key={card.id} className={participating ? '' : 'cultivation-excluded'}>
-            <td><input type="checkbox" aria-label={ui('mind.participatingShip', {name: card.name})} checked={participating} onChange={event => exclude(card.group_type!, !event.target.checked)}/></td>
-            <td className="ft-name"><Link to={`?tab=data&ship=${card.id}`}>{card.name}</Link>{participating && row?.status === 'unknown' && <small className="cultivation-warning">{ui('mind.unknownCost')} · <Link to={`?tab=data&ship=${card.id}`}>{ui('mind.check')}</Link></small>}{!participating && <small className="cultivation-note">{ui('mind.excluded')}</small>}</td>
-            <td>{card.level || ui('mind.unknown')}</td><td>{amount(row?.mind)}</td><td>{amount(row?.gold)}</td>
-            <td title={efficiency?.value == null ? undefined : ui('mind.efficiencyDetail', {points: efficiency.points!, mind: amount(efficiency.mind)})}>{efficiency?.value == null ? '—' : efficiency.value.toLocaleString(language, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-            <td className={awakeningPending ? 'ft-awakening-pending' : ''} title={ui('mind.awakeningHint')}><span className="ft-mark" aria-label={`${card.name} · ${tr('awakening_pending')} · ${tr(awakeningPending ? 'marked' : 'notMarked')}`}>{awakeningPending ? '✓' : '—'}</span></td>
-          </tr>
-        })}
-      </tbody></table></div>
-      {!rows.length && <p>{ui(candidates.length ? 'mind.noMatches' : 'mind.noCandidates')}</p>}
-    </>}
+    <section className="ft-summary" aria-busy={calculating}>
+      <h2>{ui('mind.title')}</h2>
+      {calculating && <p role="status">{ui('mind.calculating')}</p>}
+      <div className="cultivation-totals">
+        <div>{ui('mind.units')}<strong>{amount(result.mind)}</strong></div><div>{ui('mind.gold')}<strong>{amount(result.gold)}</strong></div>
+      </div><p role="status">{ui('mind.includedCount', {count: result.included - result.unknown})}{result.unknown > 0 && ui('mind.unknownCount', {count: result.unknown})}{candidates.length > ids.length && ui('mind.excludedCount', {count: candidates.length - ids.length})}</p>
+      <small>{ui('mind.autoHint')}</small>
+      {review > 0 && <p className="cultivation-review">{ui('mind.reviewCount', {count: review})}<Link to="?tab=data">{ui('mind.reviewLink')}</Link></p>}
+    </section>
+    <section className="ft-filters" aria-label={ui('mind.filters')}>
+      {group('type', [['front', tr('front')], ['back', tr('back')], ...types.map(value => [String(value), tr(`type.${value}`)] as [string, string])])}
+      {group('rarity', rarities.map(value => [value, tr(`rarity.${value}`)]))}
+      {group('nation', [...new Set([...technologyRows.values()].filter(row => row.technology).map(row => row.nationality))].sort((a, b) => nationOrder(a) - nationOrder(b) || a - b).map(value => [String(value), tr(`nation.${value}`)]))}
+      {group('bonusType', types.map(value => [String(value), tr(`type.${value}`)]))}
+      {group('attr', attrs.map(value => [String(value), tr(`attr.${value}`)]))}
+      {extra && <>{group('getBonusType', types.map(value => [String(value), tr(`type.${value}`)]), `${tr('unlock')} · ${tr('shipClass')}`)}{group('getAttr', attrs.map(value => [String(value), tr(`attr.${value}`)]), `${tr('unlock')} · ${tr('attr')}`)}{group('levelBonusType', types.map(value => [String(value), tr(`type.${value}`)]), `${tr('completionBonus')} · ${tr('shipClass')}`)}{group('levelAttr', attrs.map(value => [String(value), tr(`attr.${value}`)]), `${tr('completionBonus')} · ${tr('attr')}`)}</>}
+      {group('status', ['notTrained120', 'missingStar', 'awakening_pending'].map(key => [key, tr(key)]))}
+      <div className="ft-filter-row"><strong>{ui('mind.filterFunctions')}</strong><div className="ft-chips"><button type="button" aria-expanded={extra} onClick={toggleExtra}>{tr('extra')}</button></div></div>
+    </section>
+    <p className="ft-edit-hint">{ui('mind.costHint')}</p>
+    <p className="ft-edit-hint">{ui('mind.efficiencyHint')}</p>
+    <div className="ft-search"><input type="search" aria-label={ui('mind.search')} placeholder={ui('mind.searchPlaceholder')} value={query} onChange={event => setQuery(event.target.value)}/><span title={ui('mind.detailHint')}>{ui('mind.shownCount', {shown: rows.length, total: candidates.length})}</span>
+      <label className="cultivation-included"><input type="checkbox" checked={includedOnly} onChange={event => setIncludedOnly(event.target.checked)}/>{ui('mind.includedOnly')}</label>
+      <button className="button secondary" disabled={!plan.excluded_groups.length} onClick={() => setPlan({excluded_groups: []})}>{ui('mind.restore')}</button>
+    </div>
+    <div className="ft-table-wrap cultivation-table"><table><thead><tr><th scope="col">{ui('mind.participating')}</th>{(Object.entries(columns) as [Column, typeof columns[Column]][]).map(([column, label]) => <th key={column} scope="col" aria-sort={sort.column === column ? sort.direction : 'none'} title={column === 'efficiency' ? ui('mind.efficiencyHint') : undefined}><button type="button" className="ft-sort" onClick={() => sortBy(column)}>{ui(`mind.${label}`)}<span aria-hidden="true">{sort.column === column ? sort.direction === 'ascending' ? '↑' : '↓' : '↕'}</span></button></th>)}<th scope="col">{tr('awakening_pending')}</th></tr></thead><tbody>
+      {rows.map(card => {
+        const row = estimates.get(card.id), participating = included.has(card.id), efficiency = efficiencies.get(card.id), awakeningPending = technologyRows.get(card.group_type!)?.awakening_pending === true
+        return <tr key={card.id} className={participating ? '' : 'cultivation-excluded'}>
+          <td><input type="checkbox" aria-label={ui('mind.participatingShip', {name: card.name})} checked={participating} onChange={event => exclude(card.group_type!, !event.target.checked)}/></td>
+          <td className="ft-name"><Link to={`?tab=data&ship=${card.id}`}>{card.name}</Link>{participating && row?.status === 'unknown' && <small className="cultivation-warning">{ui('mind.unknownCost')} · <Link to={`?tab=data&ship=${card.id}`}>{ui('mind.check')}</Link></small>}{!participating && <small className="cultivation-note">{ui('mind.excluded')}</small>}</td>
+          <td>{card.level || ui('mind.unknown')}</td><td>{amount(row?.mind)}</td><td>{amount(row?.gold)}</td>
+          <td title={efficiency?.value == null ? undefined : ui('mind.efficiencyDetail', {points: efficiency.points!, mind: amount(efficiency.mind)})}>{efficiency?.value == null ? '—' : efficiency.value.toLocaleString(language, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+          <td className={awakeningPending ? 'ft-awakening-pending' : ''} title={ui('mind.awakeningHint')}><span className="ft-mark" aria-label={`${card.name} · ${tr('awakening_pending')} · ${tr(awakeningPending ? 'marked' : 'notMarked')}`}>{awakeningPending ? '✓' : '—'}</span></td>
+        </tr>
+      })}
+    </tbody></table></div>
+    {!rows.length && <p>{ui(candidates.length ? 'mind.noMatches' : 'mind.noCandidates')}</p>}
   </div>
 }

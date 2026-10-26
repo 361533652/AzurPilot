@@ -54,7 +54,7 @@ class AccountProgressTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, f'version: {version}'):
                     self.database.load()
                 with self.assertRaisesRegex(ValueError, f'version: {version}'):
-                    with self.database.edit():
+                    with self.database._transaction():
                         pass
                 self.assertEqual(self.database.path.read_bytes(), before)
 
@@ -150,11 +150,11 @@ class AccountProgressTests(unittest.TestCase):
     def test_unconfirmed_import_does_not_change_stats_or_overwrite_existing_pending(self):
         before = tech.report(self.record())
         self.database.stage_import([dict(name='杜威', level=120)], self.revision())
-        staged = self.database.load()
+        staged = self.database.load(include_pending=True)
         self.assertEqual(tech.report(self.record()), before)
         with self.assertRaises(FleetDatabaseConflict):
             self.database.stage_import([dict(name='卡辛', level=125)], self.revision())
-        self.assertEqual(self.database.load(), staged)
+        self.assertEqual(self.database.load(include_pending=True), staged)
         self.database.review([dict(id=row['id'], accept=False) for row in staged['pending_changes']],
                              self.revision(), staged['pending_revision'])
         self.assertEqual(tech.report(self.record()), before)
@@ -169,7 +169,7 @@ class AccountProgressTests(unittest.TestCase):
             metadata.update(proof)
             snapshot = dock_data.build_snapshot([dict(group_type=10102, name='杜威', level=101)], **metadata)
             self.database.save_scan(snapshot, self.revision())
-            state = self.database.load()
+            state = self.database.load(include_pending=True)
             self.assertFalse(any(row['operation'] == 'remove' for row in state['pending_changes']))
             self.assertFalse(state['pending_read']['complete'])
             self.database.review([dict(id=row['id'], accept=False) for row in state['pending_changes']],
@@ -201,7 +201,7 @@ class AccountProgressTests(unittest.TestCase):
             min_level=1, max_level=125, physical_count=1, expected_count=None,
             reached_bottom=False, filters_clear=False, updated_at='scan')
         self.database.save_scan(snapshot, self.revision())
-        state = self.database.load()
+        state = self.database.load(include_pending=True)
         self.assertTrue(all(row['kind'] == 'ship' for row in state['pending_changes']))
         self.database.review([dict(id=row['id'], accept=True) for row in state['pending_changes']],
                              self.revision(), state['pending_revision'])
@@ -212,7 +212,7 @@ class AccountProgressTests(unittest.TestCase):
         self.database.patch_cards([dict(group_type=10102, name='杜威', level=120)], self.revision())
         self.database.stage_legacy(dict(snapshot=None, technology=dict(manual={
             '10102': dict(owned=False)})), self.revision())
-        state = self.database.load()
+        state = self.database.load(include_pending=True)
         self.assertEqual([row['kind'] for row in state['pending_changes']], ['technology'])
         self.database.review([dict(id=row['id'], accept=True) for row in state['pending_changes']],
                              self.revision(), state['pending_revision'])
@@ -234,17 +234,17 @@ class AccountProgressTests(unittest.TestCase):
         self.assertTrue(self.row(10105)['owned'])
         self.assertFalse(self.row(10105)['full_star'])
         self.assertFalse(self.row(10105)['lv120'])
-        before = self.database.load()
+        before = self.database.load(include_pending=True)
         self.database.merge_ship_technology(tech.revision(self.record()))
-        self.assertEqual(self.database.load(), before)
+        self.assertEqual(self.database.load(include_pending=True), before)
 
     def test_explicit_union_rejects_stale_ship_or_technology_revision(self):
         stale = tech.revision(self.record())
         self.database.patch_cards([dict(group_type=10102, name='杜威', level=120)], self.revision())
-        before = self.database.load()
+        before = self.database.load(include_pending=True)
         with self.assertRaises(FleetDatabaseConflict):
             self.database.merge_ship_technology(stale)
-        self.assertEqual(self.database.load(), before)
+        self.assertEqual(self.database.load(include_pending=True), before)
         stale = tech.revision(self.record())
         self.patch_tech([dict(group_type=10102, lv120=False)])
         with self.assertRaises(FleetDatabaseConflict):

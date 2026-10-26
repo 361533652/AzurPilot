@@ -27,9 +27,9 @@ class FleetDatabaseLifecycleTest(unittest.TestCase):
         self.configs = ConfigService(root)
         self.configs.create('pilot')
         self.database = FleetDatabase(self.configs.path('pilot'))
-        with self.database.edit() as state:
-            state['technology'] = {'progress': {'10102': {'owned': True}}, 'nations': {'1': 3}}
-        from module.runtime import dock_data
+        from module.runtime import dock_data, fleet_tech
+        self.database.patch_technology([dict(group_type=10102, owned=True)], {'1': 3},
+            fleet_tech.revision(dock_data.technology_record(self.database.load())))
         self.database.patch_cards([dict(name='杜威', group_type=10102, level=100, review=True)],
                                   dock_data.read_snapshot(self.database.load())['revision'])
 
@@ -47,13 +47,13 @@ class FleetDatabaseLifecycleTest(unittest.TestCase):
                 "SELECT COUNT(*) FROM ships WHERE review=1").fetchone()[0], 1)
         self.assertFalse(self.database.path.exists())
         self.configs.create('pilot')
-        self.assertEqual(self.database.load(), {'snapshot': None, 'technology': {}, 'pending_revision': None, 'pending_changes': []})
+        self.assertEqual(self.database.load(), {'snapshot': None, 'technology': {}, 'pending_revision': None})
         self.assertFalse(self.database.path.exists())
 
     def test_clone_configuration_does_not_copy_fleet_records(self):
         self.configs.create('clone', source='pilot')
         clone = FleetDatabase(self.configs.path('clone'))
-        self.assertEqual(clone.load(), {'snapshot': None, 'technology': {}, 'pending_revision': None, 'pending_changes': []})
+        self.assertEqual(clone.load(), {'snapshot': None, 'technology': {}, 'pending_revision': None})
         self.assertFalse(clone.path.exists())
         self.assertTrue(self.database.load()['technology']['progress']['10102']['owned'])
 

@@ -1,5 +1,4 @@
 """舰船底账的类型校验与待确认差异，不操作设备。"""
-import copy
 from collections import Counter
 
 CARD_FIELDS = ('group_type', 'name', 'level', 'rarity', 'base_rarity', 'extra_exp', 'review', 'source', 'full_star', 'form')

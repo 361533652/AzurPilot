@@ -76,7 +76,7 @@ class ScanFailureTests(unittest.TestCase):
             min_level=1, max_level=125, reached_bottom=True, filters_clear=True,
             physical_count=1, expected_count=1, updated_at='2026-10-25T00:00:00')
         database.save_scan(snapshot, dock_data.read_snapshot(database.load())['revision'])
-        pending = database.load()
+        pending = database.load(include_pending=True)
         database.review([dict(id=row['id'], accept=True) for row in pending['pending_changes']],
                         dock_data.read_snapshot(pending)['revision'], pending['pending_revision'])
         database_before = database.path.read_bytes()
