@@ -10,7 +10,7 @@ import './fleet-ledger.css'
 
 const nationValue = (ship?: CatalogShip) => ship?.nationality == null ? ship?.nation ?? '' : String(ship.nationality)
 const nationOrder = (value: string) => {const index = fleetFactionOrder.indexOf(Number(value)); return index < 0 ? fleetFactionOrder.length : index}
-const sortColumns = ['name', 'level', 'breakthrough', 'form', 'type', 'nation', 'rarity', 'reviewFlag'] as const
+const sortColumns = ['name', 'level', 'breakthrough', 'type', 'nation', 'rarity', 'reviewFlag'] as const
 type SortColumn = typeof sortColumns[number]
 type Sort = {column: SortColumn; direction: 'ascending' | 'descending'}
 type DraftCard = Omit<DockCard, 'level'> & {level: number | ''}
@@ -83,7 +83,6 @@ export function FleetLedger({instance, report, onReport, onBusy, onDirty, locked
         case 'name': return row.name
         case 'level': return row.level || null
         case 'breakthrough': return row.full_star == null ? null : Number(row.full_star)
-        case 'form': return row.form || null
         case 'type': return ship?.type || null
         case 'nation': return nationValue(ship) ? nationOrder(nationValue(ship)) : null
         case 'rarity': return row.rarity ? ['N', 'R', 'SR', 'SSR', 'UR'].indexOf(row.rarity) : null
@@ -137,10 +136,6 @@ export function FleetLedger({instance, report, onReport, onBusy, onDirty, locked
     const info = matches.length === 1 ? matches[0] : undefined
     change(row, {name, group_type: info?.group_type ?? null, rarity: info?.rarity ?? row.rarity,
       base_rarity: info?.base_rarity ?? row.base_rarity, form: info ? info.group === '改造' ? 'retrofit' : 'base' : null, review: !info})
-  }
-  function changeForm(row: DraftCard, form: DockCard['form']) {
-    const info = catalog?.ships.find(info => info.group_type === row.group_type && (form === 'retrofit' ? info.group === '改造' : info.group !== '改造'))
-    change(row, {form, ...(info ? {name: info.name, rarity: info.rarity, base_rarity: info.base_rarity} : {}), review: form === 'retrofit' && !info || row.review})
   }
   function add() {
     if (disabled || !report) return
@@ -212,7 +207,6 @@ export function FleetLedger({instance, report, onReport, onBusy, onDirty, locked
         <td><input className="ledger-name" list={list} aria-label={label('analysis.name')} maxLength={100} value={row.name} disabled={disabled || deleted || !catalog} onChange={e => rename(row, e.target.value)}/>{row.id > 0 && (counts.get(String(row.group_type ?? row.name)) ?? 0) > 1 && <small> · #{row.id}</small>}{row.id < 0 && <small> · {ui('analysis.new')}</small>}</td>
         <td><input className="ledger-level" type="number" min={0} max={125} step={1} aria-label={label('analysis.level')} value={row.level} disabled={disabled || deleted} onChange={e => change(row, {level: e.target.value === '' ? '' : Number(e.target.value)})}/></td>
         <td><select aria-label={label('analysis.breakthrough')} value={row.full_star == null ? '' : String(row.full_star)} disabled={disabled || deleted} onChange={e => change(row, {full_star: e.target.value === '' ? null : e.target.value === 'true'})}><option value="">{ui('analysis.unknownValue')}</option><option value="false">{ui('analysis.fullStarNo')}</option><option value="true">{ui('analysis.fullStarYes')}</option></select></td>
-        <td><select aria-label={label('analysis.form')} value={row.form ?? ''} disabled={disabled || deleted || !catalog} onChange={e => changeForm(row, e.target.value as DockCard['form'] || null)}><option value="">{ui('analysis.unknownValue')}</option><option value="base">{ui('analysis.base')}</option><option value="retrofit" disabled={!catalog?.ships.some(ship => ship.group_type === row.group_type && ship.group === '改造')}>{ui('analysis.retrofit')}</option></select></td>
         <td>{info?.type || '—'}</td><td>{nationName(nationValue(info)) || '—'}</td><td>{row.rarity}</td>
         <td><label className="ledger-review"><input type="checkbox" aria-label={label('analysis.reviewFlag')} checked={row.review || !row.group_type} disabled={disabled || deleted || !row.group_type} onChange={e => change(row, {review: e.target.checked})}/>{ui(row.review || !row.group_type ? 'analysis.needsReview' : row.level === 0 || row.level === '' ? 'analysis.missing' : 'analysis.normal')}</label></td>
         <td><button className="button secondary" disabled={disabled} onClick={() => remove(row)}>{ui(deleted ? 'analysis.restore' : 'analysis.delete')}</button>{deleted && <small> {ui('analysis.deleted')}</small>}</td>
