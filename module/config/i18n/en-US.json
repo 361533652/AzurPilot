@@ -6823,10 +6823,6 @@
     "Target": {
       "name": "Target level",
       "help": "Off by default. Uses training slots and reserves. Verify every enabled goal on the same ship before completion; morale swaps keep progress."
-    },
-    "CheckIntervalHours": {
-      "name": "Read interval (hours)",
-      "help": "Decimals supported with no upper limit. 0 checks after every battle; finish the current map before reading. Legacy minutes convert to hours."
     }
   },
   "FleetAffinityTraining": {
@@ -6841,16 +6837,16 @@
     "Target": {
       "name": "Target affinity",
       "help": "Off by default. Uses training slots and reserves. Verify every enabled goal on the same ship before completion; morale swaps keep progress."
-    },
-    "CheckIntervalHours": {
-      "name": "Read interval (hours)",
-      "help": "Decimals supported with no upper limit. 0 checks after every battle; finish the current map before reading. Legacy minutes convert to hours."
     }
   },
   "FleetTraining": {
     "_info": {
       "name": "Training records",
       "help": "Persists verified readings, completed goals and pending swaps across restarts."
+    },
+    "CheckIntervalHours": {
+      "name": "Shared read interval (hours)",
+      "help": "Shared by morale, level and affinity; nonnegative decimals with no upper limit. 0 checks after every battle, then reads after the current map. Migrate the shortest enabled legacy interval; retain completion records."
     },
     "State": {
       "name": "Training records",

@@ -10,8 +10,8 @@ from module.logger import logger
 from module.retire.fleet_management import FleetManagement
 from module.retire.fleet_training import FleetTrainingReader
 from module.runtime.fleet_equipment import EQUIPMENT_PATH
-from module.runtime.fleet_rotation import ROTATION_PATH, active_fleets, calibration_changes, parse_rules, supported
-from module.runtime.fleet_training import TRAINING_PATH, due, excluded, goals, identity, interval, observe, ships, state
+from module.runtime.fleet_rotation import ROTATION_PATH, active_fleets, calibration_changes, parse_rules, recorded_morale, supported
+from module.runtime.fleet_training import TRAINING_PATH, due, excluded, goals, identity, interval, mark_checked, observe, ships, state
 
 
 class TrainingSession:
@@ -144,10 +144,7 @@ class TrainingSession:
                 equipment.apply_pending()
             if goals(self.config) == self.targets:
                 self.inspect(fleet, [job['slot'] for _, job in jobs])
-        self.context['training_checked_at'] = now()
-        self.context['training_goals'] = dict(self.targets)
-        self.context['training_rules'] = deepcopy(self.config.cross_get(ROTATION_PATH + '.Rules', '{}'))
-        self.context['training_fleets'] = active_fleets(self.config)
+        mark_checked(self.config, self.context, self.targets)
         return True
 
     def filter_sources(self, order, rule, fleet):
@@ -180,7 +177,7 @@ def recover_reading(runner, mode):
 
 
 def training_only(runner, battle, mode):
-    """仅培养调度时只进详情实读；达标才复用同号互换及心情校正。
+    """仅培养调度也实读选船页舰名与心情；达标才执行同号互换。
 
     Pages:
         in: 普通选关页
@@ -194,7 +191,8 @@ def training_only(runner, battle, mode):
         context.clear()
         context['task'] = config.task.command
     selected_only = config.cross_get(ROTATION_PATH + '.SelectedOnly', False) is True
-    needs_morale = selected_only and (not context.get('training') or context.get('scanned') is False)
+    needs_morale = (not context.get('training') or context.get('scanned') is False
+                    or context.get('training_selected_only') != selected_only)
     if not due(config, context) and not state(config)['pending'] and not needs_morale:
         return False
     rules = parse_rules(config.cross_get(ROTATION_PATH + '.Rules', '{}'))
@@ -215,12 +213,13 @@ def training_only(runner, battle, mode):
         session.reader.recover_page()
     # 确认后、保存前中断时两边旧记录都可能过时，恢复前必须实读双方。
     recovery_fleets = {job[side] for job in session.saved['pending'].values() for side in ('fleet', 'source')}
-    session.reader.inventory(set(selected.values()) | recovery_fleets)
-    if selected_only:
-        # 三种调度共用勾选舰位心情，首次启用时实读，不能借用固定舰船的最低值。
-        for fleet in selected.values():
-            session.prepare(fleet)
-        context['scanned'] = True
+    inventory = set(selected.values()) | recovery_fleets
+    result = session.reader.inventory(inventory)
+    snapshots = {fleet: recorded_morale(result, fleet) for fleet in inventory}
+    config.cross_set_many(calibration_changes(config.data, snapshots, now()))
+    runner.campaign.emotion.calibrate_selected(snapshots)
+    context['scanned'] = True
+    context['training_selected_only'] = selected_only
     if config.cross_get(EQUIPMENT_PATH + '.Enabled', False) and config.cross_get(EQUIPMENT_PATH + '.State', {}):
         FleetRotationEquipment(manager).apply_pending()
     session.process(fresh=True)
@@ -239,7 +238,8 @@ def after_battle_due(runner, mode):
     from module.campaign.fleet_rotation import _required
     config = runner.campaign.config
     if (not supported(config.task.command, mode, runner.folder, runner.stage)
-            or config.Campaign_Mode != 'normal' or not goals(config)):
+            or config.Campaign_Mode != 'normal'
+            or (not goals(config) and config.cross_get(ROTATION_PATH + '.Enabled', False) is not True)):
         return False
     rules = parse_rules(config.cross_get(ROTATION_PATH + '.Rules', '{}'))
     selected = any(rules.get(str(actual), {}).get('slots') and rules[str(actual)].get('sources')

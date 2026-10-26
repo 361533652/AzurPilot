@@ -222,6 +222,8 @@ FleetManagement(config=config, device=device).swap_slots(
 培养读取不会初始化装备码或卸装。等级复用大世界识别，好感按固定位置打开信息并读取
 当前数值，可靠数据不足时不记录完成。完整组合、持久状态及延时语义见
 [战役培养调度](../campaign.md#等级好感培养调度)。
+三种调度共用上方的小时实读间隔；仅等级/好感也必须从编队舰位4、1进入选船页读取舰名和心情，
+之后再进角色详情读培养数据，不能以详情等级读取代替心情实读。此读取不受`SelectedOnly`开关限制。
 
 `module/campaign/fleet_rotation.py` 在普通主线/活动出击前调用本模块。策略配置保存在
 `FleetInfo.FleetRotation`，不是调度任务：“换船配置”仅编辑共享舰位与候补规则；

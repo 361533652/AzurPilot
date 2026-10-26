@@ -4,6 +4,7 @@ from copy import deepcopy
 from datetime import datetime
 
 from module.config.time_source import now
+from module.config.redirect_utils.utils import fleet_training_interval_redirect
 from module.exception import FleetManagementError
 from module.runtime.mind_calculator import find_ship
 from module.runtime.fleet_rotation import ROTATION_PATH, active_fleets
@@ -11,6 +12,7 @@ from module.runtime.fleet_rotation import ROTATION_PATH, active_fleets
 LEVEL_PATH = 'FleetInfo.FleetLevelTraining'
 AFFINITY_PATH = 'FleetInfo.FleetAffinityTraining'
 TRAINING_PATH = 'FleetInfo.FleetTraining.State'
+INTERVAL_PATH = 'FleetInfo.FleetTraining.CheckIntervalHours'
 
 
 def goals(config):
@@ -20,22 +22,31 @@ def goals(config):
 
 
 def interval(config):
-    """以小时返回最短启用间隔；兼容尚未迁移的分钟配置。"""
-    return min((config.cross_get(path + '.CheckIntervalHours',
-                                config.cross_get(path + '.CheckInterval', 30) / 60)
-                for path in (LEVEL_PATH, AFFINITY_PATH)
-                if config.cross_get(path + '.Enabled', False) is True), default=0.5)
+    """三种调度共用小时实读间隔，兼容尚未迁移的独立旧配置。"""
+    hours = config.cross_get(INTERVAL_PATH, None)
+    return fleet_training_interval_redirect(config.cross_get('FleetInfo', {})) if hours is None else hours
 
 
 def due(config, context):
-    if not goals(config):
-        return False
     signature = goals(config)
+    mood = config.cross_get(ROTATION_PATH + '.Enabled', False) is True
+    if not signature and not mood:
+        return False
     checked = context.get('training_checked_at')
     return (context.get('training_goals') != signature
+            or context.get('training_mood') != mood
             or context.get('training_rules') != config.cross_get(ROTATION_PATH + '.Rules', '{}')
             or context.get('training_fleets') != active_fleets(config) or not isinstance(checked, datetime)
             or (now() - checked).total_seconds() / 3600 >= interval(config))
+
+
+def mark_checked(config, context, targets=None):
+    """记录共用读取时刻；目标变化仍强制重新核对，不能拼接不同批次的条件。"""
+    context['training_checked_at'] = now()
+    context['training_goals'] = dict(goals(config) if targets is None else targets)
+    context['training_mood'] = config.cross_get(ROTATION_PATH + '.Enabled', False) is True
+    context['training_rules'] = deepcopy(config.cross_get(ROTATION_PATH + '.Rules', '{}'))
+    context['training_fleets'] = active_fleets(config)
 
 
 def state(config):

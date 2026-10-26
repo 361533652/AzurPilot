@@ -95,7 +95,7 @@ function recordSnapshot(values: Record<string, Record<string, unknown>>): Record
   trainingRecordGroups(snapshot)
   return snapshot
 }
-type Goal = {enabled: boolean; target: string; hours: string}
+type Goal = {enabled: boolean; target: string}
 const groups = {level: 'FleetLevelTraining', affinity: 'FleetAffinityTraining'} as const
 type Metric = keyof typeof groups
 const metrics: Metric[] = ['level', 'affinity']
@@ -103,15 +103,16 @@ const metrics: Metric[] = ['level', 'affinity']
 export function FleetTraining() {
   const {instance = ''} = useParams(), {ui, notify, instances} = useApp(), connection = useConnection()
   const [morale, setMorale] = useState(false), [selectedOnly, setSelectedOnly] = useState(false)
+  const [hours, setHours] = useState('0.5')
   const [settings, setSettings] = useState<Record<Metric, Goal>>({
-    level: {enabled: false, target: '120', hours: '0.5'},
-    affinity: {enabled: false, target: '100', hours: '0.5'},
+    level: {enabled: false, target: '120'},
+    affinity: {enabled: false, target: '100'},
   })
   const [loaded, setLoaded] = useState(false), [snapshot, setSnapshot] = useState<RecordSnapshot>(emptySnapshot)
   const [busy, setBusy] = useState(false), [dirty, setDirty] = useState(false), [error, setError] = useState('')
   const disabled = busy || connection !== 'ready', running = instances.some(item => item.name === instance && item.status === 'running')
   const valid = metrics.every(metric => {
-    const {target, hours} = settings[metric], limit = metric === 'level' ? 125 : 200
+    const {target} = settings[metric], limit = metric === 'level' ? 125 : 200
     return target.trim() !== '' && Number.isInteger(Number(target)) && Number(target) >= 1 && Number(target) <= limit
       && hours.trim() !== '' && Number.isFinite(Number(hours)) && Number(hours) >= 0
   })
@@ -124,10 +125,10 @@ export function FleetTraining() {
       const values = config.values.FleetInfo
       setMorale(values.FleetRotation?.Enabled === true)
       setSelectedOnly(values.FleetRotation?.SelectedOnly === true)
+      setHours(String(values.FleetTraining?.CheckIntervalHours ?? 0.5))
       setSettings(Object.fromEntries(metrics.map(metric => {
         const value = values[groups[metric]]
-        return [metric, {enabled: value?.Enabled === true, target: String(value?.Target ?? (metric === 'level' ? 120 : 100)),
-          hours: String(value?.CheckIntervalHours ?? Number(value?.CheckInterval ?? 30) / 60)}]
+        return [metric, {enabled: value?.Enabled === true, target: String(value?.Target ?? (metric === 'level' ? 120 : 100))}]
       })) as Record<Metric, Goal>)
       setSnapshot(recordSnapshot(values))
       setLoaded(true); setDirty(false); setError('')
@@ -145,7 +146,7 @@ export function FleetTraining() {
     return () => {active = false; clearInterval(timer)}
   }, [instance, connection, running])
 
-  function change(metric: Metric, field: 'target' | 'hours', value: string) {
+  function change(metric: Metric, field: 'target', value: string) {
     setSettings(previous => ({...previous, [metric]: {...previous[metric], [field]: value}}))
     setDirty(true)
   }
@@ -159,10 +160,10 @@ export function FleetTraining() {
       await api.request('config.patch', {instance, revision: config.revision, changes: [
         {path: 'FleetInfo.FleetRotation.Enabled', value: nextMorale},
         {path: 'FleetInfo.FleetRotation.SelectedOnly', value: selectedOnly},
+        {path: 'FleetInfo.FleetTraining.CheckIntervalHours', value: Number(hours)},
         ...metrics.flatMap(metric => [
           {path: `FleetInfo.${groups[metric]}.Enabled`, value: nextSettings[metric].enabled},
           {path: `FleetInfo.${groups[metric]}.Target`, value: Number(nextSettings[metric].target)},
-          {path: `FleetInfo.${groups[metric]}.CheckIntervalHours`, value: Number(nextSettings[metric].hours)},
         ]),
       ]})
       setMorale(nextMorale); setSettings(nextSettings); setDirty(false); notify(ui('training.saved'))
@@ -183,6 +184,10 @@ export function FleetTraining() {
           {ui('rotation.selectedOnly')}
         </label>
         <p className="muted">{ui('rotation.emotionHelp')}</p>
+        <label style={{display: 'grid', gap: 8, marginTop: 16}}>{ui('training.interval')}
+          <input type="number" min={0} step="any" value={hours} disabled={disabled} onChange={event => {setHours(event.target.value); setDirty(true)}}/>
+        </label>
+        <p className="muted">{ui('training.intervalHelp')}</p>
       </section>
       <div className="fleet-grid" style={{marginBottom: 20}}>
         <section className="panel" aria-label={ui('training.moraleTitle')}>
@@ -200,9 +205,6 @@ export function FleetTraining() {
             <div style={{padding: 20, display: 'grid', gap: 16}}>
               <label style={{display: 'grid', gap: 8}}>{ui(isLevel ? 'training.targetLevel' : 'training.targetAffinity')}
                 <input type="number" min={1} max={isLevel ? 125 : 200} step={1} value={goal.target} disabled={disabled} onChange={event => change(metric, 'target', event.target.value)}/>
-              </label>
-              <label style={{display: 'grid', gap: 8}}>{ui('training.interval')}
-                <input type="number" min={0} step="any" value={goal.hours} disabled={disabled} onChange={event => change(metric, 'hours', event.target.value)}/>
               </label>
             </div>
           </section>
