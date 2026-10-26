@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'vitest'
 import {catalogRows, changeMilestone, complete, matches, remainingPoints, type Catalog, type Row} from './types'
 const row: Row = {group_type: 10102, code: 4, handbook_type: 0, blueprint: false, full_star_rule: 'ordinary_level_cap', name: '杜威', names: {cn: '杜威', en: 'Dewey'}, nationality: 1, rarity: 'R', type: 20,
-  owned: true, full_star: false, lv120: true, current_count: 0, current_level: null, evidence: {owned: [], full_star: [], lv120: []}, status: 'unfinished', points: 8,
+  owned: true, full_star: false, lv120: true, awakening_pending: false, current_count: 0, current_level: null, evidence: {owned: [], full_star: [], lv120: []}, status: 'unfinished', points: 8,
   technology: {pt_get: 3, pt_upgrage: 7, pt_level: 5, max_star: 5, add_get_shiptype: [1, 20, 21], add_get_attr: 1, add_get_value: 1, add_level_shiptype: [7], add_level_attr: 5, add_level_value: 1}}
 const catalog: Catalog = {ships: [row, {...row, group_type: 10103, name: '卡辛', code: 5}], nations: {}, updated_at: '', source_commit: '', max_points: 30, nation_points: {}}
 describe('authoritative cumulative technology', () => {

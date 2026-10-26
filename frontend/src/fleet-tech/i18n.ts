@@ -7,6 +7,10 @@ export const fleetFactionOrder: readonly number[] = [
 ]
 
 const messages = {
+  awakening_pending: ['满级待觉醒', '滿級待覺醒', 'Max level, awaiting awakening', '覚醒待ち', '满级待觉醒喵'],
+  awakeningHint: ['手动标记，独立于科技里程碑；编辑模式下点击切换，统一保存。', '手動標記，獨立於科技里程碑；編輯模式下點擊切換，統一儲存。', 'Manual flag, independent of technology milestones. Toggle in edit mode, then save.', '技術実績とは独立した手動マークです。編集モードで切り替え、保存してください。', '手动标记，独立于科技里程碑；编辑模式下点击切换，统一保存喵。'],
+  marked: ['已标记', '已標記', 'Marked', 'マーク済み', '已标记喵'],
+  notMarked: ['未标记', '未標記', 'Unmarked', '未マーク', '未标记喵'],
   "statBonuses": ["属性加成", "屬性加成", "Stat bonuses", "ステータス補正", "属性加成喵"],
   "independentHint": ["里程碑独立保存，初始可由舰船底稿推算；后续仅手动修改或点击合并底稿进度。", "里程碑獨立儲存，初始可由艦船底稿推算；後續僅手動修改或點擊合併底稿進度。", "Milestones are saved independently. Ship records can initialize them; later changes require editing or merging ship progress.", "実績は独立して保存されます。初期値は艦船台帳から推定し、以後は直接編集または台帳の進捗を統合します。", "里程碑独立保存，初始可由舰船底稿推算；后续仅手动修改或点击合并底稿进度。喵"],
   "mergeShips": ["合并舰船底稿进度", "合併艦船底稿進度", "Merge ship progress", "艦船台帳の進捗を統合", "合并舰船底稿进度喵"],

@@ -193,6 +193,7 @@ class FleetTechChange(Params):
     owned: StrictBool = False
     full_star: StrictBool = False
     lv120: StrictBool = False
+    awakening_pending: StrictBool = False
     level: StrictInt | None = Field(default=None, ge=1, le=125)
     restore: StrictBool = False
     toggle: Literal['owned', 'complete', 'star'] | None = None

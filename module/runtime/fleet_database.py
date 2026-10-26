@@ -33,7 +33,7 @@ class FleetDatabaseAlreadyImported(ValueError):
 
 
 class FleetDatabase:
-    SCHEMA_VERSION = 7
+    SCHEMA_VERSION = 8
     BUSY_TIMEOUT_MS = 10000
 
     def __init__(self, config_path):
@@ -109,7 +109,7 @@ class FleetDatabase:
         version = connection.execute('PRAGMA user_version').fetchone()[0]
         if version == self.SCHEMA_VERSION:
             return
-        if version in (3, 4, 5, 6):
+        if version in (3, 4, 5, 6, 7):
             if connection.execute('PRAGMA query_only').fetchone()[0]:
                 raise FleetDatabaseMigrationRequired()
             if version == 3:
@@ -127,7 +127,10 @@ class FleetDatabase:
                 # card levels. Retire those proposals without changing progress.
                 connection.execute('DELETE FROM pending_technology')
                 self._prune_pending(connection)
-            self._migrate_v6(connection)
+            if version < 7:
+                self._migrate_v6(connection)
+            connection.execute('ALTER TABLE technology_progress ADD COLUMN awakening_pending INTEGER '
+                               'NOT NULL DEFAULT 0 CHECK(awakening_pending IN (0, 1))')
             connection.execute(f'PRAGMA user_version={self.SCHEMA_VERSION}')
             return
         if version != 0 or not create:
@@ -274,7 +277,7 @@ class FleetDatabase:
         output = {key: values[key] for index, key in enumerate(('manual', 'nations')) if mask & (1 << index)}
         progress = {row.pop('group_type'): row for row in self._rows(connection, 'SELECT * FROM technology_progress')}
         for row in progress.values():
-            for key in tech.MILESTONES:
+            for key in (*tech.MILESTONES, 'awakening_pending'):
                 row[key] = bool(row[key])
         if progress:
             output['progress'] = progress
@@ -437,15 +440,22 @@ class FleetDatabase:
 
     def _set_progress(self, connection, gid, values, *, source):
         values = dict(values)
+        if 'awakening_pending' in values and type(values['awakening_pending']) is not bool:
+            raise ValueError('满级待觉醒标记必须为布尔值')
         for key in tech.MILESTONES:
             if key in values and type(values[key]) is not bool:
                 raise ValueError('科技里程碑必须为布尔值')
             values.setdefault(key, False)
-        connection.execute('INSERT INTO technology_progress VALUES (?, ?, ?, ?, ?, ?) '
+        connection.execute('INSERT INTO technology_progress '
+                           '(group_type, owned, full_star, lv120, source, updated_at) VALUES (?, ?, ?, ?, ?, ?) '
                            'ON CONFLICT(group_type) DO UPDATE SET owned=excluded.owned, '
                            'full_star=excluded.full_star, lv120=excluded.lv120, source=excluded.source, '
                            'updated_at=excluded.updated_at',
                            (str(gid), *(values.get(key) for key in tech.MILESTONES), source, self._now()))
+        # Omitted manual flags survive inferred milestone writes and legacy migrations.
+        if 'awakening_pending' in values:
+            connection.execute('UPDATE technology_progress SET awakening_pending=? WHERE group_type=?',
+                               (values['awakening_pending'], str(gid)))
 
     def _write_evidence(self, connection, card, milestone, source):
         connection.execute('INSERT INTO technology_evidence '
@@ -491,10 +501,10 @@ class FleetDatabase:
                 if gid not in known or gid in seen:
                     raise ValueError('舰船群组不存在或重复')
                 seen.add(gid)
-                if change.keys() - {'group_type', *tech.MILESTONES}:
+                if change.keys() - {'group_type', *tech.MILESTONES, 'awakening_pending'}:
                     raise ValueError('只允许编辑科技里程碑；等级请在我的舰船维护')
                 values = dict(record['progress'].get(str(gid), {}))
-                values.update({key: change[key] for key in tech.MILESTONES if key in change})
+                values.update({key: change[key] for key in (*tech.MILESTONES, 'awakening_pending') if key in change})
                 # Enabling fills omitted prerequisites. Clearing a prerequisite
                 # also clears the milestones that require it for this ship type.
                 if 'owned' not in change and any(change.get(key) is True for key in ('full_star', 'lv120')):

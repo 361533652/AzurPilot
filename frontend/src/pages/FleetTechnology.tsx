@@ -4,7 +4,7 @@ import {api} from '../api/client'
 import {useApp, useConnection} from '../app/context'
 import {ErrorBox, Loading, PageTitle} from '../components/ui'
 import {fleetFactionOrder, translateFleetTech} from '../fleet-tech/i18n'
-import {catalogRows, changeMilestone, complete, matches, milestones, shipType, type Bonuses, type Catalog, type Change, type Milestone, type Report, type Row, type State} from '../fleet-tech/types'
+import {catalogRows, changeMilestone, complete, matches, milestones, recordFields, shipType, type Bonuses, type Catalog, type Change, type Milestone, type RecordField, type Report, type Row, type State} from '../fleet-tech/types'
 import '../fleet-tech/style.css'
 
 const types = [1, 2, 3, 18, 4, 5, 7, 6, 13, 12, 10, 8, 17, 19, 22]
@@ -18,7 +18,7 @@ const nameFor = (row: Row, language: string) => row.names[language === 'en-US' ?
 const pointsFor = (row: Row, key: Milestone) => row.technology?.[key === 'owned' ? 'pt_get' : key === 'full_star' ? 'pt_upgrage' : 'pt_level'] ?? 0
 const maximumPoints = (row: Row) => milestones.reduce((sum, key) => sum + pointsFor(row, key), 0)
 const nationOrder = (value: number) => {const index = fleetFactionOrder.indexOf(value); return index < 0 ? fleetFactionOrder.length : index}
-const columns = ['code', 'name', 'nation', 'shipClass', 'get', 'star', 'Lv.120', 'total', 'unlock', 'completionBonus'] as const
+const columns = ['code', 'name', 'nation', 'shipClass', 'get', 'star', 'Lv.120', 'total', 'unlock', 'completionBonus', 'awakening_pending'] as const
 type Column = typeof columns[number]
 type Sort = {column: Column; direction: 'ascending' | 'descending'}
 type Draft = {revision: string; changes: Record<number, Change>; nations: Record<string, number | null>}
@@ -31,12 +31,12 @@ function effectFor(row: Row, stage: 'get' | 'level', tr: (key: string) => string
 
 export function TechnologyTable({rows, language, tr, editing = false, disabled = false, sort = {column: 'code', direction: 'ascending'}, onSort, onChange, modified = [], targetGroup}: {
   rows: Row[]; language: string; tr: (key: string) => string; editing?: boolean; disabled?: boolean; sort?: Sort
-  onSort?: (column: Column) => void; onChange?: (row: Row, key: Milestone, value: State) => void; modified?: number[]; targetGroup?: string | null
+  onSort?: (column: Column) => void; onChange?: (row: Row, key: RecordField, value: State) => void; modified?: number[]; targetGroup?: string | null
 }) {
   function header(column: Column, rowSpan = 1) {
     return <th key={column} scope="col" rowSpan={rowSpan} aria-sort={sort.column === column ? sort.direction : 'none'}><button type="button" className="ft-sort" onClick={() => onSort?.(column)}>{tr(column)}<span aria-hidden="true">{sort.column === column ? sort.direction === 'ascending' ? '↑' : '↓' : '↕'}</span></button></th>
   }
-  return <div className="ft-table-wrap"><table><thead><tr>{columns.slice(0, 4).map(column => header(column, 2))}<th scope="colgroup" colSpan={4}>{tr('points')}</th><th scope="colgroup" colSpan={2}>{tr('statBonuses')}</th></tr><tr>{columns.slice(4).map(column => header(column))}</tr></thead><tbody>{rows.map(row => {
+  return <div className="ft-table-wrap"><table><thead><tr>{columns.slice(0, 4).map(column => header(column, 2))}<th scope="colgroup" colSpan={4}>{tr('points')}</th><th scope="colgroup" colSpan={2}>{tr('statBonuses')}</th>{header('awakening_pending', 2)}</tr><tr>{columns.slice(4, 10).map(column => header(column))}</tr></thead><tbody>{rows.map(row => {
     const title = `${tr('held')}: ${row.current_count} · ${row.current_level === null ? tr('unknown') : `Lv.${row.current_level}`}`
     const identityHighlight = row.lv120 ? 'ft-marked' : ''
     return <tr key={row.group_type} id={`technology-${row.group_type}`} data-group={row.group_type} className={[complete(row) ? 'ft-complete' : '', modified.includes(row.group_type) ? 'ft-modified' : '', targetGroup === String(row.group_type) ? 'ft-target' : ''].filter(Boolean).join(' ')}>
@@ -47,6 +47,7 @@ export function TechnologyTable({rows, language, tr, editing = false, disabled =
         const key = stage === 'get' ? 'owned' : 'lv120', label = `${row.name} · ${tr(stage === 'get' ? 'unlock' : 'completionBonus')} · ${tr(stateKey(row[key]))}`
         return <td key={stage} className={`ft-unlock ${row[key] === true ? 'ft-marked' : ''}`}><button type="button" className="ft-milestone-button" disabled={!editing || disabled} aria-pressed={row[key]} aria-label={label} title={editing ? tr('toggleMilestone') : tr(stateKey(row[key]))} onClick={() => onChange?.(row, key, nextState(row[key]))}><span>{effectFor(row, stage, tr)}</span><span className="ft-mark" aria-hidden="true">{stateSymbol(row[key])}</span></button></td>
       })}
+      <td className={`ft-flag ${row.awakening_pending ? 'ft-awakening-pending' : ''}`}><button type="button" className="ft-milestone-button" disabled={!editing || disabled} aria-pressed={row.awakening_pending} aria-label={`${row.name} · ${tr('awakening_pending')} · ${tr(row.awakening_pending ? 'marked' : 'notMarked')}`} title={tr('awakeningHint')} onClick={() => onChange?.(row, 'awakening_pending', !row.awakening_pending)}><span className="ft-mark" aria-hidden="true">{stateSymbol(row.awakening_pending)}</span></button></td>
     </tr>
   })}</tbody></table></div>
 }
@@ -67,7 +68,7 @@ export function FleetTechnology() {
       const value = JSON.parse(sessionStorage.getItem(storageKey) ?? 'null')
       if (!value || typeof value.revision !== 'string' || !value.changes || !value.nations) return null
       for (const change of Object.values(value.changes) as Record<string, unknown>[]) {
-        for (const key of milestones) if (key in change) change[key] = change[key] === true
+        for (const key of recordFields) if (key in change) change[key] = change[key] === true
         if (change.owned === false) {change.full_star = false; change.lv120 = false}
       }
       return value
@@ -121,6 +122,7 @@ export function FleetTechnology() {
         case 'total': return maximumPoints(row)
         case 'unlock': return effectFor(row, 'get', tr)
         case 'completionBonus': return effectFor(row, 'level', tr)
+        case 'awakening_pending': return Number(row.awakening_pending)
       }
     }
     // Keep edited rows visible until save, even if a status filter no longer matches the draft.
@@ -145,14 +147,19 @@ export function FleetTechnology() {
     if (connection === 'ready') void reload()
     return () => {scope.current++}
   }, [instance, connection])
-  function change(row: Row, key: Milestone, value: State) {
+  function change(row: Row, key: RecordField, value: State) {
     if (!report || busy || connection !== 'ready') return
     setDraft(current => {
       const changes = {...current?.changes}, original = rows.find(value => value.group_type === row.group_type)!
-      const state = {group_type: row.group_type, owned: original.owned, full_star: original.full_star, lv120: original.lv120, ...current?.changes[row.group_type]}
-      const next = changeMilestone(state, key, value, row.full_star_rule)
-      // Keep all final states so an explicit cancellation survives earlier forward completion.
-      if (milestones.every(field => next[field] === original[field])) delete changes[row.group_type]; else changes[row.group_type] = next
+      const state = {group_type: row.group_type, owned: original.owned, full_star: original.full_star, lv120: original.lv120, awakening_pending: original.awakening_pending, ...current?.changes[row.group_type]}
+      const next = key === 'awakening_pending' ? {...state, awakening_pending: value} : changeMilestone(state, key, value, row.full_star_rule)
+      // Keep all milestone states together, but a flag-only draft must stay independent.
+      const pending: Change = {group_type: row.group_type}
+      if (milestones.some(field => next[field] !== original[field])) {
+        for (const field of milestones) pending[field] = next[field]
+      }
+      if (next.awakening_pending !== original.awakening_pending) pending.awakening_pending = next.awakening_pending
+      if (Object.keys(pending).length === 1) delete changes[row.group_type]; else changes[row.group_type] = pending
       const nations = current?.nations ?? {}
       return Object.keys(changes).length || Object.keys(nations).length ? {revision: current?.revision ?? report.revision, changes, nations} : null
     })
@@ -172,7 +179,12 @@ export function FleetTechnology() {
     try {
       const changes = Object.values(draft.changes).map(change => {
         const original = rows.find(row => row.group_type === change.group_type)!
-        return {owned: original.owned, full_star: original.full_star, lv120: original.lv120, ...change}
+        // A manual flag must not resubmit or normalize unrelated milestone states.
+        const final = {...original, ...change}
+        return {group_type: change.group_type,
+          ...(milestones.some(key => final[key] !== original[key]) ? {owned: final.owned, full_star: final.full_star, lv120: final.lv120} : {}),
+          ...(final.awakening_pending !== original.awakening_pending ? {awakening_pending: final.awakening_pending} : {}),
+        }
       })
       const value = await api.request('fleetTech.patch', {instance, revision: draft.revision, changes, nations: draft.nations})
       if (token === scope.current) {setReport(value); setDraft(null); notify(tr('saved'))}
@@ -206,7 +218,7 @@ export function FleetTechnology() {
       {group('bonusType', types.map(value => [String(value), tr(`type.${value}`)]))}
       {group('attr', attrs.map(value => [String(value), tr(`attr.${value}`)]))}
       {extra && <>{group('getBonusType', types.map(value => [String(value), tr(`type.${value}`)]), `${tr('unlock')} · ${tr('shipClass')}`)}{group('getAttr', attrs.map(value => [String(value), tr(`attr.${value}`)]), `${tr('unlock')} · ${tr('attr')}`)}{group('levelBonusType', types.map(value => [String(value), tr(`type.${value}`)]), `${tr('completionBonus')} · ${tr('shipClass')}`)}{group('levelAttr', attrs.map(value => [String(value), tr(`attr.${value}`)]), `${tr('completionBonus')} · ${tr('attr')}`)}</>}
-      {group('status', ['incomplete', 'unfinished', 'missingStar', 'unowned', 'owned', 'lv120'].map(key => [key, tr(key === 'lv120' ? 'Lv.120' : key)]))}
+      {group('status', ['incomplete', 'unfinished', 'missingStar', 'awakening_pending', 'unowned', 'owned', 'lv120'].map(key => [key, tr(key === 'lv120' ? 'Lv.120' : key)]))}
       <div className="ft-filter-row"><strong>{tr('functions')}</strong><div className="ft-chips"><button aria-pressed={editing} onClick={() => setEditing(!editing)}>{tr('edit')}</button><button aria-expanded={bonuses} aria-controls="fleet-tech-bonuses" onClick={() => setBonuses(!bonuses)}>{tr('bonuses')}</button><button aria-expanded={extra} onClick={() => {setExtra(!extra); if (extra) setFilters(current => {const next = {...current}; for (const key of ['getBonusType', 'getAttr', 'levelBonusType', 'levelAttr']) delete next[key]; return next})}}>{tr('extra')}</button></div></div>
     </section>
     <div className="ft-toolbar ft-savebar"><button className="button primary" disabled={disabled || !dirty || stale} onClick={() => void save()}>{ui('analysis.save')}</button>{dirty && <><span role="status">{tr('pendingEdits')}: {Object.keys(draft.changes).length + Object.keys(draft.nations).length}</span><button className="button secondary" disabled={busy} onClick={() => {setDraft(null); setError('')}}>{ui('analysis.discard')}</button></>}<button className="button secondary" disabled={disabled || dirty} title={dirty ? tr('saveBeforeMerge') : tr('mergeHint')} onClick={() => void mergeShips()}>{tr('mergeShips')}</button><small>{tr('mergeHint')}</small></div>

@@ -102,6 +102,7 @@ CREATE TABLE technology_progress (
     owned INTEGER NOT NULL DEFAULT 0 CHECK(owned IN (0, 1)),
     full_star INTEGER NOT NULL DEFAULT 0 CHECK(full_star IN (0, 1)),
     lv120 INTEGER NOT NULL DEFAULT 0 CHECK(lv120 IN (0, 1)),
+    awakening_pending INTEGER NOT NULL DEFAULT 0 CHECK(awakening_pending IN (0, 1)),
     source TEXT NOT NULL,
     updated_at TEXT NOT NULL
 ) STRICT;

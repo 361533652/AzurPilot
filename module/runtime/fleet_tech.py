@@ -166,7 +166,8 @@ def _account_progress(record, group_type):
     state = {key: saved.get(key) is True for key in MILESTONES}
     status = ('complete' if all(state[key] is True for key in MILESTONES) else
               'unowned' if state['owned'] is False else 'unfinished')
-    return dict(group_type=group_type, **state, status=status, points=0,
+    return dict(group_type=group_type, **state, awakening_pending=saved.get('awakening_pending') is True,
+                status=status, points=0,
                 current_count=len(cards), current_level=max((row['level'] for row in cards), default=None),
                 evidence=evidence, historical_evidence=record.get('evidence_history', {}).get(gid, {}),
                 conflicts={}, source=saved.get('source', ''), updated_at=saved.get('updated_at', ''))

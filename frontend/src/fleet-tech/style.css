@@ -42,10 +42,12 @@
 .ft-table-wrap td.ft-rarity-SSR { color: #946408; }
 .ft-table-wrap td.ft-rarity-UR, .ft-table-wrap td.ft-rarity-DR { color: #b04f91; }
 .ft-table-wrap tbody tr td.ft-marked, .ft-table-wrap tbody tr td.ft-point.ft-state-finished { background: #87f6d6; }
+.ft-table-wrap tbody tr td.ft-awakening-pending { background: #ffd096; }
+.ft-awakening-pending .ft-mark { color: #8b4300; }
 .ft-point-value { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 27px; }
 .ft-mark { font-size: 12px; font-weight: 700; color: #718091; }
 .ft-state-finished .ft-mark, .ft-marked .ft-mark { color: #13775f; }
-.ft-table-wrap td.ft-point, .ft-table-wrap td.ft-unlock { padding: 0; }
+.ft-table-wrap td.ft-point, .ft-table-wrap td.ft-unlock, .ft-table-wrap td.ft-flag { padding: 0; }
 .ft-milestone-button { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 43px; border: 0; padding: 7px 9px; background: transparent; color: inherit; }
 .fleet-technology .ft-milestone-button:disabled { opacity: 1; color: inherit; }
 .ft-milestone-button:not(:disabled) { cursor: pointer; border-radius: 4px; }
