@@ -51,7 +51,8 @@ def mark_checked(config, context, targets=None):
 
 def state(config):
     saved = deepcopy(config.cross_get(TRAINING_PATH, {}))
-    if not isinstance(saved, dict) or any(not isinstance(saved.get(key, {}), dict) for key in ('records', 'pending')):
+    if not isinstance(saved, dict) or any(not isinstance(saved.get(key, {}), dict)
+                                         for key in ('records', 'pending', 'readings')):
         raise FleetManagementError('培养记录格式无效，保留原记录，请检查配置')
     saved.setdefault('records', {})
     saved.setdefault('pending', {})
@@ -64,7 +65,8 @@ def ships(result, fleet):
             if type(item.get('slot')) is int and item.get('occupied', True)}
 
 
-def identity(ship, result):
+def identity(ship, result, *, allow_duplicates=False):
+    """默认要求唯一身份；同名仅可用于按舰位保存读数，不能据此完成或换船。"""
     if not ship or ship.get('review') or not ship.get('name'):
         return None
     info = find_ship(ship['name'])
@@ -77,7 +79,7 @@ def identity(ship, result):
     name = info['name']
     matches = sum(item.get('name') == ship['name'] for category in ('main', 'vanguard')
                   for fleet in result.get(category, {}).values() for item in fleet if item.get('occupied', True))
-    return name if matches == 1 else None
+    return name if matches == 1 or (allow_duplicates and matches > 1) else None
 
 
 def completed(record, targets):

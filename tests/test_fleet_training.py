@@ -154,10 +154,12 @@ class TrainingRuleTests(unittest.TestCase):
             self.assertEqual(value, parse_affinity(f'好感度达到100（当前{value}）'))
         for text in ('已达成', '好感度达到100', '当前100', '好感度达到100(当前201)', '好感度达到100(当前1'):
             self.assertIsNone(parse_affinity(text))
+        self.assertEqual(91, parse_affinity('正好感度达到100(当前91)'))
+        self.assertIsNone(parse_affinity('好感度达到100(当前60)好感度达到100(当前91)'))
 
     def test_original_affinity_crops_include_white_gold_and_alternate_certificate(self):
         reader = AffinityReader()
-        for value in (8, 37, 50, 100, 200):
+        for value in (8, 37, 50, 60, 91, 100, 200):
             with self.subTest(value=value):
                 pixels = np.asarray(Image.open(Path('tests/fixtures/fleet_training') / f'affinity_{value}.png'))
                 self.assertEqual(value, reader.read(pixels))
@@ -626,6 +628,87 @@ class TrainingIntegrationTests(unittest.TestCase):
             preflight_rotation(self.runner, 5, 'normal')
         self.assertFalse(state(self.config)['records'])
         corrupt = {'records': [], 'pending': {}}
+        self.config.cross_set(TRAINING_PATH, corrupt)
+        with self.assertRaises(FleetManagementError):
+            preflight_rotation(self.runner, 5, 'normal')
+        self.assertEqual(corrupt, self.config.cross_get(TRAINING_PATH))
+
+    def test_duplicate_bulin_reading_is_kept_by_slot_and_unfinished_training_continues(self):
+        self.configure(level=True, affinity=True)
+        name = '泛用型布里'
+        self.names[1, 4] = self.names[6, 4] = name
+        self.profile[name] = dict(level=100, affinity=60)
+        self.live[1][4] = 119
+        self.full_scan()
+        self.assertTrue(preflight_rotation(self.runner, 5, 'normal'))
+        saved = state(self.config)
+        self.assertNotIn(name, saved['records'])
+        reading = saved['readings']['1:4']
+        self.assertEqual((name, 1, 4, 100, 60, 119),
+                         tuple(reading[key] for key in ('name', 'fleet', 'slot', 'level', 'affinity', 'emotion')))
+        self.assertNotIn('completed_for', reading)
+        self.assertFalse(due(self.config, self.runner._fleet_rotation_context))
+        self.manager.rotate_slot.assert_not_called()
+
+    def test_duplicate_bulin_at_all_goals_keeps_reading_but_still_requires_unique_identity(self):
+        self.configure(level=True, affinity=True)
+        name = '泛用型布里'
+        self.names[1, 4] = self.names[6, 4] = name
+        self.profile[name] = dict(level=120, affinity=100)
+        self.full_scan()
+        with self.assertRaisesRegex(ScriptEnd, '同名'):
+            preflight_rotation(self.runner, 5, 'normal')
+        saved = state(self.config)
+        self.assertEqual(100, saved['readings']['1:4']['affinity'])
+        self.assertNotIn(name, saved['records'])
+        self.assertFalse(saved['pending'])
+        self.manager.rotate_slot.assert_not_called()
+
+    def test_duplicate_ships_never_share_position_readings_with_legacy_name_records(self):
+        self.configure(level=True, affinity=True)
+        name = '泛用型布里'
+        self.names[1, 4] = self.names[6, 4] = name
+        self.profile[name] = dict(level=100, affinity=60)
+        legacy = dict(level=125, affinity=200, completed_for={'level': 120, 'affinity': 100},
+                      fleet=6, slot=4, checked_at='2026-10-26T01:00:00')
+        self.config.cross_set(TRAINING_PATH, {'records': {name: legacy}, 'pending': {}})
+        self.full_scan()
+        preflight_rotation(self.runner, 5, 'normal')
+        saved = state(self.config)
+        self.assertEqual(legacy, saved['records'][name])
+        self.assertEqual(60, saved['readings']['1:4']['affinity'])
+        self.manager.rotate_slot.assert_not_called()
+
+    def test_duplicate_unfinished_readings_work_with_each_training_mode(self):
+        for mood, level, affinity in product((False, True), repeat=3):
+            if not (level or affinity):
+                continue
+            with self.subTest(mood=mood, level=level, affinity=affinity):
+                self.configure(mood=mood, level=level, affinity=affinity)
+                name = '泛用型布里'
+                self.names[1, 4] = self.names[6, 4] = name
+                self.profile[name] = dict(level=100, affinity=60)
+                self.full_scan()
+                self.assertTrue(preflight_rotation(self.runner, 5, 'normal'))
+                saved = state(self.config)
+                self.assertEqual(name, saved['readings']['1:4']['name'])
+                self.assertFalse(saved['records'])
+                self.manager.rotate_slot.assert_not_called()
+
+    def test_duplicate_unknown_affinity_is_not_saved_as_a_verified_value(self):
+        self.configure(level=True, affinity=True)
+        name = '泛用型布里'
+        self.names[1, 4] = self.names[6, 4] = name
+        self.profile[name] = dict(level=100, affinity=None)
+        self.full_scan()
+        with self.assertRaisesRegex(ScriptEnd, '好感'):
+            preflight_rotation(self.runner, 5, 'normal')
+        self.assertFalse(state(self.config).get('readings'))
+        self.manager.rotate_slot.assert_not_called()
+
+    def test_corrupt_position_readings_are_preserved_and_rejected(self):
+        self.configure()
+        corrupt = {'records': {}, 'pending': {}, 'readings': []}
         self.config.cross_set(TRAINING_PATH, corrupt)
         with self.assertRaises(FleetManagementError):
             preflight_rotation(self.runner, 5, 'normal')

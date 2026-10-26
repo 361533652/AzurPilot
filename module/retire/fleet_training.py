@@ -20,9 +20,10 @@ from module.ui.assets import BACK_ARROW
 
 def parse_affinity(text):
     text = re.sub(r'\s+', '', unicodedata.normalize('NFKC', str(text)))
-    match = re.fullmatch(r'好感度达到100\(当前(\d{1,3})\)', text)
-    if match and 0 <= int(match[1]) <= 200:
-        return int(match[1])
+    # 部分誓约书的条件行会带入相邻状态字，只读取完整的当前值字段；多个字段不能猜测。
+    matches = re.findall(r'好感度达到100\(当前(\d{1,3})\)', text)
+    if len(matches) == 1 and 0 <= int(matches[0]) <= 200:
+        return int(matches[0])
     return None
 
 

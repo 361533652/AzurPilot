@@ -177,6 +177,51 @@ test('换船调度记录按舰位展示真实舰名心情，三框区分且历�
   expect(methods).not.toContain('scheduler.start')
 })
 
+test('同名舰船实读按舰位展示60好感，不串用另一艘布里的记录', async ({page}) => {
+  const methods: string[] = []
+  await page.addInitScript(() => {
+    localStorage.setItem('azurpilot.language', 'zh-CN')
+    localStorage.setItem('azurpilot.theme', 'light')
+    localStorage.setItem('azurpilot.material', 'plain')
+    localStorage.setItem('azurpilot.background.plain', JSON.stringify({source: 'off'}))
+  })
+  await page.routeWebSocket('**/api/v1/ws', socket => {
+    const server = socket.connectToServer()
+    socket.onMessage(message => {methods.push(JSON.parse(String(message)).method); server.send(message)})
+    server.onMessage(message => {
+      const response = JSON.parse(String(message)), values = response.result?.values?.FleetInfo
+      if (values) {
+        values.FleetRotation.Rules = JSON.stringify({'5': {slots: [1, 4], sources: [3]}, '6': {slots: [4], sources: [3]}})
+        values.FleetInfo.Result = {
+          main: {'5': [{name: '博格', slot: 1, level: 100, emotion: 150}]},
+          vanguard: {'5': [{name: '泛用型布里', slot: 4, level: 100, emotion: 119}],
+            '6': [{name: '泛用型布里', slot: 4, level: 100, emotion: null}]},
+        }
+        values.FleetTraining.State = {
+          records: {'博格': {level: 100, exp: 0, affinity: 5, fleet: 5, slot: 1, checked_at: '2026-10-27T05:19:05'}},
+          readings: {'5:4': {name: '泛用型布里', fleet: 5, slot: 4, level: 100, exp: 13669, affinity: 60,
+            emotion: 119, checked_at: '2026-10-27T05:19:05'}},
+          pending: {},
+        }
+      }
+      socket.send(JSON.stringify(response))
+    })
+  })
+  await page.goto('/#/i/demo-main/task/FleetTraining')
+  const training = page.getByRole('region', {name: '培养舰船', exact: true})
+  await expect(training.locator('tbody tr')).toHaveCount(3)
+  const bulin = training.getByRole('row').filter({hasText: '泛用型布里'})
+  const current = bulin.filter({hasText: '第 5 舰队'})
+  for (const value of ['舰位 4', '100', '13669', '60', '119', '2026-10-27 05:19:05'])
+    await expect(current.getByRole('cell', {name: value, exact: true})).toBeVisible()
+  await expect(bulin.filter({hasText: '第 6 舰队'}).getByRole('cell', {name: '未读取', exact: true})).toHaveCount(4)
+  await expect(page.getByRole('region', {name: '完成舰船', exact: true}).locator('tbody tr')).toHaveCount(0)
+  await page.screenshot({path: 'test-results/fleet-training-duplicate-reading.png', fullPage: true, animations: 'disabled'})
+  expect(methods).not.toContain('config.patch')
+  expect(methods).not.toContain('tasks.run')
+  expect(methods).not.toContain('scheduler.start')
+})
+
 test('自动换装备页面默认关闭并可独立保存舰种码与开关', async ({page}) => {
   await page.addInitScript(() => {
     localStorage.setItem('azurpilot.language', 'zh-CN')

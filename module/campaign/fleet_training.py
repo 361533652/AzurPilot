@@ -11,7 +11,7 @@ from module.retire.fleet_management import FleetManagement
 from module.retire.fleet_training import FleetTrainingReader
 from module.runtime.fleet_equipment import EQUIPMENT_PATH
 from module.runtime.fleet_rotation import ROTATION_PATH, active_fleets, calibration_changes, parse_rules, recorded_morale, supported
-from module.runtime.fleet_training import TRAINING_PATH, due, excluded, goals, identity, interval, mark_checked, observe, ships, state
+from module.runtime.fleet_training import TRAINING_PATH, completed, due, excluded, goals, identity, interval, mark_checked, observe, ships, state
 
 
 class TrainingSession:
@@ -55,8 +55,23 @@ class TrainingSession:
                 continue
             name = identity(ship, self.result)
             reading = readings.get(slot, {})
-            if name is None or any(type(reading.get(metric)) is not int for metric in self.targets):
-                self.delay(f'第{fleet}舰队{slot}位培养身份或数据未确认，不记录完成')
+            missing = ['等级' if metric == 'level' else '好感' for metric in self.targets
+                       if type(reading.get(metric)) is not int]
+            if missing:
+                self.delay(f'第{fleet}舰队{slot}位培养数据未确认（{"、".join(missing)}），不记录完成')
+            if name is None:
+                name = identity(ship, self.result, allow_duplicates=True)
+                if name is None:
+                    self.delay(f'第{fleet}舰队{slot}位培养舰名未确认，不记录完成')
+                # 舰位读数仅供展示，不能写入按舰名保存的完成/排除记录，也不参与中断互换。
+                self.saved.setdefault('readings', {})[f'{fleet}:{slot}'] = {
+                    'name': name, 'fleet': fleet, 'slot': slot, 'level': ship.get('level'),
+                    'emotion': ship.get('emotion'), 'checked_at': now().isoformat(timespec='seconds'), **reading}
+                logger.attr(f'第{fleet}舰队{slot}位{name}培养实读', reading)
+                if completed(reading, self.targets):
+                    self.delay(f'第{fleet}舰队{slot}位{name}存在同名舰船；已读到达标数据，但身份不唯一，不记录完成或换船')
+                logger.info('同名舰船实读已按舰位保存，尚未全部达标，继续培养，不合并同名进度')
+                continue
             observe(self.saved, name, reading, self.targets, fleet=fleet, slot=slot, emotion=ship.get('emotion'))
             known[slot] = name
         self.save()
