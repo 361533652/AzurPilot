@@ -2328,7 +2328,7 @@
       "Enable": true,
       "SelectNewOperation": false,
       "NewOperationMaxDate": 15,
-      "JoinThreshold": 1,
+      "JoinThreshold": 1.0,
       "AttackBoss": true,
       "BossFleetRecommend": false
     },
