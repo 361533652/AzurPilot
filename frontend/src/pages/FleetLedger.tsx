@@ -6,8 +6,12 @@ import {useApp, useConnection} from '../app/context'
 import {ErrorBox, Loading} from '../components/ui'
 import type {CatalogShip, MindCatalog} from '../mind/types'
 import {fleetFactionOrder, translateFleetTech} from '../fleet-tech/i18n'
+import '../fleet-tech/style.css'
 import './fleet-ledger.css'
 
+const shipTypes = ['驱逐', '轻巡', '重巡', '超巡', '战巡', '战列', '正航', '轻航', '重炮', '维修', '航战', '潜艇', '潜母', '运输', '导驱', '风帆']
+const typeIds: Record<string, number> = {'驱逐': 1, '轻巡': 2, '重巡': 3, '超巡': 18, '战巡': 4, '战列': 5, '正航': 7, '轻航': 6, '重炮': 13, '维修': 12, '航战': 10, '潜艇': 8, '潜母': 17, '运输': 19, '导驱': 1, '风帆': 22}
+const rarities = ['N', 'R', 'SR', 'SSR', 'UR']
 const nationValue = (ship?: CatalogShip) => ship?.nationality == null ? ship?.nation ?? '' : String(ship.nationality)
 const nationOrder = (value: string) => {const index = fleetFactionOrder.indexOf(Number(value)); return index < 0 ? fleetFactionOrder.length : index}
 const sortColumns = ['name', 'level', 'breakthrough', 'type', 'nation', 'rarity', 'reviewFlag'] as const
@@ -21,7 +25,7 @@ export function FleetLedger({instance, report, onReport, onBusy, onDirty, locked
   instance: string; report?: DockReport; locked?: boolean; onReport: (report: DockReport) => void
   onBusy: (busy: boolean) => void; onDirty: (dirty: boolean) => void
 }) {
-  const alive = useRef(true), list = useId(), focusedShip = useRef('')
+  const alive = useRef(true), list = useId(), table = useRef<HTMLDivElement>(null), focusedShip = useRef('')
   useEffect(() => {alive.current = true; return () => {alive.current = false}}, [])
   const {ui, language} = useApp(), connection = useConnection(), [params, setParams] = useSearchParams()
   const [catalog, setCatalog] = useState<MindCatalog>(), [error, setError] = useState(''), [busy, setBusy] = useState(false), [saved, setSaved] = useState(false)
@@ -44,8 +48,8 @@ export function FleetLedger({instance, report, onReport, onBusy, onDirty, locked
     return () => window.removeEventListener('beforeunload', guard)
   }, [dirty])
   const groupFilter = params.get('group'), shipFilter = params.get('ship')
-  const [query, setQuery] = useState(''), [filter, setFilter] = useState('all'), [nation, setNation] = useState(''), [type, setType] = useState('')
-  const [minimum, setMinimum] = useState(''), [maximum, setMaximum] = useState(''), [page, setPage] = useState(0)
+  const [query, setQuery] = useState(''), [filters, setFilters] = useState<Record<string, string[]>>({})
+  const [minimum, setMinimum] = useState(''), [maximum, setMaximum] = useState('')
   const [sort, setSort] = useState<Sort>({column: 'name', direction: 'ascending'})
   const [batch, setBatch] = useState(false), [selected, setSelected] = useState<number[]>([])
   useEffect(() => {
@@ -53,6 +57,8 @@ export function FleetLedger({instance, report, onReport, onBusy, onDirty, locked
     if (connection === 'ready') void api.request('mind.catalog', {instance}).then(value => {if (active) setCatalog(value)}).catch(e => {if (active) setError((e as Error).message)})
     return () => {active = false}
   }, [instance, connection])
+  const tr = (key: string) => translateFleetTech(language, key)
+  const typeName = (value: string) => value === '导驱' ? value : typeIds[value] ? tr(`type.${typeIds[value]}`) : value
   const infoFor = (row: Pick<DockCard, 'name' | 'group_type'>) => catalog?.ships.find(ship => ship.name === row.name && ship.group_type === row.group_type)
     ?? catalog?.ships.find(ship => ship.group_type === row.group_type && ship.group !== '改造')
   const nationName = (value: string) => {
@@ -72,9 +78,22 @@ export function FleetLedger({instance, report, onReport, onBusy, onDirty, locked
       const ship = catalog?.ships.find(ship => ship.name === row.name && ship.group_type === row.group_type)
         ?? catalog?.ships.find(ship => ship.group_type === row.group_type && ship.group !== '改造')
       shipInfo.set(row.id, ship)
-      return (!groupFilter || row.group_type === Number(groupFilter)) && (row.name.toLowerCase().includes(query.toLowerCase()) || String(row.id) === query) && (!minimum || row.level >= Number(minimum)) && (!maximum || row.level <= Number(maximum))
-        && (!nation || nationValue(ship) === nation) && (!type || ship?.type === type)
-        && (filter === 'review' ? row.review || row.group_type === null : filter === 'duplicates' ? (counts.get(String(row.group_type ?? row.name)) ?? 0) > 1 : true)
+      const statuses = [
+        ...(row.level > 0 && row.level < 120 ? ['unfinished'] : []),
+        ...(row.level >= 120 ? ['lv120'] : []),
+        ...(row.full_star === false ? ['missingStar'] : row.full_star === true ? ['fullStar'] : []),
+      ]
+      const records = [
+        ...(row.review || row.group_type === null ? ['review'] : []),
+        ...((counts.get(String(row.group_type ?? row.name)) ?? 0) > 1 ? ['duplicates'] : []),
+        ...(row.level === 0 ? ['missingLevel'] : []),
+        ...(row.full_star == null ? ['unknownStar'] : []),
+      ]
+      const matches = (key: string, values: string[]) => !filters[key]?.length || filters[key]!.some(value => values.includes(value))
+      return (!groupFilter || row.group_type === Number(groupFilter)) && (row.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()) || String(row.id) === query)
+        && (!minimum || row.level >= Number(minimum)) && (!maximum || row.level <= Number(maximum))
+        && matches('nation', [nationValue(ship)]) && matches('type', [ship?.type ?? ''])
+        && matches('rarity', [row.rarity]) && matches('status', statuses) && matches('records', records)
     })
     const collator = new Intl.Collator(language, {numeric: true})
     function sortValue(row: DockCard): string | number | null {
@@ -83,9 +102,9 @@ export function FleetLedger({instance, report, onReport, onBusy, onDirty, locked
         case 'name': return row.name
         case 'level': return row.level || null
         case 'breakthrough': return row.full_star == null ? null : Number(row.full_star)
-        case 'type': return ship?.type || null
+        case 'type': return ship?.type ? shipTypes.indexOf(ship.type) : null
         case 'nation': return nationValue(ship) ? nationOrder(nationValue(ship)) : null
-        case 'rarity': return row.rarity ? ['N', 'R', 'SR', 'SSR', 'UR'].indexOf(row.rarity) : null
+        case 'rarity': return row.rarity ? rarities.indexOf(row.rarity) : null
         case 'reviewFlag': return row.review || !row.group_type ? 2 : row.level === 0 ? 1 : 0
       }
     }
@@ -99,23 +118,21 @@ export function FleetLedger({instance, report, onReport, onBusy, onDirty, locked
       return difference * (sort.direction === 'ascending' ? 1 : -1)
         || collator.compare(a.name, b.name) || a.id - b.id
     })
-  }, [report?.ships, catalog, query, minimum, maximum, nation, type, filter, sort, groupFilter, language])
+  }, [report?.ships, catalog, query, minimum, maximum, filters, sort, groupFilter, language])
   const additions = Object.values(draft?.ships ?? {}).filter(row => row.id < 0)
   const displayRows: DraftCard[] = [...additions, ...rows]
-  const pages = Math.max(1, Math.ceil(displayRows.length / 50)), currentPage = Math.min(page, pages - 1)
+  useEffect(() => {
+    table.current?.scrollTo?.({top: 0})
+  }, [query, filters, minimum, maximum, sort, groupFilter])
   useEffect(() => {
     if (!shipFilter || focusedShip.current === shipFilter || !report || !catalog) return
-    const index = displayRows.findIndex(row => row.id === Number(shipFilter))
-    if (index >= 0) {setPage(Math.floor(index / 50)); focusedShip.current = shipFilter}
-  }, [shipFilter, report, catalog, displayRows])
-  useEffect(() => {
-    if (shipFilter) document.getElementById(`ledger-ship-${shipFilter}`)?.scrollIntoView?.({block: 'nearest'})
-  }, [shipFilter, currentPage, catalog])
+    const target = document.getElementById(`ledger-ship-${shipFilter}`)
+    if (target) {target.scrollIntoView?.({block: 'nearest'}); focusedShip.current = shipFilter}
+  }, [shipFilter, report, catalog])
   function sortBy(column: SortColumn) {
     setSort(current => ({column, direction: current.column === column
       ? current.direction === 'ascending' ? 'descending' : 'ascending'
       : column === 'level' || column === 'rarity' ? 'descending' : 'ascending'}))
-    setPage(0)
   }
   const disabled = locked || busy || connection !== 'ready' || !report
   function change(row: DraftCard, values: Partial<DraftCard>) {
@@ -142,7 +159,7 @@ export function FleetLedger({instance, report, onReport, onBusy, onDirty, locked
     const id = Math.min(-1, ...Object.keys(draft?.ships ?? {}).map(Number)) - 1
     change({id, name: '', group_type: null, level: 1, rarity: 'N', base_rarity: 'N', extra_exp: null,
       full_star: null, form: null, review: true, excluded: false, source: 'manual'}, {})
-    setPage(0)
+    table.current?.scrollTo?.({top: 0})
   }
   function remove(row: DraftCard) {
     if (disabled || !report) return
@@ -174,11 +191,23 @@ export function FleetLedger({instance, report, onReport, onBusy, onDirty, locked
     } catch (e) {if (alive.current) setError((e as Error).message)}
     finally {if (alive.current) {setBusy(false); onBusy(false)}}
   }
+  function filterGroup(key: string, label: string, options: [string, string][]) {
+    return <div className="ft-filter-row"><strong>{label}</strong><div className="ft-chips">{[['', tr('all')], ...options].map(([value, label]) => <button type="button" key={value} aria-pressed={value ? filters[key]?.includes(value) ?? false : !filters[key]?.length} onClick={() => setFilters(current => ({...current, [key]: value ? current[key]?.includes(value) ? current[key]!.filter(item => item !== value) : [...current[key] ?? [], value] : []}))}>{label}</button>)}</div></div>
+  }
   const changedCount = new Set([...Object.keys(draft?.ships ?? {}).map(Number), ...draft?.deleted ?? []]).size
-  return <div className="fleet-ledger">
+  return <div className="fleet-ledger fleet-technology">
     {error && <ErrorBox message={error}/>}{!report && <Loading/>}
-    <div className="mind-toolbar" role="status"><strong>{ui('analysis.confirmedCount')}: {report?.ships.length ?? 0}</strong><span>{ui('analysis.species')}: {counts.size}</span><span>{ui('analysis.needsReview')}: {report?.ships.filter(row => row.review || !row.group_type).length ?? 0}</span><span>{ui('analysis.time')}: {report?.updated_at || '—'}</span></div>
-    <div className="mind-toolbar ledger-savebar">
+    <div className="ft-toolbar ledger-summary" role="status"><strong>{ui('analysis.confirmedCount')}: {report?.ships.length ?? 0}</strong><span>{ui('analysis.species')}: {counts.size}</span><span>{ui('analysis.needsReview')}: {report?.ships.filter(row => row.review || !row.group_type).length ?? 0}</span><span>{ui('analysis.time')}: {report?.updated_at || '—'}</span></div>
+    {groupFilter && <p>{ui('analysis.filter')}: {report?.ships.find(row => row.group_type === Number(groupFilter))?.name || groupFilter} <button className="button secondary" onClick={() => {const next = new URLSearchParams(params); next.delete('group'); setParams(next, {replace: true})}}>{ui('analysis.all')}</button></p>}
+    <section className="ft-filters" aria-label={ui('analysis.filter')}>
+      {filterGroup('type', tr('category'), shipTypes.filter(value => catalog?.ships.some(ship => ship.type === value)).map(value => [value, typeName(value)]))}
+      {filterGroup('rarity', tr('rarity'), rarities.map(value => [value, tr(`rarity.${value}`)]))}
+      {filterGroup('nation', tr('nation'), nations.map(value => [value, nationName(value)]))}
+      {filterGroup('status', tr('status'), [['unfinished', tr('unfinished')], ['missingStar', tr('missingStar')], ['fullStar', ui('analysis.fullStarYes')], ['lv120', 'Lv.120+']])}
+      {filterGroup('records', ui('analysis.filter'), [['review', ui('analysis.needsReview')], ['duplicates', ui('analysis.duplicates')], ['missingLevel', ui('analysis.missing')], ['unknownStar', `${ui('analysis.breakthrough')} · ${ui('analysis.unknownValue')}`]])}
+      <div className="ft-filter-row"><strong>{ui('analysis.level')}</strong><div className="ft-chips ledger-level-range"><label>{ui('analysis.min')}<input type="number" min={0} max={125} value={minimum} onChange={e => setMinimum(e.target.value)}/></label><span>—</span><label>{ui('analysis.max')}<input type="number" min={0} max={125} value={maximum} onChange={e => setMaximum(e.target.value)}/></label></div></div>
+    </section>
+    <div className="ft-toolbar ft-savebar">
       <button className="button primary" disabled={disabled || !dirty || stale} onClick={() => void save()}>{ui('analysis.save')}</button>
       {dirty && <><span role="status">{ui('analysis.unsavedChanges')}: {changedCount}</span><button className="button secondary" disabled={busy || locked} onClick={discard}>{ui('analysis.discard')}</button></>}
       {saved && <span role="status">{ui('analysis.saved')}</span>}
@@ -187,32 +216,25 @@ export function FleetLedger({instance, report, onReport, onBusy, onDirty, locked
       {!!report?.pending_changes.length && <Link aria-disabled={disabled} onClick={event => {if (disabled) event.preventDefault()}} to="?tab=scan">{ui('analysis.pendingLink')} ({report.pending_changes.length})</Link>}
     </div>
     {stale && <p role="alert">{ui('analysis.stale')}</p>}
-    <p className="ledger-hint">{ui('analysis.inlineHint')} {ui('analysis.fullStarRule')}</p>
-    {groupFilter && <p>{ui('analysis.filter')}: {report?.ships.find(row => row.group_type === Number(groupFilter))?.name || groupFilter} <button className="button secondary" onClick={() => {const next = new URLSearchParams(params); next.delete('group'); setParams(next, {replace: true})}}>{ui('analysis.all')}</button></p>}
-    <div className="mind-toolbar">
-      <label>{ui('analysis.search')}<input type="search" value={query} onChange={e => {setQuery(e.target.value); setPage(0)}}/></label>
-      <label>{ui('analysis.filter')}<select aria-label={ui('analysis.filter')} value={filter} onChange={e => {setFilter(e.target.value); setPage(0)}}>{(['all', 'review', 'duplicates'] as const).map(value => <option key={value} value={value}>{ui(value === 'review' ? 'analysis.needsReview' : `analysis.${value}`)}</option>)}</select></label>
-      <label>{ui('analysis.min')}<input type="number" min={0} max={125} value={minimum} onChange={e => {setMinimum(e.target.value); setPage(0)}}/></label><label>{ui('analysis.max')}<input type="number" min={0} max={125} value={maximum} onChange={e => {setMaximum(e.target.value); setPage(0)}}/></label>
-      <label>{ui('analysis.nation')}<select aria-label={ui('analysis.nation')} value={nation} onChange={e => {setNation(e.target.value); setPage(0)}}><option value="">{ui('analysis.all')}</option>{nations.map(value => <option key={value} value={value}>{nationName(value)}</option>)}</select></label>
-      <label>{ui('analysis.type')}<select aria-label={ui('analysis.type')} value={type} onChange={e => {setType(e.target.value); setPage(0)}}><option value="">{ui('analysis.all')}</option>{[...new Set(catalog?.ships.map(ship => ship.type))].sort().map(value => <option key={value}>{value}</option>)}</select></label>
-      <button className="button secondary" disabled={disabled} aria-pressed={batch} onClick={() => {setBatch(!batch); setSelected([])}}>{ui('analysis.batch')}</button>
-      {batch && <button className="button secondary" disabled={disabled || !selected.length} onClick={() => {for (const id of selected) {const row = draft?.ships[id] ?? report?.ships.find(row => row.id === id); if (row && !draft?.deleted.includes(id)) change(row, {review: true})}}}>{ui('analysis.batchReview')} ({selected.length})</button>}
+    <div className="ft-search"><input type="search" aria-label={ui('analysis.search')} placeholder={ui('analysis.search')} value={query} onChange={e => setQuery(e.target.value)}/><span>{ui('mind.rowCount', {count: displayRows.length})}</span>
+      <div className="ft-chips ledger-batch"><button type="button" disabled={disabled} aria-pressed={batch} onClick={() => {setBatch(!batch); setSelected([])}}>{ui('analysis.batch')}</button>
+      {batch && <button type="button" disabled={disabled || !selected.length} onClick={() => {for (const id of selected) {const row = draft?.ships[id] ?? report?.ships.find(row => row.id === id); if (row && !draft?.deleted.includes(id)) change(row, {review: true})}}}>{ui('analysis.batchReview')} ({selected.length})</button>}</div>
     </div>
+    <p className="ledger-hint">{ui('analysis.inlineHint')} {ui('analysis.fullStarRule')}</p>
     <datalist id={list}>{catalog?.ships.map(info => <option key={`${info.group_type}:${info.name}`} value={info.name}/>)}</datalist>
-    <div className="ledger-table-wrap"><table><thead><tr>{batch && <th scope="col">{ui('analysis.batch')}</th>}{sortColumns.map(column => <th key={column} scope="col" aria-sort={sort.column === column ? sort.direction : 'none'}><button type="button" className="ledger-sort" onClick={() => sortBy(column)}>{ui(`analysis.${column}`)}<span aria-hidden="true">{sort.column === column ? sort.direction === 'ascending' ? '↑' : '↓' : '↕'}</span></button></th>)}<th scope="col">{ui('analysis.delete')}</th></tr></thead><tbody>{displayRows.slice(currentPage * 50, (currentPage + 1) * 50).map(original => {
+    <div className="ft-table-wrap ledger-table-wrap" ref={table}><table><thead><tr>{batch && <th scope="col">{ui('analysis.batch')}</th>}{sortColumns.map(column => <th key={column} scope="col" aria-sort={sort.column === column ? sort.direction : 'none'}><button type="button" className="ft-sort" onClick={() => sortBy(column)}>{ui(`analysis.${column}`)}<span aria-hidden="true">{sort.column === column ? sort.direction === 'ascending' ? '↑' : '↓' : '↕'}</span></button></th>)}<th scope="col">{ui('analysis.delete')}</th></tr></thead><tbody>{displayRows.map(original => {
       const row = draft?.ships[original.id] ?? original, deleted = draft?.deleted.includes(row.id), info = infoFor(row)
       const label = (key: string) => `${ui(key)} · ${row.name || ui('analysis.new')} #${row.id}`
       return <tr key={row.id} id={`ledger-ship-${row.id}`} className={[deleted ? 'ledger-deleted' : '', draft?.ships[row.id] ? 'ledger-modified' : '', shipFilter === String(row.id) ? 'ledger-highlight' : ''].filter(Boolean).join(' ')}>
         {batch && <td><input type="checkbox" disabled={disabled || deleted} aria-label={label('analysis.batch')} checked={selected.includes(row.id)} onChange={e => setSelected(e.target.checked ? [...selected, row.id] : selected.filter(id => id !== row.id))}/></td>}
-        <td><input className="ledger-name" list={list} aria-label={label('analysis.name')} maxLength={100} value={row.name} disabled={disabled || deleted || !catalog} onChange={e => rename(row, e.target.value)}/>{row.id > 0 && (counts.get(String(row.group_type ?? row.name)) ?? 0) > 1 && <small> · #{row.id}</small>}{row.id < 0 && <small> · {ui('analysis.new')}</small>}</td>
+        <td className={`ft-name ft-rarity-${row.rarity}`}><input className="ledger-name" list={list} aria-label={label('analysis.name')} maxLength={100} value={row.name} disabled={disabled || deleted || !catalog} onChange={e => rename(row, e.target.value)}/>{row.id > 0 && (counts.get(String(row.group_type ?? row.name)) ?? 0) > 1 && <small> · #{row.id}</small>}{row.id < 0 && <small> · {ui('analysis.new')}</small>}</td>
         <td><input className="ledger-level" type="number" min={0} max={125} step={1} aria-label={label('analysis.level')} value={row.level} disabled={disabled || deleted} onChange={e => change(row, {level: e.target.value === '' ? '' : Number(e.target.value)})}/></td>
         <td><select aria-label={label('analysis.breakthrough')} value={row.full_star == null ? '' : String(row.full_star)} disabled={disabled || deleted} onChange={e => change(row, {full_star: e.target.value === '' ? null : e.target.value === 'true'})}><option value="">{ui('analysis.unknownValue')}</option><option value="false">{ui('analysis.fullStarNo')}</option><option value="true">{ui('analysis.fullStarYes')}</option></select></td>
-        <td>{info?.type || '—'}</td><td>{nationName(nationValue(info)) || '—'}</td><td>{row.rarity}</td>
+        <td>{info?.type ? typeName(info.type) : '—'}</td><td>{nationName(nationValue(info)) || '—'}</td><td className={`ft-rarity-${row.rarity}`}>{row.rarity ? tr(`rarity.${row.rarity}`) : '—'}</td>
         <td><label className="ledger-review"><input type="checkbox" aria-label={label('analysis.reviewFlag')} checked={row.review || !row.group_type} disabled={disabled || deleted || !row.group_type} onChange={e => change(row, {review: e.target.checked})}/>{ui(row.review || !row.group_type ? 'analysis.needsReview' : row.level === 0 || row.level === '' ? 'analysis.missing' : 'analysis.normal')}</label></td>
         <td><button className="button secondary" disabled={disabled} onClick={() => remove(row)}>{ui(deleted ? 'analysis.restore' : 'analysis.delete')}</button>{deleted && <small> {ui('analysis.deleted')}</small>}</td>
       </tr>
     })}</tbody></table></div>
-    {!displayRows.length && <p>{ui('analysis.emptyLedger')}</p>}
-    <div className="mind-toolbar"><button className="button secondary" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>{ui('analysis.previous')}</button><span>{currentPage + 1} / {pages} · {displayRows.length}</span><button className="button secondary" disabled={currentPage + 1 >= pages} onClick={() => setPage(currentPage + 1)}>{ui('analysis.next')}</button></div>
+    {!displayRows.length && <p>{ui(report?.ships.length ? 'mind.empty' : 'analysis.emptyLedger')}</p>}
   </div>
 }
