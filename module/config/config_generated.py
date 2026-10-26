@@ -579,7 +579,7 @@ class GeneratedConfig:
     GuildOperation_Enable = True
     GuildOperation_SelectNewOperation = False
     GuildOperation_NewOperationMaxDate = 15
-    GuildOperation_JoinThreshold = 1
+    GuildOperation_JoinThreshold = 1.0
     GuildOperation_AttackBoss = True
     GuildOperation_BossFleetRecommend = False
 

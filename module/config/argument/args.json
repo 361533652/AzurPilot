@@ -12774,7 +12774,12 @@
       },
       "JoinThreshold": {
         "type": "input",
-        "value": 1
+        "value": 1.0,
+        "valuetype": "float",
+        "validate": [
+          0.0,
+          1.0
+        ]
       },
       "AttackBoss": {
         "type": "checkbox",

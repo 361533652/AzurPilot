@@ -1262,7 +1262,10 @@ GuildOperation:
   Enable: true
   SelectNewOperation: false
   NewOperationMaxDate: 15
-  JoinThreshold: 1
+  JoinThreshold:
+    value: 1.0
+    valuetype: float
+    validate: [0.0, 1.0]
   AttackBoss: true
   BossFleetRecommend: false
 Reward:
