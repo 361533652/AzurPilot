@@ -76,6 +76,7 @@ class CultivationTests(unittest.TestCase):
             result = project([value], [1])
             self.assertNotIn('experience_upper', result)
             self.assertEqual(result['estimated'], 0)
+            self.assertEqual(result['mind_costs_100_to_120']['SSR'], 2200)
             self.assertEqual(result['ships'][0]['status'], 'exact')
             values.append((result['mind'], result['gold']))
         self.assertEqual(values, [(0, 0)] * 3)

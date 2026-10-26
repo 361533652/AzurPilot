@@ -9,6 +9,7 @@ export interface CultivationReport {
   instance: string; revision: string; ships: CultivationRow[]; target_level: number
   included: number; unknown: number; estimated: number
   mind: number; mind2: number; gold: number; rules_sha256: string
+  mind_costs_100_to_120: Record<string, number>
 }
 export interface CultivationPlan {excluded_groups: number[]}
 export function highestCopies(cards: DockCard[]): number[] {

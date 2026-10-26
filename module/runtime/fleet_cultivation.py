@@ -53,7 +53,9 @@ def project(cards, ship_ids, target_level=120):
                 for key in ('mind', 'mind2', 'gold'):
                     row[key] += cost[key]
         rows.append(row)
-    return dict(ships=rows, target_level=target_level, included=len(rows),
+    mind_costs = {rarity: sum(data['awaken'][str(level)][rarity]['mind'] for level in (100, 105, 110, 115))
+                  for rarity in ('N', 'R', 'SR', 'SSR', 'UR')}
+    return dict(ships=rows, target_level=target_level, included=len(rows), mind_costs_100_to_120=mind_costs,
                 unknown=sum(row['status'] == 'unknown' for row in rows),
                 estimated=0,
                 mind=sum(row['mind'] or 0 for row in rows), mind2=sum(row['mind2'] or 0 for row in rows),
