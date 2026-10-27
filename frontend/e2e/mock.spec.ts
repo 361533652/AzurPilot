@@ -308,6 +308,7 @@ test('仅等级调度展示未突破舰船的实际120级与存储经验', async
         values.FleetRotation.Enabled = false
         values.FleetRotation.SelectedOnly = false
         values.FleetTraining.CheckIntervalHours = 6
+        values.FleetTraining.FullScanIntervalDays = 3
         values.FleetLevelTraining = {Enabled: true, Target: 120}
         values.FleetAffinityTraining = {Enabled: false, Target: 100}
         values.FleetRotation.Rules = JSON.stringify({'1': {slots: [4, 5, 6], sources: [3, 4]}})
@@ -337,6 +338,7 @@ test('仅等级调度展示未突破舰船的实际120级与存储经验', async
   await expect(rows.locator('td:nth-child(6)')).toHaveText(['1917866', '1930058', '1919750'])
   await expect(rows.locator('td:nth-child(7)')).toHaveText(['未读取', '未读取', '未读取'])
   await expect(rows.locator('td:nth-child(8)')).toHaveText(Array(3).fill('2026-10-27 18:54:56'))
+  await completed.screenshot({path: 'test-results/fleet-training-effective-level-records.png', animations: 'disabled'})
   await page.screenshot({path: 'test-results/fleet-training-level-only.png', fullPage: true, animations: 'disabled'})
   for (const method of ['config.patch', 'tasks.run', 'scheduler.start']) expect(methods).not.toContain(method)
 })
