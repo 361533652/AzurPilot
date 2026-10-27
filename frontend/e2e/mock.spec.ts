@@ -1,6 +1,62 @@
 import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 
+test('智能换船整合四个页签，旧入口兼容且刷新与手机布局正常', async ({page}) => {
+  const methods: string[] = []
+  await page.addInitScript(() => {
+    localStorage.setItem('azurpilot.language', 'zh-CN')
+    localStorage.setItem('azurpilot.theme', 'light')
+    localStorage.setItem('azurpilot.material', 'plain')
+    localStorage.setItem('azurpilot.background.plain', JSON.stringify({source: 'off'}))
+  })
+  await page.routeWebSocket('**/api/v1/ws', socket => {
+    const server = socket.connectToServer()
+    socket.onMessage(message => {methods.push(JSON.parse(String(message)).method); server.send(message)})
+    server.onMessage(message => socket.send(message))
+  })
+  await page.goto('/#/i/demo-main/task/FleetSwitch')
+  await expect(page.getByRole('heading', {name: '智能换船', exact: true})).toBeVisible()
+  const tabs = page.getByRole('tablist', {name: '智能换船'})
+  await expect(tabs.getByRole('tab')).toHaveText(['舰队信息', '换船配置', '换船调度', '换船装备'])
+  await expect(page.getByRole('tabpanel')).toHaveAccessibleName('舰队信息')
+  await expect(page.getByRole('tabpanel').locator('.loading')).toHaveCount(0)
+  await page.getByRole('button', {name: '舰队管理', exact: true}).hover()
+  const menu = page.getByRole('menu', {name: '舰队管理', exact: true})
+  await expect(menu.getByRole('menuitem')).toHaveText(['智能换船', '舰船数据'])
+  await menu.getByRole('menuitem', {name: '智能换船', exact: true}).click()
+  for (const [id, name] of [['rotation', '换船配置'], ['training', '换船调度'], ['equipment', '换船装备']]) {
+    await tabs.getByRole('tab', {name, exact: true}).click()
+    await expect(page).toHaveURL(url => url.hash === `#/i/demo-main/task/FleetSwitch?tab=${id}`)
+    await expect(page.getByRole('tabpanel')).toHaveAccessibleName(name)
+    await expect(page.getByRole('heading', {name, exact: true})).toBeVisible()
+    await expect(tabs.getByRole('tab', {name, exact: true})).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByRole('tabpanel').locator('.loading')).toHaveCount(0)
+    await expect(page.getByRole('tabpanel').getByRole('alert')).toHaveCount(0)
+  }
+  await page.reload()
+  await expect(tabs.getByRole('tab', {name: '换船装备', exact: true})).toHaveAttribute('aria-selected', 'true')
+  await expect(page.locator('.breadcrumb-current')).toHaveText('智能换船')
+  await expect(page.locator('.right-rail')).toHaveCount(0)
+  await tabs.getByRole('tab', {name: '换船调度', exact: true}).click()
+  await expect(page.getByRole('switch', {name: '启用等级调度', exact: true})).toBeVisible()
+  await page.screenshot({path: 'test-results/fleet-switch-desktop.png', animations: 'disabled'})
+  await page.setViewportSize({width: 390, height: 844})
+  for (const name of ['舰队信息', '换船配置', '换船调度', '换船装备']) {
+    await tabs.getByRole('tab', {name, exact: true}).click()
+    await expect(page.getByRole('heading', {name, exact: true})).toBeVisible()
+    await expect(page.getByRole('tabpanel').locator('.loading')).toHaveCount(0)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  }
+  await page.screenshot({path: 'test-results/fleet-switch-mobile.png', animations: 'disabled'})
+  for (const [task, tab] of [['FleetInfo', 'info'], ['FleetRotation', 'rotation'], ['FleetTraining', 'training'], ['FleetEquipment', 'equipment'], ['FleetLevelTraining', 'training'], ['FleetAffinityTraining', 'training']]) {
+    await page.goto(`/#/i/demo-main/task/${task}`)
+    await expect(page).toHaveURL(url => url.hash === `#/i/demo-main/task/FleetSwitch?tab=${tab}`)
+    await expect(page.getByRole('heading', {name: '智能换船', exact: true})).toBeVisible()
+  }
+  for (const method of ['config.patch', 'tasks.run', 'scheduler.start', 'scheduler.stop', 'startup.set'])
+    expect(methods).not.toContain(method)
+})
+
 test('换船调度集中三种开关，共用换船配置并按不限上限的小时保存', async ({page}) => {
   const requests: {method: string; params?: {changes?: {path: string; value: unknown}[]}}[] = []
   await page.addInitScript(() => {
@@ -78,7 +134,7 @@ test('换船调度集中三种开关，共用换船配置并按不限上限的�
   await expect(fleet.getByRole('checkbox', {name: '候补舰队 3', exact: true})).toBeChecked()
   for (const path of ['FleetLevelTraining', 'FleetAffinityTraining']) {
     await page.goto(`/#/i/demo-main/task/${path}`)
-    await expect(page).toHaveURL(/task\/FleetTraining$/)
+    await expect(page).toHaveURL(/task\/FleetSwitch\?tab=training$/)
     await expect(page.getByRole('heading', {name: '换船调度', exact: true})).toBeVisible()
   }
   await page.setViewportSize({width: 390, height: 844})
@@ -271,13 +327,13 @@ test('仅等级调度展示长舰名及三艘105级舰船的经验和核对时�
   for (const method of ['config.patch', 'tasks.run', 'scheduler.start']) expect(methods).not.toContain(method)
 })
 
-test('自动换装备页面默认关闭并可独立保存舰种码与开关', async ({page}) => {
+test('换船装备页签默认关闭并可独立保存舰种码与开关', async ({page}) => {
   await page.addInitScript(() => {
     localStorage.setItem('azurpilot.language', 'zh-CN')
     localStorage.setItem('azurpilot.theme', 'light')
   })
   await page.goto('/#/i/demo-main/task/FleetEquipment')
-  await expect(page.getByRole('heading', {name: '自动换装备', exact: true})).toBeVisible()
+  await expect(page.getByRole('heading', {name: '换船装备', exact: true})).toBeVisible()
   const toggle = page.getByRole('switch', {name: '启用自动换装备'})
   await expect(toggle).toHaveAttribute('aria-checked', 'false')
   await expect(page.locator('.fleet-grid input[type="text"]')).toHaveCount(45)
@@ -290,7 +346,7 @@ test('自动换装备页面默认关闭并可独立保存舰种码与开关', as
   await second.fill('NDQ0LzU1NS82NjYvMC8wXDA=')
   await third.fill('Nzc3Lzg4OC85OTkvMC8wXDA=')
   await page.getByRole('button', {name: '保存装备码', exact: true}).click()
-  await expect(page.getByText('自动换装备设置已保存', {exact: true})).toBeVisible()
+  await expect(page.getByText('换船装备设置已保存', {exact: true})).toBeVisible()
   await expect(page.getByRole('button', {name: '保存装备码', exact: true})).toBeDisabled()
   await page.reload()
   await expect(destroyer).toHaveValue(code)
@@ -308,19 +364,19 @@ test('自动换装备页面默认关闭并可独立保存舰种码与开关', as
   await page.screenshot({path: 'test-results/fleet-equipment-desktop.png', fullPage: true, animations: 'disabled'})
 })
 
-test('自动换装备页面在手机宽度可编辑且不横向溢出', async ({page}) => {
+test('换船装备页签在手机宽度可编辑且不横向溢出', async ({page}) => {
   await page.setViewportSize({width: 390, height: 844})
   await page.addInitScript(() => {
     localStorage.setItem('azurpilot.language', 'zh-CN')
     localStorage.setItem('azurpilot.theme', 'light')
   })
   await page.goto('/#/i/demo-main/task/FleetEquipment')
-  await expect(page.getByRole('heading', {name: '自动换装备', exact: true})).toBeVisible()
+  await expect(page.getByRole('heading', {name: '换船装备', exact: true})).toBeVisible()
   await expect(page.locator('.fleet-grid input[type="text"]')).toHaveCount(45)
   await page.getByRole('textbox', {name: '驱逐舰 装备码 1', exact: true}).fill('MC8wLzAvMC8wXDA=')
   await page.getByRole('textbox', {name: '风帆舰 装备码 3', exact: true}).scrollIntoViewIfNeeded()
   await expect(page.getByRole('textbox', {name: '风帆舰 装备码 3', exact: true})).toBeVisible()
-  await page.getByRole('heading', {name: '自动换装备', exact: true}).scrollIntoViewIfNeeded()
+  await page.getByRole('heading', {name: '换船装备', exact: true}).scrollIntoViewIfNeeded()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   await page.screenshot({path: 'test-results/fleet-equipment-mobile.png', fullPage: true, animations: 'disabled'})
 })
