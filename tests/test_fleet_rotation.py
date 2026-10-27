@@ -111,10 +111,17 @@ class RotationIntegrationTests(unittest.TestCase):
         self.live = {fleet: dict.fromkeys(range(1, 7), 150) for fleet in range(1, 7)}
         self.live[1][4] = 2
         self.live[3][4] = 138
-        self.manager.run.side_effect = self.full_scan
+        def full_scan(**kwargs):
+            from module.runtime.fleet_training import mark_full_scan
+            self.full_scan(**kwargs)
+            mark_full_scan(self.config)
+        self.manager.run.side_effect = full_scan
         self.manager.rotate_slot.side_effect = self.rotate
         self.manager.prepare_rotation.side_effect = lambda fleet: self.snapshots()
         self.factory = self.stack.enter_context(patch('module.campaign.fleet_rotation.FleetManagement', return_value=self.manager))
+        reader = self.stack.enter_context(patch('module.campaign.fleet_training.FleetTrainingReader'))
+        reader.return_value.inventory.side_effect = lambda fleets: self.full_scan(fleets=fleets)
+        self.inventory_reader = reader.return_value
 
     def full_scan(self, **kwargs):
         result = {category: {str(fleet): [dict(slot=slot, name='', level=100, occupied=True,
@@ -329,7 +336,8 @@ class RotationIntegrationTests(unittest.TestCase):
         self.morale_policy()
         self.config.cross_set(ROTATION_PATH + '.SelectedOnly', False)
         preflight_rotation(self.runner, 5, 'normal')
-        self.assertEqual(2, self.manager.run.call_count)
+        self.manager.run.assert_called_once()
+        self.inventory_reader.inventory.assert_called_once_with({1})
         self.manager.rotate_slot.assert_not_called()
         with self.assertRaises(ScriptEnd):
             self.campaign.emotion.check_reduce(5)
@@ -451,7 +459,7 @@ class RotationIntegrationTests(unittest.TestCase):
             self.assertEqual(self.manager.rotate_slot.call_count, 3)
         self.assertEqual(order, [4, 5, 6, 3, 4])
 
-    def test_new_event_task_rescans_and_ranks_current_morale_from_disk(self):
+    def test_new_event_task_checks_current_fleets_without_a_full_rescan(self):
         preflight_rotation(self.runner, 5, 'normal')
         self.config.cross_set_many({'Event.Campaign.Mode': 'normal', 'Event.Campaign.Name': 'a1',
                                     'Event.Fleet.FleetOrder': 'fleet1_all_fleet2_standby'})
@@ -467,7 +475,8 @@ class RotationIntegrationTests(unittest.TestCase):
         preflight_rotation(self.runner, 5, 'normal')
         self.assertEqual(self.manager.rotate_slot.call_args_list[0].args[0], 5)
         self.assertEqual(self.state()['1']['last_source'], 5)
-        self.assertEqual(self.manager.run.call_count, 2)
+        self.manager.run.assert_called_once()
+        self.inventory_reader.inventory.assert_called_once_with({1})
 
     def test_one_round_still_low_waits_in_original_emotion_check_instead_of_swapping_again(self):
         def rotate(source, slot, fleet):
@@ -532,12 +541,13 @@ class RotationIntegrationTests(unittest.TestCase):
         self.config.set_record(Emotion_Fleet1Value=2)
         self.manager.prepare_rotation.reset_mock()
         self.assertTrue(preflight_rotation(self.runner, 5, 'normal'))
-        self.manager.prepare_rotation.assert_called_once_with(1)
+        self.manager.prepare_rotation.assert_not_called()
+        self.inventory_reader.inventory.assert_called_once_with({1})
         self.manager.rotate_slot.assert_not_called()
         self.manager.run.assert_called_once()
         self.assertEqual(self.service.read_json(self.path)['Main']['Emotion']['Fleet1Value'], 150)
 
-    def test_dispatching_other_task_rescans_but_consecutive_main_runs_do_not(self):
+    def test_dispatching_other_task_preserves_the_main_scan_clock(self):
         from alas import AzurLaneAutoScript
 
         self.live[1][4] = 150
@@ -554,17 +564,17 @@ class RotationIntegrationTests(unittest.TestCase):
             self.manager.run.assert_called_once()
             self.assertTrue(script._run('commission', skip_first_screenshot=True))
             self.assertTrue(script._run('main', skip_first_screenshot=True))
-        self.assertEqual(self.manager.run.call_count, 2)
+        self.assertEqual(self.manager.run.call_count, 1)
         self.assertIs(self.runner._fleet_rotation_context, script._fleet_rotation_context)
         self.manager.rotate_slot.assert_not_called()
 
-    def test_new_task_scans_even_when_no_slots_are_selected(self):
+    def test_no_selected_slots_does_not_trigger_an_automatic_scan(self):
         self.config.cross_set(ROTATION_PATH + '.Rules', '{}')
-        self.assertTrue(preflight_rotation(self.runner, 5, 'normal'))
-        self.manager.run.assert_called_once()
+        self.assertFalse(preflight_rotation(self.runner, 5, 'normal'))
+        self.manager.run.assert_not_called()
         self.manager.rotate_slot.assert_not_called()
         self.assertFalse(preflight_rotation(self.runner, 5, 'normal'))
-        self.manager.run.assert_called_once()
+        self.manager.run.assert_not_called()
 
     def test_unknown_optional_reference_in_ignore_mode_does_not_block_original_farming(self):
         self.config.cross_set('Main.Emotion.Mode', 'ignore')
@@ -592,7 +602,8 @@ class RotationIntegrationTests(unittest.TestCase):
 
     def test_zero_battle_role_does_not_rotate_even_if_its_morale_is_low(self):
         self.config.cross_set('Main.Fleet.FleetOrder', 'fleet1_mob_fleet2_boss')
-        self.assertTrue(preflight_rotation(self.runner, 1, 'normal'))
+        self.assertFalse(preflight_rotation(self.runner, 1, 'normal'))
+        self.manager.run.assert_not_called()
         self.manager.read_fleet_morale.assert_not_called()
         self.manager.rotate_slot.assert_not_called()
 
@@ -606,7 +617,8 @@ class RotationIntegrationTests(unittest.TestCase):
         self.assertEqual(self.state()['1'], {'rescan': True})
         preflight_rotation(self.runner, 5, 'normal')
         self.manager.rotate_slot.assert_called_once()
-        self.assertEqual(self.manager.run.call_count, 2)
+        self.assertEqual(self.manager.run.call_count, 1)
+        self.inventory_reader.inventory.assert_called_once_with({1})
         self.assertEqual(self.state(), {})
 
     def test_recovery_only_swaps_still_low_slots_and_does_not_repeat_the_completed_one(self):

@@ -20128,9 +20128,21 @@
       }
     },
     "FleetTraining": {
+      "FullScanIntervalDays": {
+        "type": "input",
+        "value": 3,
+        "valuetype": "int",
+        "validate": "^[1-9][0-9]*$"
+      },
+      "FullScanRecord": {
+        "type": "stored",
+        "value": "2020-01-01 00:00:00",
+        "validate": "datetime",
+        "display": "hide"
+      },
       "CheckIntervalHours": {
         "type": "input",
-        "value": 0.5,
+        "value": 6.0,
         "valuetype": "float",
         "validate": "^[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$"
       },

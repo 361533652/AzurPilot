@@ -452,6 +452,9 @@ class FleetManagement(Dock):
         finally:
             self.dock_filter.reset_first = reset_first
 
+        from module.runtime.fleet_training import mark_full_scan
+        mark_full_scan(self.config)
+
     def _visual_candidates(self, scanner, matcher, max_rows):
         found = []
         for cards, _ in self._dock_pages(scanner, max_rows=max_rows):

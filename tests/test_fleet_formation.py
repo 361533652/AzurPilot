@@ -32,7 +32,7 @@ def frame(name):
 
 def runner():
     tool = FleetManagement.__new__(FleetManagement)
-    tool.config = SimpleNamespace(cross_get=Mock(return_value={}), modified={}, save=Mock())
+    tool.config = SimpleNamespace(cross_get=Mock(return_value={}), cross_set=Mock(), modified={}, save=Mock())
     tool.device = SimpleNamespace(image=frame('vanguard_top'), has_cached_image=True,
                                   click=Mock(), screenshot=Mock(), swipe=Mock())
     tool.dock_filter = SimpleNamespace(reset_first=True)
@@ -1085,6 +1085,18 @@ class ReferenceScanTests(unittest.TestCase):
         self.assertEqual(len(saved['submarine']), 2)
         self.assertEqual([ship['slot'] for ship in saved['submarine']['2']], [1, 2, 3])
         self.assertTrue(tool.dock_filter.reset_first)
+        self.assertEqual(tool.config.cross_set.call_args.args[0], 'FleetInfo.FleetTraining.FullScanRecord')
+
+    def test_interrupted_full_scan_and_partial_saves_do_not_reset_full_scan_time(self):
+        tool = runner()
+        tool._scan_category = Mock(side_effect=GameStuckError('扫描中断'))
+        with self.assertRaises(GameStuckError):
+            tool.run(update_emotion=False)
+        self.assertTrue(tool.dock_filter.reset_first)
+        tool.config.cross_set.assert_not_called()
+        FleetManagement._save_result(tool, {'main': {'1': []}})
+        tool.config.save.assert_called_once()
+        tool.config.cross_set.assert_not_called()
 
 
 if __name__ == '__main__':

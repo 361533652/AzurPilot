@@ -15,13 +15,16 @@ from module.api.protocol import ConfigChange, ApiError
 from module.campaign.fleet_rotation import preflight_rotation
 from module.campaign.fleet_training import after_battle_due, recover_reading
 from module.combat.emotion import Emotion
+from module.config.config import AzurLaneConfig
+from module.config.time_source import now
 from module.exception import CampaignEnd, FleetManagementError, GameStuckError, ScriptEnd
 from module.os.ship_exp import ShipLevel
 from module.awaken.assets import OCR_SHIP_LEVEL
 from module.retire.fleet_training import AffinityReader, FleetTrainingReader, TrainingExp, parse_affinity
 from module.runtime.fleet_rotation import ROTATION_PATH
 from module.runtime.fleet_training import (LEVEL_PATH, AFFINITY_PATH, TRAINING_PATH, INTERVAL_PATH, completed,
-                                           excluded, goals, due, identity, interval, observe, state)
+                                           FULL_INTERVAL_PATH, FULL_RECORD_PATH, excluded, goals, due,
+                                           full_scan_due, identity, interval, observe, state)
 from module.runtime.mind_calculator import catalog
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -241,7 +244,8 @@ class TrainingIntegrationTests(unittest.TestCase):
     def configure(self, mood=False, level=True, affinity=False, slots=(4,)):
         self.config.cross_set_many({ROTATION_PATH + '.Enabled': mood,
                                    ROTATION_PATH + '.Rules': json.dumps({'1': {'slots': list(slots), 'sources': [3]}}),
-                                   ROTATION_PATH + '.State': {}, TRAINING_PATH: {},
+                                   ROTATION_PATH + '.State': {}, TRAINING_PATH: {}, FULL_RECORD_PATH: now(),
+                                   INTERVAL_PATH: 6,
                                    LEVEL_PATH + '.Enabled': level, LEVEL_PATH + '.Target': 120,
                                    AFFINITY_PATH + '.Enabled': affinity, AFFINITY_PATH + '.Target': 100})
         self.names = dict(self.initial_names)
@@ -474,6 +478,8 @@ class TrainingIntegrationTests(unittest.TestCase):
             ({'Enabled': False, 'CheckIntervalHours': 6}, {'Enabled': False, 'CheckIntervalHours': 12}, None, 6),
             ({}, {'Enabled': True, 'CheckInterval': 60}, None, 1),
             ({'Enabled': True, 'CheckIntervalHours': 6}, {}, 72, 72),
+            ({}, {}, None, 6),
+            ({}, {}, 12, 12),
         ):
             with self.subTest(level=level, affinity=affinity, shared=shared):
                 raw = deepcopy(original)
@@ -528,8 +534,145 @@ class TrainingIntegrationTests(unittest.TestCase):
         preflight_rotation(self.runner, 5, 'normal')
         self.manager.run.reset_mock()
         self.assertTrue(preflight_rotation(self.runner, 5, 'normal'))
-        self.manager.run.assert_called_once_with(update_emotion=True)
+        self.manager.run.assert_not_called()
+        self.assertEqual([{1}, {1}], self.inventory_calls)
         self.manager.rotate_slot.assert_not_called()
+
+    def restart_task(self):
+        self.config = AzurLaneConfig('testpilot', task='Main')
+        self.campaign.config = self.runner.config = self.config
+        self.campaign.emotion = Emotion(self.config)
+        self.runner.__dict__.pop('_fleet_rotation_context', None)
+
+    def test_defaults_and_full_scan_days_validation_preserve_read_only_scan_time(self):
+        values = self.service.get('testpilot')['values']['FleetInfo']['FleetTraining']
+        self.assertEqual((3, 6), (values['FullScanIntervalDays'], values['CheckIntervalHours']))
+        for days in (1, 3, 1000000):
+            values = self.service.patch('testpilot', None, [
+                ConfigChange(path=FULL_INTERVAL_PATH, value=days)])['values']
+            self.assertEqual(days, values['FleetInfo']['FleetTraining']['FullScanIntervalDays'])
+        for path, value in ((FULL_INTERVAL_PATH, 0), (FULL_INTERVAL_PATH, -1), (FULL_INTERVAL_PATH, 1.5),
+                            (FULL_RECORD_PATH, '2026-10-27 00:00:00')):
+            with self.assertRaises(ApiError):
+                self.service.patch('testpilot', None, [ConfigChange(path=path, value=value)])
+
+    def test_full_scan_is_independent_from_target_reads_and_only_due_every_three_days(self):
+        for mood in (False, True):
+            with self.subTest(mood=mood):
+                self.configure(mood=mood)
+                self.manager.run.reset_mock()
+                self.config.cross_set(FULL_RECORD_PATH, now() - timedelta(days=3, seconds=1))
+                self.assertTrue(preflight_rotation(self.runner, 5, 'normal'))
+                self.manager.run.assert_called_once_with(update_emotion=True)
+                full_record = self.config.cross_get(FULL_RECORD_PATH)
+                self.assertFalse(full_scan_due(self.config))
+                self.read_calls.clear()
+                self.runner._fleet_rotation_context['training_checked_at'] -= timedelta(hours=6, seconds=1)
+                self.assertTrue(preflight_rotation(self.runner, 5, 'normal'))
+                self.assertEqual([{1}], self.inventory_calls)
+                self.assertEqual([(1, [4], {'level': 120})], self.read_calls)
+                self.assertEqual(full_record, self.config.cross_get(FULL_RECORD_PATH))
+                self.manager.run.assert_called_once()
+                self.config.cross_set_many({INTERVAL_PATH: 1e20,
+                                           FULL_RECORD_PATH: full_record - timedelta(days=3, seconds=1)})
+                self.assertFalse(due(self.config, self.runner._fleet_rotation_context))
+                self.campaign._map_battle = 5
+                self.assertTrue(after_battle_due(self.runner, 'normal'))
+                self.assertTrue(preflight_rotation(self.runner, 5, 'normal'))
+                self.assertEqual(2, self.manager.run.call_count)
+                self.assertFalse(full_scan_due(self.config))
+
+    def test_all_seven_modes_restore_the_clock_and_consumed_morale_after_task_restart(self):
+        for mood, level, affinity in product((False, True), repeat=3):
+            if not (mood or level or affinity):
+                continue
+            with self.subTest(mood=mood, level=level, affinity=affinity):
+                self.configure(mood=mood, level=level, affinity=affinity)
+                self.config.cross_set_many({INTERVAL_PATH: 6, ROTATION_PATH + '.SelectedOnly': True})
+                preflight_rotation(self.runner, 5, 'normal')
+                self.campaign.emotion.reduce(1)
+                checked = self.runner._fleet_rotation_context['training_checked_at']
+                self.assertEqual(148, self.campaign.emotion.training_lower(1))
+                self.read_calls.clear()
+                self.inventory_calls.clear()
+                self.restart_task()
+                self.assertFalse(preflight_rotation(self.runner, 5, 'normal'))
+                self.assertEqual(checked, self.runner._fleet_rotation_context['training_checked_at'])
+                self.assertEqual(148, self.campaign.emotion.training_lower(1))
+                self.assertFalse(self.read_calls)
+                self.assertFalse(self.inventory_calls)
+                self.manager.run.assert_not_called()
+
+    def test_persisted_interval_expiry_reads_only_the_selected_active_fleet(self):
+        self.configure(affinity=True)
+        self.config.cross_set(INTERVAL_PATH, 6)
+        preflight_rotation(self.runner, 5, 'normal')
+        saved = state(self.config)
+        saved['checks']['Main']['checked_at'] = (now() - timedelta(hours=6, seconds=1)).isoformat()
+        self.config.cross_set(TRAINING_PATH, saved)
+        self.read_calls.clear()
+        self.inventory_calls.clear()
+        self.restart_task()
+        self.assertTrue(preflight_rotation(self.runner, 5, 'normal'))
+        self.assertEqual([{1}], self.inventory_calls)
+        self.assertEqual([(1, [4], {'level': 120, 'affinity': 100})], self.read_calls)
+        self.manager.run.assert_not_called()
+
+    def test_targeted_read_does_not_recalibrate_an_unscanned_fleet_from_old_snapshots(self):
+        self.configure(mood=True)
+        preflight_rotation(self.runner, 5, 'normal')
+        self.config.cross_set_many({'Event.Fleet.Fleet1': 3, 'Event.Emotion.Fleet1Value': 40})
+        self.runner._fleet_rotation_context['training_checked_at'] -= timedelta(hours=6, seconds=1)
+        self.assertTrue(preflight_rotation(self.runner, 5, 'normal'))
+        self.assertEqual(40, self.config.cross_get('Event.Emotion.Fleet1Value'))
+        self.manager.run.assert_not_called()
+
+    def test_full_scan_reuses_current_reserve_references_for_completion(self):
+        self.configure(mood=True)
+        self.profile[self.names[1, 4]]['level'] = 120
+        self.config.cross_set(FULL_RECORD_PATH, now() - timedelta(days=3, seconds=1))
+        self.assertTrue(preflight_rotation(self.runner, 5, 'normal'))
+        self.manager.run.assert_called_once()
+        self.assertFalse(self.inventory_calls)
+        self.manager.rotate_slot.assert_called_once_with(3, 4, 1)
+
+    def test_morale_reserve_triggers_before_six_hours_even_with_only_level_enabled(self):
+        self.configure()
+        self.config.cross_set_many({ROTATION_PATH + '.SelectedOnly': True,
+                                   'Main.Emotion.Fleet1Control': 'keep_exp_bonus',
+                                   'Main.Emotion.Fleet1Recover': 'dormitory_floor_1'})
+        self.live[1][1] = 0
+        preflight_rotation(self.runner, 5, 'normal')
+        # 5战预留10点：128仍高于120，但已不满足本张地图的130点要求。
+        for _ in range(11):
+            self.campaign.emotion.reduce(1)
+        self.live[1][4] = 128
+        self.read_calls.clear()
+        self.inventory_calls.clear()
+        self.restart_task()
+        self.campaign._map_battle = 5
+        self.assertFalse(due(self.config, self.runner.__dict__.setdefault('_fleet_rotation_context', {})))
+        self.assertTrue(after_battle_due(self.runner, 'normal'))
+        self.assertTrue(preflight_rotation(self.runner, 5, 'normal'))
+        self.assertEqual([{1}], self.inventory_calls)
+        self.assertEqual([(1, [4], {'level': 120})], self.read_calls)
+        self.manager.run.assert_not_called()
+        self.manager.rotate_slot.assert_not_called()
+        self.restart_task()
+        self.assertFalse(preflight_rotation(self.runner, 5, 'normal'))
+        self.assertEqual([{1}], self.inventory_calls)
+        with self.assertRaises(ScriptEnd):
+            self.campaign.emotion.check_reduce(5)
+
+    def test_failed_full_scan_does_not_advance_the_scan_time(self):
+        self.configure()
+        old = now() - timedelta(days=3, seconds=1)
+        self.config.cross_set(FULL_RECORD_PATH, old)
+        self.manager.run.side_effect = GameStuckError('全舰队扫描中断')
+        with self.assertRaises(GameStuckError):
+            preflight_rotation(self.runner, 5, 'normal')
+        self.assertEqual(old, self.config.cross_get(FULL_RECORD_PATH))
+        self.assertTrue(full_scan_due(self.config))
 
     def test_recorded_reading_is_recovered_before_stage_navigation_even_after_disable(self):
         self.configure(level=False)
