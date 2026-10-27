@@ -20,7 +20,8 @@ from module.config.time_source import now
 from module.exception import CampaignEnd, FleetManagementError, GameStuckError, ScriptEnd
 from module.os.ship_exp import ShipLevel
 from module.awaken.assets import OCR_SHIP_LEVEL
-from module.retire.fleet_training import AffinityReader, FleetTrainingReader, TrainingExp, parse_affinity
+from module.retire.fleet_training import AffinityReader, FleetTrainingReader, TrainingExp, parse_affinity, training_level
+from module.os.ship_exp_data import LIST_SHIP_EXP
 from module.runtime.fleet_rotation import ROTATION_PATH
 from module.runtime.fleet_training import (LEVEL_PATH, AFFINITY_PATH, TRAINING_PATH, INTERVAL_PATH, completed,
                                            FULL_INTERVAL_PATH, FULL_RECORD_PATH, excluded, goals, due,
@@ -108,6 +109,39 @@ class TrainingRuleTests(unittest.TestCase):
                                ('无法识别', None), ('', None), ([], None)):
             with self.subTest(text=text), patch('module.retire.fleet_training.Ocr.ocr', return_value=text):
                 self.assertEqual(expected, reader.ocr(None))
+
+    def test_effective_level_reuses_opsi_experience_table_for_the_reported_locked_ships(self):
+        for exp in (1917866, 1930058, 1919750):
+            with self.subTest(exp=exp):
+                self.assertEqual(120, training_level(105, exp))
+                self.assertGreaterEqual(LIST_SHIP_EXP[104] + exp, LIST_SHIP_EXP[119])
+        for target in (105, 110, 120, 125):
+            required = LIST_SHIP_EXP[target - 1] - LIST_SHIP_EXP[99]
+            self.assertEqual(target, training_level(100, required))
+            self.assertEqual(target - 1, training_level(100, required - 1))
+        for exp in (None, -1, True, '1917866'):
+            self.assertEqual(105, training_level(105, exp))
+        self.assertEqual(105, training_level(105, 0))
+        self.assertEqual(125, training_level(125, 3000000))
+        for level in (0, 126, None, True):
+            self.assertIsNone(training_level(level, 3000000))
+
+    def test_detail_reader_confirms_exp_twice_and_keeps_displayed_level_for_reference(self):
+        reader = FleetTrainingReader.__new__(FleetTrainingReader)
+        reader.manager = SimpleNamespace(RESULT_PATH='FleetInfo.FleetInfo.Result')
+        reader.config = SimpleNamespace(SERVER='cn', cross_get=Mock(return_value={
+            'vanguard': {'1': [{'slot': 4, 'level': 105}]}}))
+        reader.device = SimpleNamespace(image=None)
+        reader._details = reader._back_to_details = reader._back_to_formation = Mock()
+        reader._ship = reader.appear = Mock(return_value=True)
+        reader.loop = Mock(return_value=iter(range(3)))
+        with (patch('module.retire.fleet_training.ShipLevel') as levels,
+              patch('module.retire.fleet_training.TrainingExp') as experience):
+            levels.return_value.ocr.return_value = 105
+            experience.return_value.ocr.side_effect = [3000000, 1917866, 1917866]
+            self.assertEqual({4: {'level': 120, 'display_level': 105, 'exp': 1917866}},
+                             reader.read(1, [4], {'level': 120}))
+            self.assertEqual(3, experience.return_value.ocr.call_count)
 
     def test_observe_persists_exact_experience_without_changing_completion(self):
         saved = {'records': {}}
@@ -218,8 +252,15 @@ class TrainingIntegrationTests(unittest.TestCase):
 
             def read(self, fleet, slots, targets):
                 outer.read_calls.append((fleet, list(slots), dict(targets)))
-                return {slot: {metric: outer.profile[outer.names[fleet, slot]].get(metric) for metric in targets}
-                        for slot in slots}
+                readings = {}
+                for slot in slots:
+                    profile = outer.profile[outer.names[fleet, slot]]
+                    reading = {metric: profile.get(metric) for metric in targets}
+                    if 'level' in targets:
+                        reading.update(level=training_level(profile['level'], profile.get('exp')),
+                                       display_level=profile['level'], exp=profile.get('exp'))
+                    readings[slot] = reading
+                return readings
         self.reader_factory = self.stack.enter_context(patch('module.campaign.fleet_training.FleetTrainingReader', Reader))
 
     def full_scan(self, fleets=range(1, 7), **kwargs):
@@ -829,8 +870,8 @@ class TrainingIntegrationTests(unittest.TestCase):
             self.config.cross_set(self.manager.RESULT_PATH, result)
 
         self.full_scan = scan_with_raw
-        readings = {4: dict(level=105, exp=1582026), 5: dict(level=105, exp=1594218),
-                    6: dict(level=105, exp=1583910)}
+        readings = {slot: dict(level=training_level(105, exp), display_level=105, exp=exp)
+                    for slot, exp in ((4, 1582026), (5, 1594218), (6, 1583910))}
         with patch.object(self.reader_factory, 'read', return_value=readings) as read:
             self.assertTrue(preflight_rotation(self.runner, 5, 'normal'))
         read.assert_called_once_with(1, [4, 5, 6], {'level': 120})
@@ -838,11 +879,43 @@ class TrainingIntegrationTests(unittest.TestCase):
         self.assertNotIn(names[4], saved['records'])
         for slot, name in names.items():
             record = saved['readings']['1:4'] if slot == 4 else saved['records'][name]
-            self.assertEqual((105, readings[slot]['exp']), (record['level'], record['exp']))
+            self.assertEqual((118, 105, readings[slot]['exp']),
+                             (record['level'], record['display_level'], record['exp']))
             self.assertTrue(record['checked_at'])
             self.assertNotIn('affinity', record)
             self.assertNotIn('completed_for', record)
         self.assertFalse(due(self.config, self.runner._fleet_rotation_context))
+        self.manager.rotate_slot.assert_not_called()
+
+    def test_locked_105_ships_at_effective_120_complete_and_swap_without_awakening(self):
+        self.configure(slots=(4, 5, 6))
+        names = {slot: self.names[1, slot] for slot in (4, 5, 6)}
+        experience = {4: 1917866, 5: 1930058, 6: 1919750}
+        for slot, name in names.items():
+            self.profile[name] = dict(level=105, exp=experience[slot], affinity=50)
+        self.assertTrue(preflight_rotation(self.runner, 5, 'normal'))
+        self.assertEqual([(3, 4, 1), (3, 5, 1), (3, 6, 1)],
+                         [call.args for call in self.manager.rotate_slot.call_args_list])
+        for slot, name in names.items():
+            record = state(self.config)['records'][name]
+            self.assertEqual((120, 105, experience[slot]),
+                             (record['level'], record['display_level'], record['exp']))
+            self.assertEqual({'level': 120}, record['completed_for'])
+
+    def test_stored_experience_cannot_replace_an_unmet_affinity_goal_or_an_unknown_read(self):
+        self.configure(affinity=True)
+        name = self.names[1, 4]
+        self.profile[name] = dict(level=105, exp=1917866, affinity=99)
+        self.assertTrue(preflight_rotation(self.runner, 5, 'normal'))
+        record = state(self.config)['records'][name]
+        self.assertEqual(120, record['level'])
+        self.assertNotIn('completed_for', record)
+        self.manager.rotate_slot.assert_not_called()
+        self.configure()
+        name = self.names[1, 4]
+        self.profile[name] = dict(level=105, exp=None)
+        preflight_rotation(self.runner, 5, 'normal')
+        self.assertNotIn('completed_for', state(self.config)['records'][name])
         self.manager.rotate_slot.assert_not_called()
 
     def test_duplicate_bulin_at_all_goals_keeps_reading_but_still_requires_unique_identity(self):

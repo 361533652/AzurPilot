@@ -290,7 +290,7 @@ test('同名舰船实读按舰位展示60好感，不串用另一艘布里的记
   expect(methods).not.toContain('scheduler.start')
 })
 
-test('仅等级调度展示长舰名及三艘105级舰船的经验和核对时间', async ({page}) => {
+test('仅等级调度展示未突破舰船的实际120级与存储经验', async ({page}) => {
   const methods: string[] = []
   await page.addInitScript(() => {
     localStorage.setItem('azurpilot.language', 'zh-CN')
@@ -313,13 +313,11 @@ test('仅等级调度展示长舰名及三艘105级舰船的经验和核对时�
         values.FleetRotation.Rules = JSON.stringify({'1': {slots: [4, 5, 6], sources: [3, 4]}})
         values.FleetInfo.Result = {vanguard: {
           '1': names.map((name, index) => ({name, slot: index + 4, level: 105, emotion: 150})),
-          '4': [{name: names[0], slot: 4, level: 105, emotion: null}],
         }}
         values.FleetTraining.State = {
-          records: Object.fromEntries(names.slice(1).map((name, index) => [name, {level: 105,
-            exp: [1594218, 1583910][index], fleet: 1, slot: index + 5, checked_at: '2026-10-27T06:37:03'}])),
-          readings: {'1:4': {name: names[0], fleet: 1, slot: 4, level: 105, exp: 1582026,
-            checked_at: '2026-10-27T06:37:03'}}, pending: {},
+          records: Object.fromEntries(names.map((name, index) => [name, {level: 120, display_level: 105,
+            exp: [1917866, 1930058, 1919750][index], fleet: 1, slot: index + 4,
+            completed_for: {level: 120}, checked_at: '2026-10-27T18:54:56'}])), pending: {},
         }
       }
       socket.send(JSON.stringify(response))
@@ -329,12 +327,16 @@ test('仅等级调度展示长舰名及三艘105级舰船的经验和核对时�
   await expect(page.getByRole('switch', {name: '启用等级调度', exact: true})).toHaveAttribute('aria-checked', 'true')
   for (const title of ['心情调度', '好感调度'])
     await expect(page.getByRole('switch', {name: `启用${title}`, exact: true})).toHaveAttribute('aria-checked', 'false')
-  const rows = page.getByRole('region', {name: '培养舰船', exact: true}).locator('tbody tr')
+  const completed = page.getByRole('region', {name: '完成舰船', exact: true})
+  const rows = completed.locator('tbody tr')
   await expect(rows).toHaveCount(3)
-  await expect(rows.locator('td:nth-child(5)')).toHaveText(['105', '105', '105'])
-  await expect(rows.locator('td:nth-child(6)')).toHaveText(['1582026', '1594218', '1583910'])
+  await expect(completed.getByRole('columnheader', {name: '实际等级', exact: true})).toBeVisible()
+  await expect(rows.locator('td:nth-child(5)')).toHaveText(['120', '120', '120'])
+  for (const cell of await rows.locator('td:nth-child(5)').all())
+    await expect(cell).toHaveAttribute('title', /界面等级：105/)
+  await expect(rows.locator('td:nth-child(6)')).toHaveText(['1917866', '1930058', '1919750'])
   await expect(rows.locator('td:nth-child(7)')).toHaveText(['未读取', '未读取', '未读取'])
-  await expect(rows.locator('td:nth-child(8)')).toHaveText(Array(3).fill('2026-10-27 06:37:03'))
+  await expect(rows.locator('td:nth-child(8)')).toHaveText(Array(3).fill('2026-10-27 18:54:56'))
   await page.screenshot({path: 'test-results/fleet-training-level-only.png', fullPage: true, animations: 'disabled'})
   for (const method of ['config.patch', 'tasks.run', 'scheduler.start']) expect(methods).not.toContain(method)
 })
