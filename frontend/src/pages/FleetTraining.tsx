@@ -182,7 +182,7 @@ export function FleetTraining() {
       <button className="button primary" disabled={disabled || !loaded || !dirty || !valid} onClick={() => void save()}>{ui('training.save')}</button>
     }/>
     <p className="muted">{ui('training.help')}</p>
-    <p><Link to={`/i/${instance}/task/FleetRotation`}>{ui('training.slotConfig')}</Link></p>
+    <p><Link to={`/i/${instance}/task/FleetSwitch?tab=rotation`}>{ui('training.slotConfig')}</Link></p>
     {error && <ErrorBox message={error}/>}
     {!loaded ? !error && <Loading/> : <>
       <section className="panel" style={{padding: 20, margin: '20px 0'}}>
