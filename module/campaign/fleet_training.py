@@ -11,7 +11,8 @@ from module.retire.fleet_management import FleetManagement
 from module.retire.fleet_training import FleetTrainingReader
 from module.runtime.fleet_equipment import EQUIPMENT_PATH
 from module.runtime.fleet_rotation import ROTATION_PATH, active_fleets, calibration_changes, parse_rules, recorded_morale, supported
-from module.runtime.fleet_training import TRAINING_PATH, completed, due, excluded, goals, identity, interval, mark_checked, observe, ships, state
+from module.runtime.fleet_training import (TRAINING_PATH, completed, due, excluded, full_scan_due, goals, identity,
+                                           interval, mark_checked, observe, restore_context, ships, state)
 
 
 class TrainingSession:
@@ -30,6 +31,10 @@ class TrainingSession:
         return self.config.cross_get(self.manager.RESULT_PATH, {})
 
     def save(self):
+        # 心情扣减与扫描计时独立更新；培养会话不能用旧快照覆盖这些持久信息。
+        latest = state(self.config)
+        if 'checks' in latest:
+            self.saved['checks'] = latest['checks']
         self.config.cross_set(TRAINING_PATH, deepcopy(self.saved))
 
     def delay(self, message):
@@ -98,8 +103,8 @@ class TrainingSession:
         self.manager.finish_rotation()
         return snapshots
 
-    def process(self, *, fresh=False):
-        if not self.targets or not self.selected or (not due(self.config, self.context) and not self.saved['pending']):
+    def process(self, *, fresh=False, force=False):
+        if not self.targets or not self.selected or (not force and not due(self.config, self.context) and not self.saved['pending']):
             return False
         self.recover()
         mood = self.config.cross_get(ROTATION_PATH + '.Enabled', False) is True
@@ -116,7 +121,7 @@ class TrainingSession:
                 job = self.saved['pending'].get(key)
                 if job is None:
                     for source in rule['sources']:
-                        if not mood and source not in self.inventory_fleets:
+                        if source not in self.inventory_fleets:
                             self.reader.inventory([source])
                             self.inventory_fleets.add(source)
                         candidate = ships(self.result, source).get(slot)
@@ -165,6 +170,9 @@ class TrainingSession:
     def filter_sources(self, order, rule, fleet):
         """心情临时轮换也不能把已完成培养的舰船选回来。"""
         for source in order:
+            if source not in self.inventory_fleets:
+                self.reader.inventory([source])
+                self.inventory_fleets.add(source)
             names = self.inspect(source, rule['slots'])
             if all(slot in names and not excluded(self.saved['records'][names[slot]], self.targets)
                    for slot in rule['slots']):
@@ -198,18 +206,15 @@ def training_only(runner, battle, mode):
         in: 普通选关页
         out: 原选关页，或按原机制延迟任务
     """
-    from module.campaign.fleet_rotation import _required
+    from module.campaign.fleet_rotation import _required, mark_morale_checked, morale_due
     from module.campaign.fleet_rotation_emotion import RotationEmotion
     config = runner.campaign.config
     context = runner.__dict__.setdefault('_fleet_rotation_context', {})
     if context.get('task') != config.task.command:
         context.clear()
         context['task'] = config.task.command
+    restore_context(config, context)
     selected_only = config.cross_get(ROTATION_PATH + '.SelectedOnly', False) is True
-    needs_morale = (not context.get('training') or context.get('scanned') is False
-                    or context.get('training_selected_only') != selected_only)
-    if not due(config, context) and not state(config)['pending'] and not needs_morale:
-        return False
     rules = parse_rules(config.cross_get(ROTATION_PATH + '.Rules', '{}'))
     selected = {role: actual for role, actual in active_fleets(config).items()
                 if rules.get(str(actual), {}).get('slots') and rules[str(actual)].get('sources')
@@ -219,6 +224,12 @@ def training_only(runner, battle, mode):
     book = runner.campaign.emotion.map_is_2x_book
     runner.campaign.emotion = RotationEmotion(config, context, rules, selected)
     runner.campaign.emotion.map_is_2x_book = book
+    full = full_scan_due(config)
+    if (not full and not due(config, context) and not state(config)['pending']
+            and context.get('scanned') is not False
+            and context.get('training_selected_only') == selected_only
+            and not morale_due(runner.campaign.emotion, selected, battle, context)):
+        return False
     manager = FleetManagement(config=config, device=runner.device)
     session = TrainingSession(runner, manager, context, rules, selected)
     if config.cross_get(EQUIPMENT_PATH + '.Enabled', False) and config.cross_get(EQUIPMENT_PATH + '.State', {}):
@@ -229,7 +240,13 @@ def training_only(runner, battle, mode):
     # 确认后、保存前中断时两边旧记录都可能过时，恢复前必须实读双方。
     recovery_fleets = {job[side] for job in session.saved['pending'].values() for side in ('fleet', 'source')}
     inventory = set(selected.values()) | recovery_fleets
-    result = session.reader.inventory(inventory)
+    if full:
+        logger.info('全舰队扫描间隔已到，更新完整编队参考')
+        manager.run(update_emotion=True)
+        result = config.cross_get(manager.RESULT_PATH, {})
+        session.inventory_fleets.update(range(1, 7))
+    else:
+        result = session.reader.inventory(inventory)
     snapshots = {fleet: recorded_morale(result, fleet) for fleet in inventory}
     config.cross_set_many(calibration_changes(config.data, snapshots, now()))
     runner.campaign.emotion.calibrate_selected(snapshots)
@@ -237,7 +254,8 @@ def training_only(runner, battle, mode):
     context['training_selected_only'] = selected_only
     if config.cross_get(EQUIPMENT_PATH + '.Enabled', False) and config.cross_get(EQUIPMENT_PATH + '.State', {}):
         FleetRotationEquipment(manager).apply_pending()
-    session.process(fresh=True)
+    session.process(fresh=True, force=True)
+    mark_morale_checked(config, runner.campaign.emotion, selected, battle, context)
     manager.finish_rotation()
     manager._commit_formation()
     config.update()
@@ -250,14 +268,16 @@ def training_only(runner, battle, mode):
 
 
 def after_battle_due(runner, mode):
-    from module.campaign.fleet_rotation import _required
+    from module.campaign.fleet_rotation import _required, morale_due
     config = runner.campaign.config
     if (not supported(config.task.command, mode, runner.folder, runner.stage)
             or config.Campaign_Mode != 'normal'
             or (not goals(config) and config.cross_get(ROTATION_PATH + '.Enabled', False) is not True)):
         return False
     rules = parse_rules(config.cross_get(ROTATION_PATH + '.Rules', '{}'))
-    selected = any(rules.get(str(actual), {}).get('slots') and rules[str(actual)].get('sources')
-                   and _required(runner.campaign.emotion, role, runner.campaign._map_battle)[1] is not None
-                   for role, actual in active_fleets(config).items())
-    return selected and due(config, runner.__dict__.get('_fleet_rotation_context', {}))
+    selected = {role: actual for role, actual in active_fleets(config).items()
+                if rules.get(str(actual), {}).get('slots') and rules[str(actual)].get('sources')
+                and _required(runner.campaign.emotion, role, runner.campaign._map_battle)[1] is not None}
+    context = runner.__dict__.get('_fleet_rotation_context', {})
+    return bool(selected) and (full_scan_due(config) or due(config, context)
+                              or morale_due(runner.campaign.emotion, selected, runner.campaign._map_battle, context))

@@ -57,7 +57,7 @@ test('智能换船整合四个页签，旧入口兼容且刷新与手机布局�
     expect(methods).not.toContain(method)
 })
 
-test('换船调度集中三种开关，共用换船配置并按不限上限的小时保存', async ({page}) => {
+test('换船调度集中三种开关，分别保存天数扫描及共用小时实读间隔', async ({page}) => {
   const requests: {method: string; params?: {changes?: {path: string; value: unknown}[]}}[] = []
   await page.addInitScript(() => {
     localStorage.setItem('azurpilot.language', 'zh-CN')
@@ -85,10 +85,19 @@ test('换船调度集中三种开关，共用换船配置并按不限上限的�
   const affinity = page.getByRole('region', {name: '好感调度', exact: true})
   const interval = '共用实读间隔（小时，0为每次结算，无上限）'
   const sharedInterval = page.getByRole('spinbutton', {name: interval, exact: true})
+  const fullInterval = page.getByRole('spinbutton', {name: '全舰队扫描间隔（天）', exact: true})
   for (const title of ['心情调度', '等级调度', '好感调度'])
     await expect(page.getByRole('switch', {name: `启用${title}`, exact: true})).toHaveAttribute('aria-checked', 'false')
   await expect(sharedInterval).toHaveCount(1)
-  await expect(sharedInterval).toHaveValue('0.5')
+  await expect(sharedInterval).toHaveValue('6')
+  await expect(fullInterval).toHaveValue('3')
+  await page.screenshot({path: 'test-results/fleet-scan-intervals-defaults.png', fullPage: true, animations: 'disabled'})
+  expect(await fullInterval.getAttribute('max')).toBeNull()
+  await fullInterval.fill('0')
+  await expect(page.getByRole('button', {name: '保存调度设置', exact: true})).toBeDisabled()
+  await fullInterval.fill('1.5')
+  await expect(page.getByRole('button', {name: '保存调度设置', exact: true})).toBeDisabled()
+  await fullInterval.fill('10000')
   await expect(level.getByRole('spinbutton')).toHaveCount(1)
   await expect(affinity.getByRole('spinbutton')).toHaveCount(1)
   await level.getByRole('spinbutton', {name: '目标等级', exact: true}).fill('125')
@@ -117,6 +126,7 @@ test('换船调度集中三种开关，共用换船配置并按不限上限的�
     await expect(page.getByRole('switch', {name: `启用${title}`, exact: true})).toHaveAttribute('aria-checked', 'true')
   await expect(selected).toBeChecked()
   await expect(sharedInterval).toHaveValue('48.5')
+  await expect(fullInterval).toHaveValue('10000')
   await expect(level.getByRole('spinbutton', {name: '目标等级', exact: true})).toHaveValue('125')
   await expect(affinity.getByRole('spinbutton', {name: '目标好感', exact: true})).toHaveValue('200')
   await sharedInterval.fill('-1')
@@ -147,6 +157,8 @@ test('换船调度集中三种开关，共用换船配置并按不限上限的�
   const intervals = patches.flatMap(item => item.params?.changes ?? []).filter(item => /CheckInterval/.test(item.path))
   expect(intervals.length).toBeGreaterThan(0)
   expect(intervals.every(item => item.path === 'FleetInfo.FleetTraining.CheckIntervalHours')).toBe(true)
+  expect(patches.flatMap(item => item.params?.changes ?? [])
+    .some(item => item.path === 'FleetInfo.FleetTraining.FullScanIntervalDays' && item.value === 10000)).toBe(true)
 })
 
 test('换船调度记录按舰位展示真实舰名心情，三框区分且历史各不超过六条', async ({page}) => {
@@ -278,7 +290,7 @@ test('同名舰船实读按舰位展示60好感，不串用另一艘布里的记
   expect(methods).not.toContain('scheduler.start')
 })
 
-test('仅等级调度展示长舰名及三艘105级舰船的经验和核对时间', async ({page}) => {
+test('仅等级调度展示未突破舰船的实际120级与存储经验', async ({page}) => {
   const methods: string[] = []
   await page.addInitScript(() => {
     localStorage.setItem('azurpilot.language', 'zh-CN')
@@ -296,18 +308,17 @@ test('仅等级调度展示长舰名及三艘105级舰船的经验和核对时�
         values.FleetRotation.Enabled = false
         values.FleetRotation.SelectedOnly = false
         values.FleetTraining.CheckIntervalHours = 6
+        values.FleetTraining.FullScanIntervalDays = 3
         values.FleetLevelTraining = {Enabled: true, Target: 120}
         values.FleetAffinityTraining = {Enabled: false, Target: 100}
         values.FleetRotation.Rules = JSON.stringify({'1': {slots: [4, 5, 6], sources: [3, 4]}})
         values.FleetInfo.Result = {vanguard: {
           '1': names.map((name, index) => ({name, slot: index + 4, level: 105, emotion: 150})),
-          '4': [{name: names[0], slot: 4, level: 105, emotion: null}],
         }}
         values.FleetTraining.State = {
-          records: Object.fromEntries(names.slice(1).map((name, index) => [name, {level: 105,
-            exp: [1594218, 1583910][index], fleet: 1, slot: index + 5, checked_at: '2026-10-27T06:37:03'}])),
-          readings: {'1:4': {name: names[0], fleet: 1, slot: 4, level: 105, exp: 1582026,
-            checked_at: '2026-10-27T06:37:03'}}, pending: {},
+          records: Object.fromEntries(names.map((name, index) => [name, {level: 120, display_level: 105,
+            exp: [1917866, 1930058, 1919750][index], fleet: 1, slot: index + 4,
+            completed_for: {level: 120}, checked_at: '2026-10-27T18:54:56'}])), pending: {},
         }
       }
       socket.send(JSON.stringify(response))
@@ -317,12 +328,17 @@ test('仅等级调度展示长舰名及三艘105级舰船的经验和核对时�
   await expect(page.getByRole('switch', {name: '启用等级调度', exact: true})).toHaveAttribute('aria-checked', 'true')
   for (const title of ['心情调度', '好感调度'])
     await expect(page.getByRole('switch', {name: `启用${title}`, exact: true})).toHaveAttribute('aria-checked', 'false')
-  const rows = page.getByRole('region', {name: '培养舰船', exact: true}).locator('tbody tr')
+  const completed = page.getByRole('region', {name: '完成舰船', exact: true})
+  const rows = completed.locator('tbody tr')
   await expect(rows).toHaveCount(3)
-  await expect(rows.locator('td:nth-child(5)')).toHaveText(['105', '105', '105'])
-  await expect(rows.locator('td:nth-child(6)')).toHaveText(['1582026', '1594218', '1583910'])
+  await expect(completed.getByRole('columnheader', {name: '实际等级', exact: true})).toBeVisible()
+  await expect(rows.locator('td:nth-child(5)')).toHaveText(['120', '120', '120'])
+  for (const cell of await rows.locator('td:nth-child(5)').all())
+    await expect(cell).toHaveAttribute('title', /界面等级：105/)
+  await expect(rows.locator('td:nth-child(6)')).toHaveText(['1917866', '1930058', '1919750'])
   await expect(rows.locator('td:nth-child(7)')).toHaveText(['未读取', '未读取', '未读取'])
-  await expect(rows.locator('td:nth-child(8)')).toHaveText(Array(3).fill('2026-10-27 06:37:03'))
+  await expect(rows.locator('td:nth-child(8)')).toHaveText(Array(3).fill('2026-10-27 18:54:56'))
+  await completed.screenshot({path: 'test-results/fleet-training-effective-level-records.png', animations: 'disabled'})
   await page.screenshot({path: 'test-results/fleet-training-level-only.png', fullPage: true, animations: 'disabled'})
   for (const method of ['config.patch', 'tasks.run', 'scheduler.start']) expect(methods).not.toContain(method)
 })

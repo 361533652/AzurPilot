@@ -1343,14 +1343,18 @@
       "zip": "zip"
     },
     "AzurStatsID": {
-      "name": "AzurStat ID",
-      "help": "上传至 https://azur-stats.lyoko.io 时，声明的客户端 ID\n由随机字符组成，可随意修改"
+      "name": "提交人标识",
+      "help": "向 AzurPilot 云端声明的匿名提交人标识，可留空。"
+    },
+    "CloudUpload": {
+      "name": "云端统计上报",
+      "help": "开启后，“上传 / 保存并上传”会将科研和掉落截图上传至 api.azurpilot.com，同时保留本地统计。关闭后仅在本地处理；上传失败暂存重试，最多512 MiB、7天。"
     },
     "API": {
-      "name": "上传线路",
-      "help": "如果国内用户无法连接到 AzurStat，可以使用\"国内反向代理\"",
-      "default": "默认 (Cloudflare)",
-      "cn_gz_reverse_proxy": "国内反向代理 (广州)"
+      "name": "统一云端接口",
+      "help": "统一使用 https://api.azurpilot.com；旧线路选项仅兼容历史配置。",
+      "default": "api.azurpilot.com",
+      "cn_gz_reverse_proxy": "api.azurpilot.com"
     },
     "ResearchRecord": {
       "name": "科研截图",
@@ -1378,7 +1382,9 @@
       "name": "战斗掉落截图",
       "help": "启用后会放缓结算时的点击速度\n在自律寻敌下不生效",
       "do_not": "无操作",
-      "save": "保存"
+      "save": "保存",
+      "upload": "上传",
+      "save_and_upload": "保存并上传"
     },
     "OpsiHazard1Leveling": {
       "name": "侵蚀一掉落截图",
@@ -6814,9 +6820,17 @@
       "name": "培养记录",
       "help": "按舰船保存实读数据、完成条件及待确认互换，重启后保留。"
     },
+    "FullScanIntervalDays": {
+      "name": "全舰队扫描间隔（天）",
+      "help": "默认3天，正整数且无上限。只在到期或无可用参考时更新全舰队；重新开任务不重置计时。"
+    },
+    "FullScanRecord": {
+      "name": "最近全舰队扫描时间",
+      "help": "仅完整扫描成功后更新，局部调度实读不重置此时间。"
+    },
     "CheckIntervalHours": {
       "name": "共用实读间隔（小时）",
-      "help": "心情、等级、好感共用，支持小数且无上限；0为每次结算检查，到期完成当前地图后读取。旧独立间隔按已启用项目中较短者迁移，完成记录保留。"
+      "help": "默认6小时，心情、等级、好感共用，支持小数且无上限。到期或按控制线及单图消耗预留需要等待/换船时，只读取参与换船的舰队和已开启条件；先完成当前地图再读取。0为每次结算检查；保留已有间隔与培养记录。"
     },
     "State": {
       "name": "培养记录",

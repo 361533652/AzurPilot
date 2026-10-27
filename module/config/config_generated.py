@@ -253,11 +253,12 @@ class GeneratedConfig:
     DropRecord_BackUpMethod = 'zip'  # delete, zip, copy
     DropRecord_ZipMethod = 'zip'  # bz2, gzip, xz, zip
     DropRecord_AzurStatsID = None
+    DropRecord_CloudUpload = True
     DropRecord_API = 'default'  # default, cn_gz_reverse_proxy
     DropRecord_ResearchRecord = 'do_not'  # do_not, save, upload, save_and_upload
     DropRecord_CommissionRecord = 'do_not'  # do_not, save, upload, save_and_upload
     DropRecord_CommissionIncomeScreenshot = 'save'  # do_not, save
-    DropRecord_CombatRecord = 'do_not'  # do_not, save
+    DropRecord_CombatRecord = 'do_not'  # do_not, save, upload, save_and_upload
     DropRecord_OpsiHazard1Leveling = 'upload'  # do_not, save, upload, save_and_upload
     DropRecord_OpsiMeowfficerFarming = 'upload'  # do_not, save, upload, save_and_upload
     DropRecord_OpsiDaily = 'upload'  # do_not, save, upload, save_and_upload
@@ -1195,7 +1196,9 @@ class GeneratedConfig:
     FleetAffinityTraining_Target = 100
 
     # 配置组 `FleetTraining`
-    FleetTraining_CheckIntervalHours = 0.5
+    FleetTraining_FullScanIntervalDays = 3
+    FleetTraining_FullScanRecord = datetime.datetime(2020, 1, 1, 0, 0)
+    FleetTraining_CheckIntervalHours = 6.0
     FleetTraining_State = {}
 
     # 配置组 `FleetEquipment`

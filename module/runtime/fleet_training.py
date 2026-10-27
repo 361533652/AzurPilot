@@ -5,6 +5,7 @@ from datetime import datetime
 
 from module.config.time_source import now
 from module.config.redirect_utils.utils import fleet_training_interval_redirect
+from module.combat.emotion_state import EmotionRecoveryState
 from module.exception import FleetManagementError
 from module.retire.ship_name import ShipNameMatcher
 from module.runtime.mind_calculator import find_ship
@@ -14,6 +15,95 @@ LEVEL_PATH = 'FleetInfo.FleetLevelTraining'
 AFFINITY_PATH = 'FleetInfo.FleetAffinityTraining'
 TRAINING_PATH = 'FleetInfo.FleetTraining.State'
 INTERVAL_PATH = 'FleetInfo.FleetTraining.CheckIntervalHours'
+FULL_INTERVAL_PATH = 'FleetInfo.FleetTraining.FullScanIntervalDays'
+FULL_RECORD_PATH = 'FleetInfo.FleetTraining.FullScanRecord'
+
+
+def _date(value):
+    if isinstance(value, datetime):
+        return value
+    try:
+        return datetime.fromisoformat(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def full_scan_due(config):
+    checked = _date(config.cross_get(FULL_RECORD_PATH, None))
+    return checked is None or (now() - checked).total_seconds() / 86400 >= config.cross_get(FULL_INTERVAL_PATH, 3)
+
+
+def mark_full_scan(config):
+    config.cross_set(FULL_RECORD_PATH, now())
+
+
+def _check_signature(config):
+    task = config.task.command
+    fields = ('Mode', 'Fleet1Control', 'Fleet2Control', 'Fleet1Recover', 'Fleet2Recover',
+              'Fleet1Oath', 'Fleet2Oath', 'Fleet1Onsen', 'Fleet2Onsen')
+    return dict(goals=goals(config), mood=config.cross_get(ROTATION_PATH + '.Enabled', False),
+                rules=config.cross_get(ROTATION_PATH + '.Rules', '{}'),
+                fleets={str(role): fleet for role, fleet in active_fleets(config).items()},
+                selected_only=config.cross_get(ROTATION_PATH + '.SelectedOnly', False),
+                order=config.cross_get(task + '.Fleet.FleetOrder'),
+                emotion={field: config.cross_get(task + '.Emotion.' + field) for field in fields})
+
+
+def persist_context(config, context):
+    """仅保存已核对的计时与培养心情相位，不改写逐船培养记录。"""
+    if not isinstance(context.get('training_checked_at'), datetime):
+        return
+    saved = state(config)
+    training = {}
+    for role, item in context.get('training', {}).items():
+        recovery = item.get('state')
+        if recovery is not None:
+            training[str(role)] = dict(actual=item['actual'], slots=item['slots'], value=recovery.value,
+                                       state=recovery.export())
+    saved.setdefault('checks', {})[config.task.command] = dict(
+        signature=_check_signature(config), checked_at=context['training_checked_at'].isoformat(),
+        goals=context.get('training_goals', {}), training=training,
+        morale_low=context.get('morale_low', {}), scanned=context.get('scanned', False))
+    config.cross_set(TRAINING_PATH, saved)
+
+
+def restore_context(config, context):
+    """跨任务启动恢复计时和已扣减的培养心情，不能从旧截图重新估算消耗。"""
+    if isinstance(context.get('training_checked_at'), datetime):
+        return
+    checked = state(config).get('checks', {}).get(config.task.command, {})
+    if not isinstance(checked, dict) or checked.get('signature') != _check_signature(config):
+        return
+    date = _date(checked.get('checked_at'))
+    if date is None:
+        return
+    if not isinstance(checked.get('training', {}), dict) or not isinstance(checked.get('morale_low', {}), dict):
+        return
+    training = {}
+    try:
+        for role, item in checked.get('training', {}).items():
+            data = item['state']
+            recovery = EmotionRecoveryState.restore(data, item['value'], _date(data['record']), *data['signature'])
+            recovery.advance(now())
+            training[int(role)] = dict(actual=item['actual'], slots=item['slots'], state=recovery)
+    except (ValueError, TypeError, KeyError):
+        return
+    context.update(training_checked_at=date, training_goals=checked.get('goals', {}),
+                   training_mood=config.cross_get(ROTATION_PATH + '.Enabled', False) is True,
+                   training_rules=deepcopy(config.cross_get(ROTATION_PATH + '.Rules', '{}')),
+                   training_fleets=active_fleets(config), training=training,
+                   morale_low=checked.get('morale_low', {}),
+                   scanned=checked.get('scanned', False) and
+                   (bool(training) or not config.cross_get(ROTATION_PATH + '.SelectedOnly', False)),
+                   training_selected_only=config.cross_get(ROTATION_PATH + '.SelectedOnly', False) is True)
+
+
+def invalidate_context(config):
+    saved = deepcopy(config.cross_get(TRAINING_PATH, {}))
+    if (isinstance(saved, dict) and isinstance(saved.get('checks'), dict)
+            and config.task.command in saved['checks']):
+        del saved['checks'][config.task.command]
+        config.cross_set(TRAINING_PATH, saved)
 
 
 def goals(config):
@@ -33,6 +123,7 @@ def due(config, context):
     mood = config.cross_get(ROTATION_PATH + '.Enabled', False) is True
     if not signature and not mood:
         return False
+    restore_context(config, context)
     checked = context.get('training_checked_at')
     return (context.get('training_goals') != signature
             or context.get('training_mood') != mood
@@ -48,12 +139,13 @@ def mark_checked(config, context, targets=None):
     context['training_mood'] = config.cross_get(ROTATION_PATH + '.Enabled', False) is True
     context['training_rules'] = deepcopy(config.cross_get(ROTATION_PATH + '.Rules', '{}'))
     context['training_fleets'] = active_fleets(config)
+    persist_context(config, context)
 
 
 def state(config):
     saved = deepcopy(config.cross_get(TRAINING_PATH, {}))
     if not isinstance(saved, dict) or any(not isinstance(saved.get(key, {}), dict)
-                                         for key in ('records', 'pending', 'readings')):
+                                         for key in ('records', 'pending', 'readings', 'checks')):
         raise FleetManagementError('培养记录格式无效，保留原记录，请检查配置')
     saved.setdefault('records', {})
     saved.setdefault('pending', {})
@@ -104,8 +196,9 @@ def observe(saved, name, reading, targets, *, fleet=None, slot=None, emotion=Non
     # 同次检查重新写入全部已启用条件，不能把旧高好感与新等级拼成完成。
     record.update({metric: reading.get(metric) for metric in targets})
     if 'level' in targets:
-        # 经验已经随等级实读，独立保存供页面展示，不参与完成判定。
+        # level 已按大世界经验表折算；保留界面等级与原始经验，避免重复累加存储经验。
         record['exp'] = reading.get('exp')
+        record['display_level'] = reading.get('display_level', reading.get('level'))
     if type(fleet) is int and 1 <= fleet <= 6 and type(slot) is int and 1 <= slot <= 6:
         # 保存当次已确认的位置和已有心情读数，仅用于记录展示，不额外操作游戏。
         record.update(fleet=fleet, slot=slot,

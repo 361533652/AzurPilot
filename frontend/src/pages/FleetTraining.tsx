@@ -7,7 +7,7 @@ import {ErrorBox, Loading, PageTitle} from '../components/ui'
 import {rotationRules} from './FleetRotation'
 
 type Row = {
-  level?: number | null; exp?: number | null; affinity?: number | null; checked_at?: string
+  level?: number | null; display_level?: number | null; exp?: number | null; affinity?: number | null; checked_at?: string
   completed_for?: Record<string, number>; completed_at?: string; fleet?: number; slot?: number; emotion?: number | null
 }
 type PositionedRow = Row & {name: string; key: string}
@@ -81,7 +81,7 @@ export function TrainingRecords({snapshot}: {snapshot: RecordSnapshot}) {
             <td>{row.fleet ? ui('fleet.title', {number: row.fleet}) : ui('training.unread')}</td>
             <td>{row.slot ? ui('fleet.slot', {number: row.slot}) : ui('training.unread')}</td>
             <td>{row.name || ui('fleet.unknown')}</td><td>{row.emotion ?? ui('training.unread')}</td>
-            <td>{row.level ?? ui('training.unread')}</td><td>{row.exp ?? ui('training.unread')}</td><td>{row.affinity ?? ui('training.unread')}</td>
+            <td title={row.display_level == null ? undefined : ui('training.displayLevel', {level: row.display_level})}>{row.level ?? ui('training.unread')}</td><td>{row.exp ?? ui('training.unread')}</td><td>{row.affinity ?? ui('training.unread')}</td>
             <td>{row.checked_at ? row.checked_at.replace('T', ' ') : ui('training.unread')}</td>
           </tr>)}</tbody>
           </table>
@@ -107,7 +107,7 @@ const metrics: Metric[] = ['level', 'affinity']
 export function FleetTraining() {
   const {instance = ''} = useParams(), {ui, notify, instances} = useApp(), connection = useConnection()
   const [morale, setMorale] = useState(false), [selectedOnly, setSelectedOnly] = useState(false)
-  const [hours, setHours] = useState('0.5')
+  const [hours, setHours] = useState('6'), [days, setDays] = useState('3')
   const [settings, setSettings] = useState<Record<Metric, Goal>>({
     level: {enabled: false, target: '120'},
     affinity: {enabled: false, target: '100'},
@@ -119,6 +119,7 @@ export function FleetTraining() {
     const {target} = settings[metric], limit = metric === 'level' ? 125 : 200
     return target.trim() !== '' && Number.isInteger(Number(target)) && Number(target) >= 1 && Number(target) <= limit
       && hours.trim() !== '' && Number.isFinite(Number(hours)) && Number(hours) >= 0
+      && days.trim() !== '' && Number.isInteger(Number(days)) && Number(days) >= 1
   })
   useEffect(() => {
     if (connection !== 'ready') return
@@ -129,7 +130,8 @@ export function FleetTraining() {
       const values = config.values.FleetInfo
       setMorale(values.FleetRotation?.Enabled === true)
       setSelectedOnly(values.FleetRotation?.SelectedOnly === true)
-      setHours(String(values.FleetTraining?.CheckIntervalHours ?? 0.5))
+      setHours(String(values.FleetTraining?.CheckIntervalHours ?? 6))
+      setDays(String(values.FleetTraining?.FullScanIntervalDays ?? 3))
       setSettings(Object.fromEntries(metrics.map(metric => {
         const value = values[groups[metric]]
         return [metric, {enabled: value?.Enabled === true, target: String(value?.Target ?? (metric === 'level' ? 120 : 100))}]
@@ -165,6 +167,7 @@ export function FleetTraining() {
         {path: 'FleetInfo.FleetRotation.Enabled', value: nextMorale},
         {path: 'FleetInfo.FleetRotation.SelectedOnly', value: selectedOnly},
         {path: 'FleetInfo.FleetTraining.CheckIntervalHours', value: Number(hours)},
+        {path: 'FleetInfo.FleetTraining.FullScanIntervalDays', value: Number(days)},
         ...metrics.flatMap(metric => [
           {path: `FleetInfo.${groups[metric]}.Enabled`, value: nextSettings[metric].enabled},
           {path: `FleetInfo.${groups[metric]}.Target`, value: Number(nextSettings[metric].target)},
@@ -188,6 +191,10 @@ export function FleetTraining() {
           {ui('rotation.selectedOnly')}
         </label>
         <p className="muted">{ui('rotation.emotionHelp')}</p>
+        <label style={{display: 'grid', gap: 8, marginTop: 16}}>{ui('training.fullScanInterval')}
+          <input type="number" min={1} step={1} value={days} disabled={disabled} onChange={event => {setDays(event.target.value); setDirty(true)}}/>
+        </label>
+        <p className="muted">{ui('training.fullScanHelp')}</p>
         <label style={{display: 'grid', gap: 8, marginTop: 16}}>{ui('training.interval')}
           <input type="number" min={0} step="any" value={hours} disabled={disabled} onChange={event => {setHours(event.target.value); setDirty(true)}}/>
         </label>

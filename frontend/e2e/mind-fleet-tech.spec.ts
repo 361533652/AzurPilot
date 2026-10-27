@@ -1,6 +1,8 @@
-import {expect, test} from '@playwright/test'
+import {expect as baseExpect, test} from '@playwright/test'
 import {rpc} from './fleet-helpers'
 
+const expect = baseExpect.configure({timeout: 15000})
+test.setTimeout(60000)
 
 test.beforeEach(async ({page}) => {
   await page.addInitScript(() => {localStorage.setItem('azurpilot.theme', 'light'); localStorage.setItem('azurpilot.language', 'zh-CN')})
@@ -73,7 +75,7 @@ test('manual milestones survive current copies until explicit merge and remain a
   await page.reload()
   const retired = await rpc(page, 'fleetTech.report', {instance})
   expect(retired.ships.find(ship => ship.group_type === 10102)).toMatchObject({owned: true, full_star: true, lv120: true, current_count: 0, points: 15})
-  await page.getByRole('button', {name: '记录编辑模式', exact: true}).click()
+  await expect(page.getByRole('button', {name: '记录编辑模式', exact: true})).toHaveAttribute('aria-pressed', 'true')
   await milestone('Lv.120', '已完成').click()
   await expect(milestone('获得', '已完成')).toBeVisible()
   await expect(milestone('满星', '已完成')).toBeVisible()

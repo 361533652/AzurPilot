@@ -97,6 +97,25 @@ describe('换船调度记录分组', () => {
     snapshot.formation = {vanguard: {'5': [{name: '拉菲', slot: 4, level: 100, emotion: 120}]}}
     expect(trainingRecordGroups(snapshot).training[0]?.affinity).toBeUndefined()
   })
+  it('培养与完成行使用已折算等级，保留原始界面等级供核对', () => {
+    const snapshot: Parameters<typeof trainingRecordGroups>[0] = {
+      records: {
+        '花月': {level: 118, display_level: 105, exp: 1594218},
+        '文琴佐·焦贝蒂': {level: 120, display_level: 105, exp: 1919750, completed_for: {level: 120}},
+      },
+      formation: {vanguard: {'1': [{name: '花月', slot: 5, level: 105},
+        {name: '文琴佐·焦贝蒂', slot: 6, level: 105}]}},
+      rules: rotationRules({'1': {slots: [5, 6], sources: [3]}}),
+    }
+    const grouped = trainingRecordGroups(snapshot)
+    expect(grouped.training[0]).toMatchObject({level: 118, display_level: 105, exp: 1594218})
+    expect(grouped.completed[0]).toMatchObject({level: 120, display_level: 105, exp: 1919750})
+    const html = renderToStaticMarkup(createElement(AppContext.Provider, {value: {
+      ui: (key, params) => translateUi('zh-CN', key, params),
+    } as AppContextValue}, createElement(TrainingRecords, {snapshot})))
+    expect(html).toContain('实际等级')
+    expect(html).toContain('界面等级：105')
+  })
   it('用三个独立大框显示，舰队舰位名字心情等列均可查看', () => {
     const html = renderToStaticMarkup(createElement(AppContext.Provider, {value: {
       ui: (key, params) => translateUi('zh-CN', key, params),
