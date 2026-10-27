@@ -117,10 +117,10 @@ class RotationIntegrationTests(unittest.TestCase):
             mark_full_scan(self.config)
         self.manager.run.side_effect = full_scan
         self.manager.rotate_slot.side_effect = self.rotate
-        self.manager.prepare_rotation.side_effect = lambda fleet: self.snapshots()
+        self.manager.prepare_rotation.side_effect = lambda fleet, **kwargs: self.snapshots()
         self.factory = self.stack.enter_context(patch('module.campaign.fleet_rotation.FleetManagement', return_value=self.manager))
         reader = self.stack.enter_context(patch('module.campaign.fleet_training.FleetTrainingReader'))
-        reader.return_value.inventory.side_effect = lambda fleets: self.full_scan(fleets=fleets)
+        reader.return_value.inventory.side_effect = lambda fleets, **kwargs: self.full_scan(fleets=fleets)
         self.inventory_reader = reader.return_value
 
     def full_scan(self, **kwargs):
@@ -153,6 +153,9 @@ class RotationIntegrationTests(unittest.TestCase):
                                     'Main.Emotion.Fleet1Control': 'keep_exp_bonus',
                                     'Main.Emotion.Fleet1Recover': 'dormitory_floor_1'})
         self.live[1] = {1: fixed, 2: 150, 3: 150, 4: training, 5: 150, 6: 150}
+        context = self.runner.__dict__.get('_fleet_rotation_context', {})
+        if 'training_checked_at' in context:
+            context['training_checked_at'] -= timedelta(hours=6, seconds=1)
         preflight_rotation(self.runner, 5, 'normal')
         return self.campaign.emotion
 
@@ -175,7 +178,7 @@ class RotationIntegrationTests(unittest.TestCase):
         self.assertEqual(148, emotion.training_lower(1))
         self.assertFalse(preflight_rotation(self.runner, 5, 'normal'))
         self.manager.prepare_rotation.assert_not_called()
-        self.manager.run.assert_called_once()
+        self.manager.run.assert_not_called()
 
     def test_switch_off_waits_for_fixed_70_instead_of_swapping_training_150(self):
         emotion = self.morale_policy(selected_only=False)
@@ -332,12 +335,12 @@ class RotationIntegrationTests(unittest.TestCase):
         handler.handle_popup_cancel.assert_not_called()
         self.manager.rotate_slot.assert_not_called()
 
-    def test_disabling_selected_only_restores_original_task_check_and_mode_change_rescans(self):
+    def test_disabling_selected_only_restores_original_task_wait_without_an_early_scan(self):
         self.morale_policy()
         self.config.cross_set(ROTATION_PATH + '.SelectedOnly', False)
-        preflight_rotation(self.runner, 5, 'normal')
-        self.manager.run.assert_called_once()
-        self.inventory_reader.inventory.assert_called_once_with({1})
+        self.assertFalse(preflight_rotation(self.runner, 5, 'normal'))
+        self.manager.run.assert_not_called()
+        self.inventory_reader.inventory.assert_called_once_with({1}, slots={1: RULE['slots']})
         self.manager.rotate_slot.assert_not_called()
         with self.assertRaises(ScriptEnd):
             self.campaign.emotion.check_reduce(5)
@@ -355,7 +358,7 @@ class RotationIntegrationTests(unittest.TestCase):
     def test_equipment_order_is_scan_clear_all_swap_all_equip_then_home(self):
         self.config.cross_set(EQUIPMENT_PATH + '.Enabled', True)
         events = []
-        self.manager.prepare_rotation.side_effect = lambda fleet: events.append('scan') or self.snapshots()
+        self.manager.prepare_rotation.side_effect = lambda fleet, **kwargs: events.append('scan') or self.snapshots()
         self.manager.rotate_slot.side_effect = lambda source, slot, fleet: events.append(('swap', slot)) or self.rotate(source, slot, fleet)
         self.manager._commit_formation.side_effect = lambda: events.append('home')
         equipment = Mock()
@@ -431,7 +434,7 @@ class RotationIntegrationTests(unittest.TestCase):
         self.assertEqual([call.args for call in self.manager.rotate_slot.call_args_list],
                          [(4, 4, 1), (4, 5, 1), (4, 6, 1)])
         self.manager.highest_morale_slot.assert_not_called()
-        self.manager.prepare_rotation.assert_called_once_with(1)
+        self.manager.prepare_rotation.assert_called_once_with(1, slots=RULE['slots'], scan=False)
         self.manager.read_fleet_morale.assert_not_called()
         self.manager.swap_slots.assert_not_called()
         self.assertEqual(self.state()['1']['last_source'], 4)
@@ -454,6 +457,9 @@ class RotationIntegrationTests(unittest.TestCase):
                 self.live[4][4] = 150
             self.config.set_record(Emotion_Fleet1Value=2)
             self.manager.rotate_slot.reset_mock()
+            context = self.runner.__dict__.get('_fleet_rotation_context', {})
+            if 'training_checked_at' in context:
+                context['training_checked_at'] -= timedelta(hours=6, seconds=1)
             preflight_rotation(self.runner, 5, 'normal')
             order.append(self.manager.rotate_slot.call_args_list[0].args[0])
             self.assertEqual(self.manager.rotate_slot.call_count, 3)
@@ -476,7 +482,8 @@ class RotationIntegrationTests(unittest.TestCase):
         self.assertEqual(self.manager.rotate_slot.call_args_list[0].args[0], 5)
         self.assertEqual(self.state()['1']['last_source'], 5)
         self.manager.run.assert_called_once()
-        self.inventory_reader.inventory.assert_called_once_with({1})
+        self.assertEqual(2, self.inventory_reader.inventory.call_count)
+        self.inventory_reader.inventory.assert_called_with({1}, slots={1: RULE['slots']})
 
     def test_one_round_still_low_waits_in_original_emotion_check_instead_of_swapping_again(self):
         def rotate(source, slot, fleet):
@@ -524,9 +531,9 @@ class RotationIntegrationTests(unittest.TestCase):
         self.manager.rotate_slot.assert_not_called()
         self.manager.read_fleet_morale.assert_not_called()
         self.assertEqual(self.state(), {})
-        self.manager.run.assert_called_once_with(update_emotion=True)
+        self.manager.run.assert_not_called()
         self.assertFalse(preflight_rotation(self.runner, 5, 'normal'))
-        self.manager.run.assert_called_once()
+        self.manager.run.assert_not_called()
 
     def test_low_ledger_with_actual_150_calibrates_without_swapping(self):
         self.live[1][4] = 150
@@ -535,16 +542,20 @@ class RotationIntegrationTests(unittest.TestCase):
         self.assertEqual(self.service.read_json(self.path)['Main']['Emotion']['Fleet1Value'], 150)
         self.campaign.emotion.check_reduce(5)
 
-    def test_continuous_task_low_ledger_is_rechecked_against_actual_game_morale(self):
+    def test_continuous_task_low_ledger_does_not_bypass_the_reading_interval(self):
         self.live[1][4] = 150
         preflight_rotation(self.runner, 5, 'normal')
         self.config.set_record(Emotion_Fleet1Value=2)
         self.manager.prepare_rotation.reset_mock()
-        self.assertTrue(preflight_rotation(self.runner, 5, 'normal'))
+        self.assertFalse(preflight_rotation(self.runner, 5, 'normal'))
         self.manager.prepare_rotation.assert_not_called()
-        self.inventory_reader.inventory.assert_called_once_with({1})
+        self.inventory_reader.inventory.assert_called_once_with({1}, slots={1: RULE['slots']})
         self.manager.rotate_slot.assert_not_called()
-        self.manager.run.assert_called_once()
+        self.manager.run.assert_not_called()
+        with self.assertRaises(ScriptEnd):
+            self.campaign.emotion.check_reduce(5)
+        self.runner._fleet_rotation_context['training_checked_at'] -= timedelta(hours=6, seconds=1)
+        self.assertTrue(preflight_rotation(self.runner, 5, 'normal'))
         self.assertEqual(self.service.read_json(self.path)['Main']['Emotion']['Fleet1Value'], 150)
 
     def test_dispatching_other_task_preserves_the_main_scan_clock(self):
@@ -561,10 +572,10 @@ class RotationIntegrationTests(unittest.TestCase):
               patch('module.campaign.run.CampaignRun', return_value=self.runner)):
             self.assertTrue(script._run('main', skip_first_screenshot=True))
             self.assertTrue(script._run('main', skip_first_screenshot=True))
-            self.manager.run.assert_called_once()
+            self.manager.run.assert_not_called()
             self.assertTrue(script._run('commission', skip_first_screenshot=True))
             self.assertTrue(script._run('main', skip_first_screenshot=True))
-        self.assertEqual(self.manager.run.call_count, 1)
+        self.assertEqual(self.manager.run.call_count, 0)
         self.assertIs(self.runner._fleet_rotation_context, script._fleet_rotation_context)
         self.manager.rotate_slot.assert_not_called()
 
@@ -597,7 +608,7 @@ class RotationIntegrationTests(unittest.TestCase):
         self.assertTrue(preflight_rotation(self.runner, 5, 'normal'))
         self.manager.rotate_slot.assert_not_called()
         self.campaign.emotion.map_is_2x_book = True
-        self.assertTrue(preflight_rotation(self.runner, 5, 'normal'))
+        self.assertFalse(preflight_rotation(self.runner, 5, 'normal'))
         self.assertTrue(self.campaign.emotion.map_is_2x_book)
 
     def test_zero_battle_role_does_not_rotate_even_if_its_morale_is_low(self):
@@ -618,7 +629,8 @@ class RotationIntegrationTests(unittest.TestCase):
         preflight_rotation(self.runner, 5, 'normal')
         self.manager.rotate_slot.assert_called_once()
         self.assertEqual(self.manager.run.call_count, 1)
-        self.inventory_reader.inventory.assert_called_once_with({1})
+        self.assertEqual(2, self.inventory_reader.inventory.call_count)
+        self.inventory_reader.inventory.assert_called_with({1}, slots={1: RULE['slots']})
         self.assertEqual(self.state(), {})
 
     def test_recovery_only_swaps_still_low_slots_and_does_not_repeat_the_completed_one(self):
@@ -644,7 +656,7 @@ class RotationIntegrationTests(unittest.TestCase):
             ROTATION_PATH + '.Rules': json.dumps({'6': {'slots': [1, 4], 'sources': [1, 3, 4, 5]}})})
         self.campaign.emotion = Emotion(self.config)
         preflight_rotation(self.runner, 5, 'normal')
-        self.manager.prepare_rotation.assert_called_once_with(6)
+        self.manager.prepare_rotation.assert_called_once_with(6, slots=[1, 4], scan=False)
         self.assertEqual([call.args for call in self.manager.rotate_slot.call_args_list], [(1, 1, 6), (1, 4, 6)])
         self.manager.read_fleet_morale.assert_not_called()
         self.manager.swap_slots.assert_not_called()
@@ -655,7 +667,7 @@ class RotationIntegrationTests(unittest.TestCase):
         progress['pending'] = {'slot': 3, 'source_slot': 1}
         self.config.cross_set_many({ROTATION_PATH + '.State': {'1': progress}, 'Main.Fleet.Fleet1': 3})
         preflight_rotation(self.runner, 5, 'normal')
-        self.manager.run.assert_called_once()
+        self.manager.run.assert_not_called()
         self.manager.rotate_slot.assert_not_called()
         self.assertEqual(self.config.Emotion_Fleet1Value, 138)
         self.assertEqual(self.state(), {})
