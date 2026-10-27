@@ -17781,6 +17781,10 @@
         "type": "input",
         "value": 660
       },
+      "CropTargets": {
+        "type": "textarea",
+        "value": ""
+      },
       "PlantPotatoes": {
         "type": "select",
         "value": 4,
@@ -17811,6 +17815,10 @@
       "MinOrchard": {
         "type": "input",
         "value": 300
+      },
+      "CropTargets": {
+        "type": "textarea",
+        "value": ""
       },
       "IgnoreAvocado": {
         "type": "checkbox",
@@ -17848,6 +17856,10 @@
       "MinNursery": {
         "type": "input",
         "value": 0
+      },
+      "CropTargets": {
+        "type": "textarea",
+        "value": ""
       },
       "IgnorePineapple": {
         "type": "checkbox",

@@ -905,12 +905,14 @@ class GeneratedConfig:
     IslandFarm_Positions = 3  # 1, 2, 3, 4
     IslandFarm_WorkerFilter = 'WorkerJuu'
     IslandFarm_MinFarm = 660
+    IslandFarm_CropTargets = None
     IslandFarm_PlantPotatoes = 4  # 0, 1, 2, 3, 4
 
     # 配置组 `IslandOrchard`
     IslandOrchard_Positions = 4  # 1, 2, 3, 4
     IslandOrchard_WorkerFilter = 'WorkerJuu'
     IslandOrchard_MinOrchard = 300
+    IslandOrchard_CropTargets = None
     IslandOrchard_IgnoreAvocado = True
     IslandOrchard_PlantRubber = 0  # 0, 1, 2, 3, 4
     IslandOrchard_AmagiChanRubber = False
@@ -919,6 +921,7 @@ class GeneratedConfig:
     IslandNursery_Positions = 2  # 1, 2
     IslandNursery_WorkerFilter = 'WorkerJuu'
     IslandNursery_MinNursery = 0
+    IslandNursery_CropTargets = None
     IslandNursery_IgnorePineapple = True
     IslandNursery_PlantLavender = 2  # 0, 1, 2
 

@@ -1831,6 +1831,9 @@ IslandFarm:
   WorkerFilter: |-
     WorkerJuu
   MinFarm: 660
+  CropTargets:
+    type: textarea
+    value: ''
   PlantPotatoes:
     value: 4
     option: [ 0, 1, 2, 3, 4 ]
@@ -1841,6 +1844,9 @@ IslandOrchard:
   WorkerFilter: |-
     WorkerJuu
   MinOrchard: 300
+  CropTargets:
+    type: textarea
+    value: ''
   IgnoreAvocado: true
   PlantRubber:
     value: 0
@@ -1853,6 +1859,9 @@ IslandNursery:
   WorkerFilter: |-
     WorkerJuu
   MinNursery: 0
+  CropTargets:
+    type: textarea
+    value: ''
   IgnorePineapple: true
   PlantLavender:
     value: 2

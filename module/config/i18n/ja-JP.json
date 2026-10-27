@@ -4546,6 +4546,10 @@
       "name": "作物在庫閾値",
       "help": "660以上を推奨"
     },
+    "CropTargets": {
+      "name": "作物ごとの補充目標",
+      "help": "1行に「作物: 目標在庫」を1つ記入します。例：\ncorn: 200\nwheat: 80\n記入した作物は在庫が自分の目標を下回ると植え直し、記入していない作物は「作物在庫閾値」を使います。目標を 0 にするとその作物は植えません。空欄なら全作物が「作物在庫閾値」を使います。不足率が最も大きい作物から植えます。\n使用できる作物：wheat, corn, rice, chinese_cabbage, potato, soybean, pasture, coffee_bean\n島生産プランナーを実行すると自動で書き換えられます。"
+    },
     "PlantPotatoes": {
       "name": "小麦を植える",
       "help": "",
@@ -4576,6 +4580,10 @@
     "MinOrchard": {
       "name": "果物在庫閾値",
       "help": ""
+    },
+    "CropTargets": {
+      "name": "作物ごとの補充目標",
+      "help": "1行に「作物: 目標在庫」を1つ記入します。例：\napple: 150\nrubber: 0\n記入した作物は在庫が自分の目標を下回ると植え直し、記入していない作物は「果物在庫閾値」を使います。目標を 0 にするとその作物は植えません。空欄なら全作物が「果物在庫閾値」を使います。不足率が最も大きい作物から植えます。\n使用できる作物：apple, citrus, banana, mango, lemon, avocado, rubber, pear, persimmon\n島生産プランナーを実行すると自動で書き換えられます。"
     },
     "IgnoreAvocado": {
       "name": "アボカドを無視",
@@ -4613,6 +4621,10 @@
     "MinNursery": {
       "name": "苗床作物在庫閾値",
       "help": ""
+    },
+    "CropTargets": {
+      "name": "作物ごとの補充目標",
+      "help": "1行に「作物: 目標在庫」を1つ記入します。例：\nstrawberry: 120\ntea: 60\n記入した作物は在庫が自分の目標を下回ると植え直し、記入していない作物は「苗床作物在庫閾値」を使います。目標を 0 にするとその作物は植えません。空欄なら全作物が「苗床作物在庫閾値」を使います。不足率が最も大きい作物から植えます。\n使用できる作物：carrot, onion, flax, strawberry, cotton, tea, lavender, pineapple, asparagus\n島生産プランナーを実行すると自動で書き換えられます。"
     },
     "IgnorePineapple": {
       "name": "パイナップルを無視",
