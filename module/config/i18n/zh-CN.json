@@ -1343,14 +1343,18 @@
       "zip": "zip"
     },
     "AzurStatsID": {
-      "name": "AzurStat ID",
-      "help": "上传至 https://azur-stats.lyoko.io 时，声明的客户端 ID\n由随机字符组成，可随意修改"
+      "name": "提交人标识",
+      "help": "向 AzurPilot 云端声明的匿名提交人标识，可留空。"
+    },
+    "CloudUpload": {
+      "name": "云端统计上报",
+      "help": "开启后，“上传 / 保存并上传”会将科研和掉落截图上传至 api.azurpilot.com，同时保留本地统计。关闭后仅在本地处理；上传失败暂存重试，最多512 MiB、7天。"
     },
     "API": {
-      "name": "上传线路",
-      "help": "如果国内用户无法连接到 AzurStat，可以使用\"国内反向代理\"",
-      "default": "默认 (Cloudflare)",
-      "cn_gz_reverse_proxy": "国内反向代理 (广州)"
+      "name": "统一云端接口",
+      "help": "统一使用 https://api.azurpilot.com；旧线路选项仅兼容历史配置。",
+      "default": "api.azurpilot.com",
+      "cn_gz_reverse_proxy": "api.azurpilot.com"
     },
     "ResearchRecord": {
       "name": "科研截图",
@@ -1378,7 +1382,9 @@
       "name": "战斗掉落截图",
       "help": "启用后会放缓结算时的点击速度\n在自律寻敌下不生效",
       "do_not": "无操作",
-      "save": "保存"
+      "save": "保存",
+      "upload": "上传",
+      "save_and_upload": "保存并上传"
     },
     "OpsiHazard1Leveling": {
       "name": "侵蚀一掉落截图",

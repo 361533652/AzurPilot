@@ -249,6 +249,12 @@ class GitManager(DeployConfig):
         except ValueError:
             data = text
 
+        if isinstance(data, dict):
+            if data.get('schema_version') != 2 or not isinstance(data.get('force_update'), bool):
+                logger.warning('Invalid cloud update policy document')
+                return None
+            data = data['force_update']
+
         if data is True or (isinstance(data, str) and data.lower() in ('true', 'ture')):
             logger.info('Cloud force update control is enabled')
             return True

@@ -10,6 +10,7 @@ from json import JSONDecodeError
 import requests
 
 from deploy.api_endpoints import API_BASE_URL
+from module.base.device_id import get_device_id
 from module.base.timer import Timer
 from module.config.server import VALID_SERVER_LIST as server_list
 from module.config.server import ServerInfo, get_server_info
@@ -75,10 +76,9 @@ class ServerChecker:
             session = requests.Session()
             session.trust_env = False
             response = session.get(
-                url=(
-                    f'{self._base}/api/v1/servers/'
-                    f'{self._server_info.region}_{self._server_info.server_id}'
-                ),
+                url=f'{self._base}/api/v2/get/server',
+                params={'region': self._server_info.region, 'server_id': self._server_info.server_id},
+                headers={'X-AzurPilot-ID': get_device_id()},
                 timeout=(3, 3),
             )
             if response.status_code == 200:

@@ -1343,14 +1343,18 @@
       "zip": "zip"
     },
     "AzurStatsID": {
-      "name": "AzurStat ID",
-      "help": "The client ID declared when uploading to https://azur-stats.lyoko.io\nComposed of random characters and can be modified at will"
+      "name": "Contributor ID",
+      "help": "Optional anonymous contributor identifier for AzurPilot cloud statistics."
+    },
+    "CloudUpload": {
+      "name": "Cloud statistics upload",
+      "help": "Upload / Save and upload send research and drop screenshots to api.azurpilot.com while retaining local statistics. Turn off for local processing only. Failed uploads are retained for retry, up to 512 MiB and 7 days."
     },
     "API": {
-      "name": "Upload route",
-      "help": "If users in China cannot connect to AzurStat, they can use \"China Reverse Proxy\"",
-      "default": "Default (Cloudflare)",
-      "cn_gz_reverse_proxy": "China Reverse Proxy (Guangzhou)"
+      "name": "Unified cloud API",
+      "help": "Uses https://api.azurpilot.com. Old route options are retained only for configuration compatibility.",
+      "default": "api.azurpilot.com",
+      "cn_gz_reverse_proxy": "api.azurpilot.com"
     },
     "ResearchRecord": {
       "name": "Research screenshot",
@@ -1378,7 +1382,9 @@
       "name": "Combat drop screenshot",
       "help": "Enabling this will slow down click speed during settlement\nDoes not take effect in auto-search mode",
       "do_not": "No action",
-      "save": "Save"
+      "save": "Save",
+      "upload": "Upload",
+      "save_and_upload": "Save and upload"
     },
     "OpsiHazard1Leveling": {
       "name": "Corrosion 1 drop screenshot",

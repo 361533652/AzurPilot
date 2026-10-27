@@ -1343,14 +1343,18 @@
       "zip": "zip"
     },
     "AzurStatsID": {
-      "name": "AzurStat ID",
-      "help": "上傳至 https://azur-stats.lyoko.io 時，宣告的客戶端 ID\n由隨機字元組成，可隨意修改"
+      "name": "提交者識別",
+      "help": "向 AzurPilot 雲端宣告的匿名提交者識別，可留空。"
+    },
+    "CloudUpload": {
+      "name": "雲端統計上報",
+      "help": "開啟後，「上傳 / 儲存並上傳」會將科研與掉落截圖上傳至 api.azurpilot.com，同時保留本機統計。關閉後僅在本機處理；失敗暫存最多512 MiB、7天。"
     },
     "API": {
-      "name": "上傳線路",
-      "help": "如果國內使用者無法連線到 AzurStat，可以使用\"國內反向代理\"",
-      "default": "預設 (Cloudflare)",
-      "cn_gz_reverse_proxy": "國內反向代理 (廣州)"
+      "name": "統一雲端介面",
+      "help": "統一使用 https://api.azurpilot.com；舊線路選項僅相容歷史設定。",
+      "default": "api.azurpilot.com",
+      "cn_gz_reverse_proxy": "api.azurpilot.com"
     },
     "ResearchRecord": {
       "name": "科研截圖",
@@ -1378,7 +1382,9 @@
       "name": "戰鬥掉落截圖",
       "help": "啟用後會放緩結算時的點選速度\n在自律尋敵下不生效",
       "do_not": "無操作",
-      "save": "儲存"
+      "save": "儲存",
+      "upload": "上傳",
+      "save_and_upload": "儲存並上傳"
     },
     "OpsiHazard1Leveling": {
       "name": "侵蝕一掉落截圖",

@@ -762,6 +762,10 @@
         "type": "input",
         "value": null
       },
+      "CloudUpload": {
+        "type": "checkbox",
+        "value": true
+      },
       "API": {
         "type": "select",
         "value": "default",
@@ -803,7 +807,9 @@
         "value": "do_not",
         "option": [
           "do_not",
-          "save"
+          "save",
+          "upload",
+          "save_and_upload"
         ]
       },
       "OpsiHazard1Leveling": {

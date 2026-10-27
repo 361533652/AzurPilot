@@ -1343,14 +1343,18 @@
       "zip": "ZIP"
     },
     "AzurStatsID": {
-      "name": "AzurStat ID",
-      "help": "https://azur-stats.lyko.io にアップロードするときに宣言されたクライアント ID\nランダムな文字で構成され、自由に変更できます"
+      "name": "投稿者ID",
+      "help": "AzurPilotクラウド統計用の匿名投稿者IDです。空欄でも利用できます。"
+    },
+    "CloudUpload": {
+      "name": "クラウド統計の送信",
+      "help": "有効時はアップロード設定に従って研究・ドロップ画像を api.azurpilot.com に送信し、ローカル統計も維持します。無効時はローカル処理のみです。失敗時の一時保存は最大512 MiB、7日間です。"
     },
     "API": {
-      "name": "アップロードライン",
-      "help": "国内ユーザーがAzurStatに接続できない場合は、「国内リバースプロキシ」を使用できます。",
-      "default": "デフォルト (Cloudflare)",
-      "cn_gz_reverse_proxy": "国内リバースプロキシ（広州）"
+      "name": "統一クラウドAPI",
+      "help": "https://api.azurpilot.com を使用します。旧接続先オプションは設定互換のために保持しています。",
+      "default": "api.azurpilot.com",
+      "cn_gz_reverse_proxy": "api.azurpilot.com"
     },
     "ResearchRecord": {
       "name": "科研スクリーンショット",
@@ -1378,7 +1382,9 @@
       "name": "戦闘ドロップスクリーンショット",
       "help": "有効にすると結算時のクリック速度が遅くなります\n自律索敵では効果がありません",
       "do_not": "アクションなし",
-      "save": "保存"
+      "save": "保存",
+      "upload": "アップロード",
+      "save_and_upload": "保存してアップロードする"
     },
     "OpsiHazard1Leveling": {
       "name": "侵蝕1ドロップスクリーンショット",

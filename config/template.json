@@ -142,6 +142,7 @@
       "BackUpMethod": "zip",
       "ZipMethod": "zip",
       "AzurStatsID": null,
+      "CloudUpload": true,
       "API": "default",
       "ResearchRecord": "do_not",
       "CommissionRecord": "do_not",
