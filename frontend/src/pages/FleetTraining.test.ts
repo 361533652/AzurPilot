@@ -111,7 +111,8 @@ describe('换船调度记录分组', () => {
 describe('统一换船调度入口', () => {
   it('舰队管理只提供一个调度入口，旧名称仍能解析为统一页面名', () => {
     const items = taskNavItems('FleetManagement', ['FleetInfo'])
-    expect(items.filter(item => [FLEET_TRAINING, FLEET_LEVEL_TRAINING, FLEET_AFFINITY_TRAINING].includes(item))).toEqual([FLEET_TRAINING])
+    expect(items).toContain('FleetSwitch')
+    expect(items.filter(item => [FLEET_TRAINING, FLEET_LEVEL_TRAINING, FLEET_AFFINITY_TRAINING].includes(item))).toEqual([])
     expect(taskNavItems('Tool', [])).not.toContain(FLEET_TRAINING)
     for (const task of [FLEET_TRAINING, FLEET_LEVEL_TRAINING, FLEET_AFFINITY_TRAINING])
       expect(taskLabel(task, key => translateUi('zh-CN', key), () => '不应使用任务名')).toBe('换船调度')
