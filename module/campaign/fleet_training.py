@@ -12,7 +12,7 @@ from module.retire.fleet_training import FleetTrainingReader
 from module.runtime.fleet_equipment import EQUIPMENT_PATH
 from module.runtime.fleet_rotation import (ROTATION_PATH, active_fleets, calibration_changes, parse_rules,
                                            rank_sources, recorded_morale, supported)
-from module.runtime.fleet_training import (TRAINING_PATH, completed, due, excluded, full_scan_due, goals, identity,
+from module.runtime.fleet_training import (TRAINING_PATH, completed, due, excluded, goals, identity,
                                            interval, mark_checked, observe, restore_context, ships, state)
 
 
@@ -28,6 +28,7 @@ class TrainingSession:
         self.equipment_used = False
         self.replaced_fleets = set()
         self.sources_refreshed = False
+        self.checking_targets = False
 
     @property
     def result(self):
@@ -43,7 +44,8 @@ class TrainingSession:
     def delay(self, message):
         logger.warning(message)
         self.save()
-        mark_checked(self.config, self.context, self.targets)
+        if self.checking_targets:
+            mark_checked(self.config, self.context, self.targets)
         try:
             target = now() + timedelta(hours=max(1 / 60, interval(self.config)))
         except OverflowError:
@@ -52,7 +54,7 @@ class TrainingSession:
         self.config.task_delay(target=target)
         raise ScriptEnd(message)
 
-    def inspect(self, fleet, slots):
+    def inspect(self, fleet, slots, *, defer_completion=False):
         self.saved['reading'] = dict(fleet=fleet, slots=list(slots))
         self.save()
         readings = self.reader.read(fleet, slots, self.targets)
@@ -81,7 +83,11 @@ class TrainingSession:
                     self.delay(f'第{fleet}舰队{slot}位{name}存在同名舰船；已读到达标数据，但身份不唯一，不记录完成或换船')
                 logger.info('同名舰船实读已按舰位保存，尚未全部达标，继续培养，不合并同名进度')
                 continue
+            was_completed = excluded(self.saved['records'].get(name, {}), self.targets)
             observe(self.saved, name, reading, self.targets, fleet=fleet, slot=slot, emotion=ship.get('emotion'))
+            if defer_completion and not was_completed:
+                self.saved['records'][name].pop('completed_for', None)
+                self.saved['records'][name].pop('completed_at', None)
             known[slot] = name
         self.save()
         return known
@@ -108,31 +114,42 @@ class TrainingSession:
         return snapshots
 
     def refresh_sources(self):
-        """已经确认需要换船后才检查全队间隔；同轮最多完整扫描一次。"""
+        """确认需要换船后完整扫描一轮，同轮复用结果，不受额外间隔限制。"""
         if self.sources_refreshed:
             return
         self.sources_refreshed = True
-        if full_scan_due(self.config):
-            logger.info('已确认需要换船，全舰队参考到期，扫描后再选择候补')
-            self.manager.finish_rotation()
-            self.manager.run(update_emotion=True)
-            self.inventory_fleets.update(range(1, 7))
-            snapshots = {fleet: recorded_morale(self.result, fleet) for fleet in range(1, 7)}
-            self.config.cross_set_many(calibration_changes(self.config.data, snapshots, now()))
-            self.runner.campaign.emotion.calibrate_selected(snapshots)
+        logger.info('已确认需要换船，完整扫描全舰队后再选择候补')
+        self.manager.finish_rotation()
+        self.manager.run(update_emotion=True)
+        self.inventory_fleets.update(range(1, 7))
+        snapshots = {fleet: recorded_morale(self.result, fleet) for fleet in range(1, 7)}
+        self.config.cross_set_many(calibration_changes(self.config.data, snapshots, now()))
+        self.runner.campaign.emotion.calibrate_selected(snapshots)
 
     def process(self, *, fresh=False, force=False):
         if not self.targets or not self.selected or (not force and not due(self.config, self.context) and not self.saved['pending']):
             return False
+        self.checking_targets = True
         self.recover()
         for role, fleet in self.selected.items():
             rule = self.rules[str(fleet)]
-            current = self.inspect(fleet, rule['slots'])
+            current = self.inspect(fleet, rule['slots'], defer_completion=True)
             ready = [slot for slot, name in current.items()
-                     if excluded(self.saved['records'][name], self.targets)]
+                     if completed(self.saved['records'][name], self.targets)
+                     or excluded(self.saved['records'][name], self.targets)]
             if not ready:
                 continue
             self.refresh_sources()
+            invalid = [slot for slot in ready
+                       if identity(ships(self.result, fleet).get(slot), self.result) != current[slot]]
+            if invalid:
+                self.delay('全舰队扫描后毕业舰船身份无法唯一确认，保留读数，不执行换船')
+            # 首次局部读取不足以排除其他舰队的同名船；完整扫描确认后才持久标记毕业。
+            for slot in ready:
+                record = self.saved['records'][current[slot]]
+                if not excluded(record, self.targets):
+                    record.update(completed_for=dict(self.targets), completed_at=now().isoformat(timespec='seconds'))
+            self.save()
             for source in rule['sources']:
                 if source not in self.inventory_fleets:
                     self.reader.inventory([source])
@@ -293,7 +310,7 @@ def training_only(runner, battle, mode):
 
 
 def after_battle_due(runner, mode):
-    from module.campaign.fleet_rotation import _required
+    from module.campaign.fleet_rotation import _required, morale_due
     config = runner.campaign.config
     if (not supported(config.task.command, mode, runner.folder, runner.stage)
             or config.Campaign_Mode != 'normal'
@@ -304,4 +321,6 @@ def after_battle_due(runner, mode):
                 if rules.get(str(actual), {}).get('slots') and rules[str(actual)].get('sources')
                 and _required(runner.campaign.emotion, role, runner.campaign._map_battle)[1] is not None}
     context = runner.__dict__.get('_fleet_rotation_context', {})
-    return bool(selected) and due(config, context)
+    mood = config.cross_get(ROTATION_PATH + '.Enabled', False) is True
+    return bool(selected) and (due(config, context)
+        or (mood and morale_due(runner.campaign.emotion, selected, runner.campaign._map_battle, context)))

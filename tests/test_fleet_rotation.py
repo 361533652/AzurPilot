@@ -457,15 +457,14 @@ class RotationIntegrationTests(unittest.TestCase):
                 self.live[4][4] = 150
             self.config.set_record(Emotion_Fleet1Value=2)
             self.manager.rotate_slot.reset_mock()
-            context = self.runner.__dict__.get('_fleet_rotation_context', {})
-            if 'training_checked_at' in context:
-                context['training_checked_at'] -= timedelta(hours=6, seconds=1)
+            if index:
+                self.campaign.emotion.calibrate_selected({1: self.live[1]})
             preflight_rotation(self.runner, 5, 'normal')
             order.append(self.manager.rotate_slot.call_args_list[0].args[0])
             self.assertEqual(self.manager.rotate_slot.call_count, 3)
         self.assertEqual(order, [4, 5, 6, 3, 4])
 
-    def test_new_event_task_checks_current_fleets_without_a_full_rescan(self):
+    def test_new_event_morale_swap_also_full_scans_before_ranking(self):
         preflight_rotation(self.runner, 5, 'normal')
         self.config.cross_set_many({'Event.Campaign.Mode': 'normal', 'Event.Campaign.Name': 'a1',
                                     'Event.Fleet.FleetOrder': 'fleet1_all_fleet2_standby'})
@@ -481,7 +480,7 @@ class RotationIntegrationTests(unittest.TestCase):
         preflight_rotation(self.runner, 5, 'normal')
         self.assertEqual(self.manager.rotate_slot.call_args_list[0].args[0], 5)
         self.assertEqual(self.state()['1']['last_source'], 5)
-        self.manager.run.assert_called_once()
+        self.assertEqual(2, self.manager.run.call_count)
         self.assertEqual(2, self.inventory_reader.inventory.call_count)
         self.inventory_reader.inventory.assert_called_with({1}, slots={1: RULE['slots']})
 
@@ -542,7 +541,7 @@ class RotationIntegrationTests(unittest.TestCase):
         self.assertEqual(self.service.read_json(self.path)['Main']['Emotion']['Fleet1Value'], 150)
         self.campaign.emotion.check_reduce(5)
 
-    def test_continuous_task_low_ledger_does_not_bypass_the_reading_interval(self):
+    def test_low_full_fleet_ledger_does_not_trigger_swapping_healthy_selected_slots(self):
         self.live[1][4] = 150
         preflight_rotation(self.runner, 5, 'normal')
         self.config.set_record(Emotion_Fleet1Value=2)
@@ -555,8 +554,8 @@ class RotationIntegrationTests(unittest.TestCase):
         with self.assertRaises(ScriptEnd):
             self.campaign.emotion.check_reduce(5)
         self.runner._fleet_rotation_context['training_checked_at'] -= timedelta(hours=6, seconds=1)
-        self.assertTrue(preflight_rotation(self.runner, 5, 'normal'))
-        self.assertEqual(self.service.read_json(self.path)['Main']['Emotion']['Fleet1Value'], 150)
+        self.assertFalse(preflight_rotation(self.runner, 5, 'normal'))
+        self.assertLess(self.service.read_json(self.path)['Main']['Emotion']['Fleet1Value'], 150)
 
     def test_dispatching_other_task_preserves_the_main_scan_clock(self):
         from alas import AzurLaneAutoScript
@@ -608,7 +607,7 @@ class RotationIntegrationTests(unittest.TestCase):
         self.assertTrue(preflight_rotation(self.runner, 5, 'normal'))
         self.manager.rotate_slot.assert_not_called()
         self.campaign.emotion.map_is_2x_book = True
-        self.assertFalse(preflight_rotation(self.runner, 5, 'normal'))
+        self.assertTrue(preflight_rotation(self.runner, 5, 'normal'))
         self.assertTrue(self.campaign.emotion.map_is_2x_book)
 
     def test_zero_battle_role_does_not_rotate_even_if_its_morale_is_low(self):
@@ -648,6 +647,15 @@ class RotationIntegrationTests(unittest.TestCase):
         preflight_rotation(self.runner, 5, 'normal')
         self.manager.rotate_slot.assert_called_once_with(5, 5, 1)
         self.assertNotIn('rescan', self.state()['1'])
+
+    def test_morale_recovery_includes_slots_exactly_at_the_reserve(self):
+        self.config.cross_set_many({ROTATION_PATH + '.SelectedOnly': True,
+                                   ROTATION_PATH + '.State': {'1': {'rescan': True}},
+                                   'Main.Emotion.Fleet1Control': 'keep_exp_bonus'})
+        self.live[1][4] = 130
+        self.assertTrue(preflight_rotation(self.runner, 5, 'normal'))
+        self.manager.run.assert_called_once_with(update_emotion=True)
+        self.manager.rotate_slot.assert_called_once_with(4, 4, 1)
 
     def test_fleet_six_with_morale_twelve_uses_one_snapshot_and_swaps_slots_one_then_four(self):
         self.live[1] = dict.fromkeys(range(1, 7), 150)
