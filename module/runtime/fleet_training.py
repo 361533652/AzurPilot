@@ -15,7 +15,6 @@ LEVEL_PATH = 'FleetInfo.FleetLevelTraining'
 AFFINITY_PATH = 'FleetInfo.FleetAffinityTraining'
 TRAINING_PATH = 'FleetInfo.FleetTraining.State'
 INTERVAL_PATH = 'FleetInfo.FleetTraining.CheckIntervalHours'
-FULL_INTERVAL_PATH = 'FleetInfo.FleetTraining.FullScanIntervalDays'
 FULL_RECORD_PATH = 'FleetInfo.FleetTraining.FullScanRecord'
 
 
@@ -26,11 +25,6 @@ def _date(value):
         return datetime.fromisoformat(value)
     except (ValueError, TypeError):
         return None
-
-
-def full_scan_due(config):
-    checked = _date(config.cross_get(FULL_RECORD_PATH, None))
-    return checked is None or (now() - checked).total_seconds() / 86400 >= config.cross_get(FULL_INTERVAL_PATH, 3)
 
 
 def mark_full_scan(config):
@@ -122,8 +116,7 @@ def interval(config):
 
 def due(config, context):
     signature = goals(config)
-    mood = config.cross_get(ROTATION_PATH + '.Enabled', False) is True
-    if not signature and not mood:
+    if not signature:
         return False
     restore_context(config, context)
     checked = context.get('training_checked_at')
