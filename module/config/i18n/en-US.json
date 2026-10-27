@@ -6992,21 +6992,21 @@
     },
     "FieldsEfficiency": {
       "name": "Farmland efficiency bonus",
-      "help": "Farmland output bonus; pick the value shown in game.",
+      "help": "Faircrop Fields output bonus from the island Character Collection rewards; pick the value you have claimed (0, 4% or 12%). If unsure, pick 0: the plan slightly underestimates output and just plants a little more.",
       "0": "0",
       "0.04": "0.04",
       "0.12": "0.12"
     },
     "OrchardEfficiency": {
       "name": "Orchard efficiency bonus",
-      "help": "Orchard output bonus; pick the value shown in game.",
+      "help": "Sweetscent Orchard output bonus from the island Character Collection rewards; pick the value you have claimed (0, 4% or 12%). If unsure, pick 0: the plan slightly underestimates output and just plants a little more.",
       "0": "0",
       "0.04": "0.04",
       "0.12": "0.12"
     },
     "NurseryEfficiency": {
       "name": "Nursery efficiency bonus",
-      "help": "Nursery output bonus; pick the value shown in game.",
+      "help": "Newsprout Nursery output bonus from the island Character Collection rewards; pick the value you have claimed (0, 4% or 12%). If unsure, pick 0: the plan slightly underestimates output and just plants a little more.",
       "0": "0",
       "0.04": "0.04",
       "0.12": "0.12"
