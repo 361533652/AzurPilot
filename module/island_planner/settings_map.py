@@ -103,15 +103,12 @@ def recipe_product(recipe_id):
 def waitress_slots(restaurant_id, chars):
     """把商区 Char1/Char2 换算成 ALAS 的服务员槽位。
 
-    None 表示空位；对本店有加成的角色保留名字，其他角色视为 any（只占位、无加成）。
-    同一加成角色重复填写时第二个视为 any，避免 ALAS 判为非法配置。
+    AzurPilot 中 None 表示由工作啾代班，店照常营业，因此与其他无加成角色一样视为 any；
+    对本店有加成的角色保留名字。同一加成角色重复填写时第二个视为 any，避免 ALAS 判为非法配置。
     """
     options = get_restaurant_config(restaurant_id)['waitress_options']
     slots = []
     for char in chars:
-        if char in (None, '', 'None'):
-            slots.append(WAITRESS_NONE)
-            continue
         name = WAITRESS_ALIASES.get(char)
         if name in options and name not in slots:
             slots.append(name)
@@ -120,11 +117,20 @@ def waitress_slots(restaurant_id, chars):
     return tuple(slots)
 
 
-def restaurant_settings(grades, chars):
+def open_restaurants(batch_enabled, batch1, batch2):
+    """商区会营业的餐厅编号。分批经营开启时只有列在某一批里的店营业。"""
+    if not batch_enabled:
+        return set(KITCHENS)
+    indexes = {int(index) for index in list(batch1 or []) + list(batch2 or [])}
+    return {rid for rid, kitchen in KITCHENS.items() if int(kitchen['business'][-1]) in indexes}
+
+
+def restaurant_settings(grades, chars, open_ids=None):
     """
     Args:
         grades (dict): {餐厅编号: 'bronze'|'silver'|'gold'|'diamond'}。
         chars (dict): {餐厅编号: (Char1, Char2)}，来自 IslandBusinessShopN。
+        open_ids (set): 营业的餐厅编号，None 为全部营业。不营业的店不参与出售。
 
     Returns:
         dict: calculator 的 restaurant_settings 参数。
@@ -134,10 +140,11 @@ def restaurant_settings(grades, chars):
         grade = grades.get(restaurant_id) or 'bronze'
         if grade not in GRADES:
             raise ValueError(f'Invalid restaurant grade: {grade}')
-        settings[restaurant_id] = {
-            'grade': grade,
-            'waitress_slots': waitress_slots(restaurant_id, chars.get(restaurant_id, (None, None))),
-        }
+        if open_ids is not None and restaurant_id not in open_ids:
+            slots = (WAITRESS_NONE, WAITRESS_NONE)
+        else:
+            slots = waitress_slots(restaurant_id, chars.get(restaurant_id, (None, None)))
+        settings[restaurant_id] = {'grade': grade, 'waitress_slots': slots}
     return settings
 
 

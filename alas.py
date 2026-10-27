@@ -2022,6 +2022,10 @@ class AzurLaneAutoScript:
         from module.meowfficer.score_task import run_meowfficer_score
         run_meowfficer_score(config=self.config, device=self.device)
 
+    def island_production_planner(self):
+        from module.island_planner.planner import IslandProductionPlanner
+        IslandProductionPlanner(config=self.config, device=self.device, task="IslandProductionPlanner").run()
+
     def fleet_scan(self):
         from module.retire.fleet_management import FleetManagement
         FleetManagement(config=self.config, device=self.device, task="FleetScan").run()

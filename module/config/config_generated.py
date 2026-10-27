@@ -1231,6 +1231,20 @@ class GeneratedConfig:
     BoxDisassemble_UseWhiteBox = True
     BoxDisassemble_WhiteBoxLimit = 2000
 
+    # 配置组 `IslandProductionPlanner`
+    IslandProductionPlanner_ApplySettings = False  # True, False
+    IslandProductionPlanner_RescanTechnology = True  # True, False
+    IslandProductionPlanner_DailyProfitLowerLimit = 50000
+    IslandProductionPlanner_DailyBufferSafetyMargin = 0
+    IslandProductionPlanner_FieldsEfficiency = 0  # 0, 0.04, 0.12
+    IslandProductionPlanner_OrchardEfficiency = 0  # 0, 0.04, 0.12
+    IslandProductionPlanner_NurseryEfficiency = 0  # 0, 0.04, 0.12
+    IslandProductionPlanner_RestaurantGrade = 'bronze'  # bronze, silver, gold, diamond
+    IslandProductionPlanner_TeahouseGrade = 'bronze'  # bronze, silver, gold, diamond
+    IslandProductionPlanner_JuuEateryGrade = 'bronze'  # bronze, silver, gold, diamond
+    IslandProductionPlanner_GrillGrade = 'bronze'  # bronze, silver, gold, diamond
+    IslandProductionPlanner_JuuCoffeeGrade = 'bronze'  # bronze, silver, gold, diamond
+
     # 配置组 `AutoEquip`
     AutoEquip_ShipLimit = 0
     AutoEquip_EnableSlot1 = True  # True, False

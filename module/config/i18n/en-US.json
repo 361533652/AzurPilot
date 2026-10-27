@@ -445,6 +445,10 @@
     "MeowfficerScore": {
       "name": "Meowfficer Score",
       "help": "Read meowfficer talents and score them with public guide rules"
+    },
+    "IslandProductionPlanner": {
+      "name": "Island Production Planner",
+      "help": "Island Production Planner ported from ALAS: scans island technology and uses linear programming to work out a daily production and sales plan (most season PT while keeping daily island coin income at or above a minimum). It writes the plan into each shop's kitchen list, business products, idle cooking and farm crop targets. The island tasks still do the actual work."
     }
   },
   "Scheduler": {
@@ -6945,6 +6949,93 @@
     "WhiteBoxLimit": {
       "name": "Keep X number of white equipment boxes of each type",
       "help": ""
+    }
+  },
+  "IslandProductionPlanner": {
+    "_info": {
+      "name": "Island Production Planner",
+      "help": "First use: set each shop grade below; waitresses are set in \"Business Module\". Run once with \"Write settings\" off and read the plan in the log, then turn it on and run again. Re-run after unlocking technology or posts, changing a shop grade or waitress, or when the season changes."
+    },
+    "ApplySettings": {
+      "name": "Write settings",
+      "help": "Off: only preview the plan in the log. On: overwrite each shop's Meal/MealNumber, AwayCook, business products and the farm \"Per-crop restock targets\".",
+      "True": "Enabled",
+      "False": "Disabled"
+    },
+    "RescanTechnology": {
+      "name": "Rescan technology",
+      "help": "Turn on after unlocking new technology or posts. The run opens the island Technology page to scan it and turns this off afterwards. It also scans when no technology status is saved yet.",
+      "True": "Enabled",
+      "False": "Disabled"
+    },
+    "DailyProfitLowerLimit": {
+      "name": "Minimum daily island coin income",
+      "help": "The plan keeps the daily net change in island coins at or above this. Can be negative (spend coins for PT) or 0 (break even). Lower it if no plan is found."
+    },
+    "DailyBufferSafetyMargin": {
+      "name": "Daily buffer safety margin",
+      "help": "Scales daily usage targets up, e.g. 0.1 keeps 10% extra."
+    },
+    "FieldsEfficiency": {
+      "name": "Farmland efficiency bonus",
+      "help": "Farmland output bonus; pick the value shown in game.",
+      "0": "0",
+      "0.04": "0.04",
+      "0.12": "0.12"
+    },
+    "OrchardEfficiency": {
+      "name": "Orchard efficiency bonus",
+      "help": "Orchard output bonus; pick the value shown in game.",
+      "0": "0",
+      "0.04": "0.04",
+      "0.12": "0.12"
+    },
+    "NurseryEfficiency": {
+      "name": "Nursery efficiency bonus",
+      "help": "Nursery output bonus; pick the value shown in game.",
+      "0": "0",
+      "0.04": "0.04",
+      "0.12": "0.12"
+    },
+    "RestaurantGrade": {
+      "name": "Fish Restaurant grade",
+      "help": "The shop's grade in game. It sets the number of shelves (bronze/silver 2, gold 3, diamond 4) and shelf capacity (bronze 5, others 6).",
+      "bronze": "Bronze",
+      "silver": "Silver",
+      "gold": "Gold",
+      "diamond": "Diamond"
+    },
+    "TeahouseGrade": {
+      "name": "Polar Bear Drinks grade",
+      "help": "The shop's grade in game. It sets the number of shelves (bronze/silver 2, gold 3, diamond 4) and shelf capacity (bronze 5, others 6).",
+      "bronze": "Bronze",
+      "silver": "Silver",
+      "gold": "Gold",
+      "diamond": "Diamond"
+    },
+    "JuuEateryGrade": {
+      "name": "Juu Eatery grade",
+      "help": "The shop's grade in game. It sets the number of shelves (bronze/silver 2, gold 3, diamond 4) and shelf capacity (bronze 5, others 6).",
+      "bronze": "Bronze",
+      "silver": "Silver",
+      "gold": "Gold",
+      "diamond": "Diamond"
+    },
+    "GrillGrade": {
+      "name": "Squid Grill grade",
+      "help": "The shop's grade in game. It sets the number of shelves (bronze/silver 2, gold 3, diamond 4) and shelf capacity (bronze 5, others 6).",
+      "bronze": "Bronze",
+      "silver": "Silver",
+      "gold": "Gold",
+      "diamond": "Diamond"
+    },
+    "JuuCoffeeGrade": {
+      "name": "Juu Coffee grade",
+      "help": "The shop's grade in game. It sets the number of shelves (bronze/silver 2, gold 3, diamond 4) and shelf capacity (bronze 5, others 6).",
+      "bronze": "Bronze",
+      "silver": "Silver",
+      "gold": "Gold",
+      "diamond": "Diamond"
     }
   },
   "AutoEquip": {
