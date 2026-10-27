@@ -11,7 +11,11 @@
 - 农田 `IslandFarm/IslandOrchard/IslandNursery.CropTargets`：区域内所有作物都写明目标，
   计划消耗的作物为一天消耗量，不需要的作物为 0；只为攒 PT 的闲时作物只在日志中提示。
 
-AzurPilot 不会做或卖的菜品、不会种的作物，会在求解前从模型中排除，
+- 矿山/林场/渔场 `Min*`：一天计划消耗量，不用的为 0；闲时累积只在日志中提示。
+- 牧场 `MinChicken`（禽肉）/`MinPork`（鲜肉）取计划日产量，`Milk`/`Wool` 看计划是否养牛/羊。
+- 制造业 `WoodProcessing/ElectronicProcessing/Industrial/Handmade.Positions`：计划需要的岗位数。
+
+AzurPilot 不会做或卖的菜品、不会种的作物、不会生产的矿石/木材/鱼/制造品，会在求解前从模型中排除，
 避免规划出 AzurPilot 执行不了的方案。
 """
 from math import ceil
@@ -83,6 +87,57 @@ CROP_AREAS = {
     'orchard': {'task': 'IslandFarm', 'group': 'IslandOrchard', 'slot_group': 'orchard'},
     'nursery': {'task': 'IslandFarm', 'group': 'IslandNursery', 'slot_group': 'nursery'},
 }
+
+# 矿山/林场/渔场：按物品设最低库存的生产区，{物品ID: 配置路径}。
+# 岗位共享，目标只含一天计划消耗，闲时累积只作提示（同作物）。
+THRESHOLD_GROUPS = {
+    'mine': {
+        2701: 'IslandMineForest.IslandMine.MinCopper',
+        2702: 'IslandMineForest.IslandMine.MinAluminium',
+        2703: 'IslandMineForest.IslandMine.MinIron',
+        2704: 'IslandMineForest.IslandMine.MinSulphur',
+        2705: 'IslandMineForest.IslandMine.MinSilver',
+    },
+    'wood': {
+        2801: 'IslandMineForest.IslandForest.MinPractical',
+        2802: 'IslandMineForest.IslandForest.MinSelected',
+        2803: 'IslandMineForest.IslandForest.MinElegant',
+    },
+    'fishery': {
+        5001: 'IslandRancher.IslandFishery.MinShell',
+        5005: 'IslandRancher.IslandFishery.MinShrimp',
+        5006: 'IslandRancher.IslandFishery.MinCrayfish',
+        5007: 'IslandRancher.IslandFishery.MinBass',
+        5008: 'IslandRancher.IslandFishery.MinCrab',
+        5101: 'IslandRancher.IslandFishery.MinSquid',
+        5107: 'IslandRancher.IslandFishery.MinYellowfinTuna',
+        5108: 'IslandRancher.IslandFishery.MinSeaCucumber',
+    },
+}
+
+# 牧场：每种动物一个岗位，不与其他产品争岗位，目标取计划日产量。
+# 鸡舍/猪圈按 AzurPilot 识别的禽肉/鲜肉库存触发；牛/羊只有开关。
+RANCH_THRESHOLDS = {
+    'ranch_chicken': (2602, 'IslandRancher.IslandRancher.MinChicken'),
+    'ranch_pig': (2600, 'IslandRancher.IslandRancher.MinPork'),
+}
+RANCH_SWITCHES = {
+    'ranch_cow': 'IslandRancher.IslandRancher.Milk',
+    'ranch_sheep': 'IslandRancher.IslandRancher.Wool',
+}
+
+# 制造业：AzurPilot 每条产线固定生产这些产品（见 island_manufacture.py），
+# 只能配置启用的岗位数。手工含各季节限定品。
+MANUFACTURE_LINES = {
+    'manufacturing_lumber': ('IslandManufacture.WoodProcessing.Positions', {3052}),
+    'manufacturing_electronic': ('IslandManufacture.ElectronicProcessing.Positions', {3056}),
+    'manufacturing_machinery': ('IslandManufacture.Industrial.Positions', {3044, 3047}),
+    'manufacturing_crafts': ('IslandManufacture.Handmade.Positions',
+                             {3036, 3040, 4011, 4012, 4027, 4028, 4041, 4042}),
+}
+# 一个岗位一天的工作量，与 calculator._build_production_problem 一致
+DAILY_WORKLOAD = 24 * 60 * 60 * 10
+
 
 # AzurPilot 商区角色名 -> ALAS 服务员名（只有这些角色有容量或售价加成）
 WAITRESS_ALIASES = {
@@ -165,6 +220,10 @@ def restrict_calculator(calculator, meal_options, product_options):
             DISH_ITEM_IDS[name] for name in meal_options.get(restaurant_id, ()) if name in DISH_ITEM_IDS}
     for area, data in CROP_AREAS.items():
         allowed_products[data['slot_group']] = set(CROP_ITEM_IDS[area].values())
+    for group, items in THRESHOLD_GROUPS.items():
+        allowed_products[group] = set(items)
+    for group, (_, items) in MANUFACTURE_LINES.items():
+        allowed_products[group] = set(items)
 
     excluded = []
     for recipe_id, group in calculator.recipe_group.items():
@@ -283,6 +342,79 @@ def crop_settings(calculator):
     return values, notes
 
 
+def _idle_note(name, items, idle):
+    idle_items = sorted(((idle[i], i) for i in items if idle.get(i, 0) > 0), reverse=True)
+    if not idle_items:
+        return None
+    text = ', '.join(f'{DIC_ISLAND_ITEM[i]["name"]["en"]} {amount:.0f}/day' for amount, i in idle_items)
+    return f'{name}: spare posts can produce {text} for season PT (default product settings)'
+
+
+def threshold_settings(calculator):
+    """矿山、林场、渔场的最低库存：一天计划消耗量，不用的为 0。"""
+    buffer = calculator.product_daily_buffer_items
+    idle = calculator.idle_accumulating_items_per_day
+    values = {}
+    notes = []
+    for group, items in THRESHOLD_GROUPS.items():
+        for item_id, path in items.items():
+            amount = buffer.get(item_id, 0)
+            values[path] = ceil(amount - 1e-9) if amount > 0 else 0
+        note = _idle_note(next(iter(items.values())).split('.')[1], items, idle)
+        if note:
+            notes.append(note)
+    return values, notes
+
+
+RANCH_SLOTS = {'ranch_chicken': 9031, 'ranch_pig': 9032, 'ranch_cow': 9033, 'ranch_sheep': 9034}
+
+
+def _ranch_output(calculator, group):
+    """牧场岗位每日产出，与 calculator 的建模一致：按牧场科技等级放大，
+    解锁副产物科技后副产物（禽肉、皮料）按每 3 批一次摊入。"""
+    multiplier = 1 + calculator.ranch_level[RANCH_SLOTS[group]]
+    output = {}
+    for recipe_id, batches in calculator.production_plan.items():
+        if calculator.recipe_group.get(recipe_id) != group or batches <= 1e-6:
+            continue
+        recipe = DIC_ISLAND_RECIPE[recipe_id]
+        for item_id, amount in recipe['commission_product'].items():
+            output[item_id] = output.get(item_id, 0) + amount * multiplier * batches
+        if calculator.ranch_additional:
+            for item_id, amount in recipe['second_product_display'].items():
+                output[item_id] = output.get(item_id, 0) + (
+                    amount * multiplier / calculator.RANCH_SECOND_PRODUCT_INTERVAL * batches)
+    return output
+
+
+def ranch_settings(calculator):
+    """牧场：鸡舍/猪圈阈值取计划日产量，牛/羊开关看计划是否使用。"""
+    values = {}
+    for group, (item_id, path) in RANCH_THRESHOLDS.items():
+        used = any(amount > 1e-6 for amount in _ranch_output(calculator, group).values())
+        produced = _ranch_output(calculator, group).get(item_id, 0)
+        # 用到该岗位时至少为 1，保证库存为 0 时会开工；未解锁副产物时禽肉不会增加，鸡舍会一直开工
+        values[path] = max(ceil(produced - 1e-9), 1) if used else 0
+    for group, path in RANCH_SWITCHES.items():
+        values[path] = any(amount > 1e-6 for amount in _ranch_output(calculator, group).values())
+    return values
+
+
+def manufacture_settings(calculator):
+    """制造业各产线启用的岗位数：计划工作量需要的岗位，不超过已解锁岗位。"""
+    values = {}
+    for group, (path, _) in MANUFACTURE_LINES.items():
+        workload = 0
+        for recipe_id, batches in calculator.production_plan.items():
+            if calculator.recipe_group.get(recipe_id) == group:
+                workload += DIC_ISLAND_RECIPE[recipe_id]['workload'] * batches
+        unlocked = sum(
+            1 for slot in calculator.GROUP_TO_SLOTS.get(group, [])
+            if calculator.slot_available.get(slot, False))
+        values[path] = min(ceil(workload / DAILY_WORKLOAD - 1e-6), unlocked, 2) if workload > 0 else 0
+    return values
+
+
 def build_settings(calculator, meal_options, product_options):
     """求解成功后，生成要写入的全部配置。
 
@@ -300,6 +432,11 @@ def build_settings(calculator, meal_options, product_options):
     crop_values, crop_notes = crop_settings(calculator)
     values.update(crop_values)
     notes.extend(crop_notes)
+    threshold_values, threshold_notes = threshold_settings(calculator)
+    values.update(threshold_values)
+    notes.extend(threshold_notes)
+    values.update(ranch_settings(calculator))
+    values.update(manufacture_settings(calculator))
     return values, notes
 
 

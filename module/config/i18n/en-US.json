@@ -6958,7 +6958,7 @@
     },
     "ApplySettings": {
       "name": "Write settings",
-      "help": "Off: only preview the plan in the log. On: overwrite each shop's Meal/MealNumber, AwayCook, business products and the farm \"Per-crop restock targets\".",
+      "help": "Off: only preview the plan in the log. On: overwrite each shop's Meal/MealNumber, AwayCook and business products, the farm \"Per-crop restock targets\", mine/forest/fishery minimum stock, ranch chicken/pork minimums and milk/wool switches, and the number of posts per factory line.",
       "True": "Enabled",
       "False": "Disabled"
     },

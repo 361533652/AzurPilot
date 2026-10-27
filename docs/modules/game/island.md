@@ -165,6 +165,9 @@ flowchart TD
    - `*NextTask.AwayCook`：该后厨闲时累积量最大的产品，没有则 None。
    - 商区 `Product1~5`：计划出售的菜品，按日销量降序。
    - `CropTargets`：三个区域所有作物都写明目标（一天计划消耗，未使用为 0），因此规划后 `MinFarm` 等区域阈值不再生效。只为攒 PT 的闲时作物不计入目标（补种按库存/目标比例排序，计入会挤占真正需要的作物），只在日志中提示，由默认作物岗位数（`PlantPotatoes` 等）安排。
+   - 矿山/林场/渔场 `IslandMine/IslandForest/IslandFishery.Min*`：一天计划消耗量，不用的为 0；求解前排除 AzurPilot 不生产的煤炭、自然之木和未配置的鱼种。闲时累积同作物只作提示（由 `MineSilver`/`CutElegant`/`PlantYellowfinTuna` 安排）。
+   - 牧场 `IslandRancher.MinChicken`（禽肉）/`MinPork`（鲜肉）取计划日产量（按牧场科技等级放大，禽肉为副产物，每 3 批摊一次；用到时至少为 1），`Milk`/`Wool` 按计划是否养牛/羊开关。
+   - 制造业 `WoodProcessing/ElectronicProcessing/Industrial/Handmade.Positions`：计划工作量需要的岗位数（不超过已解锁岗位与 2）。AzurPilot 各产线产品写死（文件柜、净水滤芯、铁钉/刀叉餐具、皮革/鞋靴/季节手工品），求解前排除其余制造配方。
 5. 无可行方案时不改配置，日志给出瓶颈（通常是岛币下限过高）。
 
 ## 7. 调用关系
@@ -312,7 +315,7 @@ stateDiagram-v2
 - `SEASONAL_ITEMS` 中冬季为空、代码保留的 `'none'` 季节分支在当前配置选项下不可达；赛季迭代（新季节物品上线）完全依赖手动维护代码。
 - 制造业部分季节物品（夏季茉莉精油、秋季花束）在季节表中保留但有意不配置制作；`filter_element` 复用了 `TEMPLATE_FILE_CABINET` 模板（资源未单独提取），为已知的临时妥协。
 - 货物黑名单目前只实现了 Milk 一种识别模板。
-- 岛屿生产规划器只写店铺后厨、商区、挂机生产与农田作物目标；矿场、林场、牧场、制造业、渔场的方案仅在日志中显示，季节任务目标、卡住的季节订单与每日订单不参与规划（ALAS 有，AzurPilot 尚未接入）。`data.py` 需在游戏更新后从 ALAS 重新复制。
+- 岛屿生产规划器不能指定制造业产线内的产品比例（铁钉与餐具、皮革与鞋靴由 `island_manufacture.py` 按库存规则切换），只控制岗位数；季节任务目标、卡住的季节订单与每日订单不参与规划（ALAS 有，AzurPilot 尚未接入）。`data.py` 需在游戏更新后从 ALAS 重新复制。
 - 各生产玩法每轮固定追加 6 小时兜底延时，依赖 `Duration` OCR 读取剩余时间，极端字体渲染下可能识别失败退化为兜底值。
 
 ## 19. 调试方法

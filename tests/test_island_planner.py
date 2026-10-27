@@ -119,6 +119,49 @@ class FakeCalculatorTest(unittest.TestCase):
         self.assertIn('rice 4/day', notes[0])
 
 
+class ProductionLineTest(unittest.TestCase):
+    """矿山/林场/渔场/牧场/制造业的换算。"""
+
+    def make(self):
+        tech = {tech_id: True for tech_id in DIC_ISLAND_TECHNOLOGY}
+        calculator = ProductionPlanCalculator(tech)
+        calculator.production_plan = {
+            101013: 3,      # 鸡舍 3 批
+            701010: 10,     # 铁钉 10 批，工作量 10 * workload
+            401005: 2,      # 铁矿
+        }
+        calculator.product_daily_buffer_items = {2703: 12, 5107: 3}
+        calculator.idle_accumulating_items_per_day = {2705: 40}
+        return calculator
+
+    def test_thresholds(self):
+        values, notes = sm.threshold_settings(self.make())
+        self.assertEqual(values['IslandMineForest.IslandMine.MinIron'], 12)
+        self.assertEqual(values['IslandMineForest.IslandMine.MinSilver'], 0)
+        self.assertEqual(values['IslandRancher.IslandFishery.MinYellowfinTuna'], 3)
+        self.assertEqual(values['IslandMineForest.IslandForest.MinElegant'], 0)
+        self.assertEqual(len(notes), 1)
+        self.assertIn('Silver Ore 40/day', notes[0])
+
+    def test_ranch(self):
+        calculator = self.make()
+        values = sm.ranch_settings(calculator)
+        level = calculator.ranch_level[9031]
+        # 禽肉为副产物：每批 4 * (1 + 等级)，每 3 批摊一次
+        expected = 4 * (1 + level) / 3 * 3
+        self.assertEqual(values['IslandRancher.IslandRancher.MinChicken'], max(int(-(-expected // 1)), 1))
+        self.assertEqual(values['IslandRancher.IslandRancher.MinPork'], 0)
+        self.assertFalse(values['IslandRancher.IslandRancher.Milk'])
+        self.assertFalse(values['IslandRancher.IslandRancher.Wool'])
+
+    def test_manufacture_positions(self):
+        values = sm.manufacture_settings(self.make())
+        workload = DIC_ISLAND_RECIPE[701010]['workload'] * 10
+        self.assertEqual(values['IslandManufacture.Industrial.Positions'],
+                         min(-(-workload // sm.DAILY_WORKLOAD), 2))
+        self.assertEqual(values['IslandManufacture.WoodProcessing.Positions'], 0)
+
+
 class SolveTest(unittest.TestCase):
     def setUp(self):
         self.previous_server = server.server
@@ -139,11 +182,11 @@ class SolveTest(unittest.TestCase):
             task, group, key = path.split('.')
             self.assertIn(key, ARGS[task][group], path)
             definition = ARGUMENT[group][key]
-            if 'option' in definition:
+            if isinstance(definition, dict) and 'option' in definition:
                 self.assertIn(value, definition['option'], path)
-            elif key.startswith('MealNumber'):
-                self.assertIsInstance(value, int)
-                self.assertGreaterEqual(value, 0)
+            elif key.startswith(('MealNumber', 'Min')):
+                self.assertIsInstance(value, int, path)
+                self.assertGreaterEqual(value, 0, path)
         for rid, kitchen in sm.KITCHENS.items():
             products = [values[f'IslandBusiness.{kitchen["business"]}.Product{i}'] for i in range(1, 6)]
             sold = [name for name in products if name != 'None']
