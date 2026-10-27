@@ -89,6 +89,25 @@ class CloudUploadTest(unittest.TestCase):
         remote.assert_called_once()
         self.assertEqual(remote.call_args.args[-1], self.meta['collected_at'])
 
+    def test_queue_selection_archive_keeps_local_parsing_without_duplicate_cloud_upload(self):
+        from module.research.research import RewardResearch
+        config = SimpleNamespace(config_name='test', SERVER='cn', DropRecord_CloudUpload=True,
+                                 DropRecord_ResearchRecord='upload')
+        target = SimpleNamespace(stat=AzurStats(config), config=config,
+                                 device=SimpleNamespace(image=self.image), get_queue_slot=lambda: 1,
+                                 get_research_status=lambda image: ['waiting'])
+
+        def append(drop, **kwargs):
+            drop.add(self.image)
+            return True
+
+        target.research_queue_append = append
+        with patch('module.statistics.cloud_upload.enqueue') as remote, \
+                patch('module.statistics.research_drop.record_research_drop') as local:
+            self.assertEqual(RewardResearch.research_fill_queue(target), 5)
+        remote.assert_not_called()
+        local.assert_called_once()
+
     def test_config_reload_pauses_existing_worker_without_starting_another(self):
         config = SimpleNamespace(config_name='reload-test', DropRecord_CloudUpload=True)
         queue = CloudUploadQueue(self.root)
