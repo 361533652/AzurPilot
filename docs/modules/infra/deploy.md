@@ -107,7 +107,7 @@ Alas.bat → python -m deploy.installer
 | 强制更新 | `GET /api/v2/get/update/data.json`，读取布尔字段 `force_update` |
 | 停服维护 | `GET /api/v2/get/maintenance?server=cn`，按当前区服查询；其他服不回退国服 |
 | 单服状态 | `GET /api/v2/get/server?region=cn&server_id=1`，保留网关直连后备逻辑 |
-| 截图 | `/api/v1/uploads/init` → 逐文件 `PUT /api/v1/uploads/{id}/files/{index}` → `POST /api/v1/uploads/{id}/complete` |
+| 截图 | `/api/v1/uploads/init` 获取 C 的 307 → 直接向 A 登记、逐文件 `PUT /api/v1/uploads/{id}/files/{index}` → `POST /api/v1/uploads/{id}/complete` |
 
 公告和更新策略读取 Worker 的 v2 文档；动态 v2 查询携带 `X-AzurPilot-ID`。已移除的 `/api/updata` 总开关不恢复。
 

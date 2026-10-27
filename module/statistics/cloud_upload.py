@@ -11,6 +11,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import cv2
 import requests
@@ -126,15 +127,35 @@ class CloudUploadQueue:
                 raise ValueError('unexpected upload acknowledgement')
             return body
 
-        accepted(session.post(self.base_url + '/init', json=metadata, headers=headers, timeout=(5, 15), allow_redirects=False))
+        # C only returns A's public address. Resolve it once with the small
+        # manifest; send all image bytes and the completion request directly to A.
+        base_url = self.base_url
+        response = session.post(base_url + '/init', json=metadata, headers=headers,
+                                timeout=(5, 15), allow_redirects=False)
+        if response.status_code in (307, 308):
+            try:
+                target = urlsplit(urljoin(base_url + '/init', response.headers.get('Location', '')))
+                if (target.scheme not in ('http', 'https') or not target.hostname
+                        or target.username is not None or target.password is not None
+                        or target.path != '/api/v1/uploads/init' or target.query or target.fragment):
+                    raise ValueError('invalid upload redirect')
+                target.port  # Validate a numeric port before following the redirect.
+                base_url = urlunsplit((target.scheme, target.netloc, '/api/v1/uploads', '', ''))
+                if base_url == self.base_url:
+                    raise ValueError('upload redirect loop')
+            finally:
+                response.close()
+            response = session.post(base_url + '/init', json=metadata, headers=headers,
+                                    timeout=(5, 15), allow_redirects=False)
+        accepted(response)
         for i in range(len(metadata['file_sizes'])):
             if self.stop.is_set() or not self.enabled():
                 raise ValueError('cloud upload stopped')
             with (job / f'{i}.png').open('rb') as file:
-                accepted(session.put(f'{self.base_url}/{upload_id}/files/{i}', data=file,
+                accepted(session.put(f'{base_url}/{upload_id}/files/{i}', data=file,
                                      headers={**headers, 'Content-Type': 'image/png'},
                                      timeout=(5, 85), allow_redirects=False))
-        result = accepted(session.post(f'{self.base_url}/{upload_id}/complete', headers=headers,
+        result = accepted(session.post(f'{base_url}/{upload_id}/complete', headers=headers,
                                        timeout=(5, 15), allow_redirects=False))
         if not re.fullmatch(r'[0-9a-f]{64}', str(result.get('sha256', ''))):
             raise ValueError('missing completed group hash')

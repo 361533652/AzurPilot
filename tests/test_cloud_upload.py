@@ -100,7 +100,25 @@ class CloudUploadTest(unittest.TestCase):
             self.assertFalse(queue.enabled())
             self.assertIsNone(queue.thread)
 
-    def test_real_http_protocol_sends_one_raw_png_per_put(self):
+    def test_invalid_upload_redirect_keeps_files_without_following(self):
+        for target in ('file:///tmp/secret', 'http://user:pass@127.0.0.1/api/v1/uploads/init',
+                       'http://127.0.0.1/other', 'https://api.azurpilot.com/api/v1/uploads/init',
+                       'http://127.0.0.1:invalid/api/v1/uploads/init'):
+            with self.subTest(target=target):
+                queue = CloudUploadQueue(self.root)
+                ident = queue.enqueue([self.image], self.meta)
+                job = self.root / f'{ident}.pending'
+                response = Mock(status_code=307, headers={'Location': target})
+                session = Mock()
+                session.post.return_value = response
+                with self.assertRaises(ValueError):
+                    queue.send(job, session)
+                self.assertTrue(job.is_dir())
+                self.assertEqual(session.post.call_count, 1)
+                session.put.assert_not_called()
+                response.close.assert_called_once()
+
+    def test_real_http_redirect_sends_one_raw_png_per_put_directly_to_a(self):
         seen = []
         state = {}
 
@@ -132,18 +150,41 @@ class CloudUploadTest(unittest.TestCase):
         server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
+        redirected = []
+
+        class RedirectHandler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_POST(self):
+                self.rfile.read(int(self.headers.get('Content-Length', 0)))
+                redirected.append((self.command, self.path))
+                self.send_response(307)
+                self.send_header('Location', f'http://127.0.0.1:{server.server_port}{self.path}')
+                self.send_header('Content-Length', '0')
+                self.end_headers()
+
+            do_PUT = do_POST
+
+        origin = ThreadingHTTPServer(('127.0.0.1', 0), RedirectHandler)
+        origin_thread = threading.Thread(target=origin.serve_forever, daemon=True)
+        origin_thread.start()
         try:
-            queue = CloudUploadQueue(self.root, base_url=f'http://127.0.0.1:{server.server_port}/api/v1/uploads')
+            queue = CloudUploadQueue(self.root, base_url=f'http://127.0.0.1:{origin.server_port}/api/v1/uploads')
             queue.enqueue([self.image], self.meta)
             with requests.Session() as session:
                 queue.drain_once(session)
             self.assertEqual([call[0] for call in seen], ['POST', 'PUT', 'POST'])
+            self.assertEqual(redirected, [('POST', '/api/v1/uploads/init')])
             self.assertEqual(seen[0][2], 'a' * 32)
             self.assertEqual(seen[1][2], 'image/png')
             self.assertEqual(seen[1][3], b'\x89PNG\r\n\x1a\n')
             self.assertEqual(seen[1][4], state['file_sizes'][0])
             self.assertFalse(list(self.root.iterdir()))
         finally:
+            origin.shutdown()
+            origin.server_close()
+            origin_thread.join(timeout=2)
             server.shutdown()
             server.server_close()
             thread.join(timeout=2)
