@@ -40,7 +40,7 @@ function validateField(path, value) {
   if (field.option?.length && !field.option.includes(value)) fail('INVALID_PARAMS', '请选择有效选项')
   const kind = typeof field.value
   const valid = field.type === 'checkbox' || kind === 'boolean' ? typeof value === 'boolean'
-    : kind === 'number' ? typeof value === 'number' && Number.isFinite(value) && (!Number.isInteger(field.value) || Number.isInteger(value))
+    : kind === 'number' ? typeof value === 'number' && Number.isFinite(value) && (field.valuetype === 'float' || !Number.isInteger(field.value) || Number.isInteger(value))
       : typeof value === 'string' || (field.value === null && value === null)
   if (!valid || (typeof value === 'string' && value.length > 20000)) fail('INVALID_PARAMS', '参数类型或长度不正确')
   if (Array.isArray(field.validate) && (typeof value !== 'number' || value < field.validate[0] || value > field.validate[1])) fail('INVALID_PARAMS', '数值超出允许范围')

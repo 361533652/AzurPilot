@@ -12,7 +12,8 @@ from module.retire.fleet_management import FleetManagement
 from module.runtime.fleet_rotation import (ROTATION_PATH, active_fleets, begin_round, calibration_changes,
                                          minimum_morale, parse_rules, rank_sources, recorded_morale, supported)
 from module.runtime.fleet_equipment import EQUIPMENT_PATH
-from module.runtime.fleet_training import due, goals, mark_checked
+from module.runtime.fleet_training import (due, full_scan_due, goals, invalidate_context, mark_checked,
+                                           persist_context, restore_context)
 
 
 def _required(emotion, role, battle):
@@ -29,6 +30,33 @@ def _required(emotion, role, battle):
     return tracker, tracker.limit + reduce
 
 
+def morale_due(emotion, selected, battle, context):
+    """只在现有控制线需要等待/换船时触发，刚核对过的低心情不重复扫描。"""
+    emotion.update()
+    for role, fleet in selected.items():
+        tracker, needed = _required(emotion, role, battle)
+        value = (emotion.training_lower(role) if isinstance(emotion, RotationEmotion) and emotion.selected_only
+                 else tracker.lower if tracker.state is not None else None)
+        if value is None:
+            return True
+        verified = context.get('morale_low', {}).get(str(role))
+        if needed is not None and value < needed and verified != dict(fleet=fleet, needed=needed):
+            return True
+    return False
+
+
+def mark_morale_checked(config, emotion, selected, battle, context):
+    low = {}
+    for role, fleet in selected.items():
+        tracker, needed = _required(emotion, role, battle)
+        value = (emotion.training_lower(role) if emotion.selected_only
+                 else tracker.lower if tracker.state is not None else None)
+        if needed is not None and value is not None and value < needed:
+            low[str(role)] = dict(fleet=fleet, needed=needed)
+    context['morale_low'] = low
+    persist_context(config, context)
+
+
 def preflight_rotation(runner, battle, mode):
     """在原有心情检查之前轮换，恢复选关页后仍走正常心情及入场流程。
 
@@ -43,6 +71,7 @@ def preflight_rotation(runner, battle, mode):
         previous_context = runner.__dict__.get('_fleet_rotation_context', {})
         previous_context.pop('training_checked_at', None)
         previous_context.pop('training_goals', None)
+        invalidate_context(config)
     if ((not mood_enabled and not goals(config))
             or not supported(config.task.command, mode, runner.folder, runner.stage)
             or campaign.config.Campaign_Mode != 'normal'):
@@ -62,12 +91,15 @@ def preflight_rotation(runner, battle, mode):
     states = deepcopy(config.cross_get(ROTATION_PATH + '.State', {}))
     if not isinstance(states, dict):
         states = {}
-    recovering = set()
+    recovering, recovery_fleets = set(), set()
     for target, progress in states.items():
         if isinstance(progress, dict) and (progress.get('pending') or progress.get('rescan') or
                 (progress.get('source') and (not progress.get('paused') or
                  progress.get('rule') != rules.get(target) or progress.get('policy') != 'same_slot_morale_v1'))):
             recovering.add(int(target))
+            recovery_fleets.add(int(target))
+            if progress.get('source'):
+                recovery_fleets.add(progress['source'])
             states[target] = {'rescan': True}
     selected = {role: actual for role, actual in active.items()
                 if rules.get(str(actual), {}).get('slots') and rules[str(actual)].get('sources')
@@ -90,6 +122,7 @@ def preflight_rotation(runner, battle, mode):
         context['signature'] = deepcopy(signature)
         context['scanned'] = False
         context.pop('training', None)
+    restore_context(config, context)
     book = emotion.map_is_2x_book
     emotion = RotationEmotion(config, context, rules, selected)
     emotion.map_is_2x_book = book
@@ -99,7 +132,10 @@ def preflight_rotation(runner, battle, mode):
         config.cross_set(ROTATION_PATH + '.State', states)
         context['scanned'] = False
         context.pop('portraits', None)
-    fresh = not context.get('scanned', False) or due(config, context)
+    scan_fleets = set(selected.values()) | recovery_fleets
+    full = bool(scan_fleets) and full_scan_due(config)
+    fresh = bool(scan_fleets) and (full or not context.get('scanned', False) or due(config, context)
+                               or morale_due(emotion, selected, battle, context))
     current_fleet = None
     equipment_enabled = config.cross_get(EQUIPMENT_PATH + '.Enabled', False) is True
     equipment_used = False
@@ -117,9 +153,15 @@ def preflight_rotation(runner, battle, mode):
                     from module.retire.fleet_training import FleetTrainingReader
                     FleetTrainingReader(manager).recover_page()
             visited = True
-            manager.run(update_emotion=True)
+            if full:
+                logger.info('全舰队扫描间隔已到，更新完整编队参考')
+                manager.run(update_emotion=True)
+            else:
+                from module.campaign.fleet_training import FleetTrainingReader
+                FleetTrainingReader(manager).inventory(scan_fleets)
             result = config.cross_get('FleetInfo.FleetInfo.Result', {})
-            fresh_readings = {fleet: recorded_morale(result, fleet) for fleet in range(1, 7)}
+            fresh_readings = {fleet: recorded_morale(result, fleet)
+                              for fleet in (range(1, 7) if full else scan_fleets)}
             config.cross_set_many(calibration_changes(config.data,
                 {fleet: values for fleet, values in fresh_readings.items() if values}, now()))
             emotion.calibrate_selected(fresh_readings)
@@ -142,7 +184,9 @@ def preflight_rotation(runner, battle, mode):
             training = TrainingSession(runner, manager or FleetManagement(config=config, device=runner.device),
                                        context, rules, selected)
             manager = training.manager
-            if training.process(fresh=fresh):
+            if full:
+                training.inventory_fleets.update(range(1, 7))
+            if training.process(fresh=fresh, force=fresh):
                 visited = True
                 equipment_used |= training.equipment_used
                 result = config.cross_get('FleetInfo.FleetInfo.Result', {})
@@ -160,11 +204,8 @@ def preflight_rotation(runner, battle, mode):
                 continue
             logger.attr(f'第{fleet}舰队培养最低心情/换船要求', f'{emotion.training_lower(role)}/{needed}')
             continuing = bool(previous.get('source') or previous.get('pending'))
-            if not fresh and not continuing and emotion.is_calculate:
-                value = (emotion.training_lower(role) if emotion.selected_only
-                         else tracker.lower if tracker.state is not None else None)
-                if value is not None and value >= needed:
-                    continue
+            if not fresh and not continuing:
+                continue
             if fresh and not continuing:
                 value = selected_morale(fresh_readings[fleet], rule['slots'])
                 if value is not None and value >= needed:
@@ -262,6 +303,7 @@ def preflight_rotation(runner, battle, mode):
             campaign.emotion.map_is_2x_book = emotion.map_is_2x_book
             campaign.ensure_campaign_ui(name=runner.stage, mode=mode, skip_first_screenshot=False)
             campaign.map_get_info()
+        mark_morale_checked(config, campaign.emotion, selected, battle, context)
         return visited
     except (GameStuckError, GameTooManyClickError, RequestHumanTakeover) as exc:
         changed = {number: {1: None} for target, progress in states.items() if isinstance(progress, dict)

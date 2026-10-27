@@ -1,5 +1,7 @@
 export const trainingZhCN = {
-  'training.intervalHelp': '三种调度共用：开始和换船后立即实读舰名、心情及已启用的培养条件；间隔到期先完成当前地图，再于下次出击前读取。',
+  'training.fullScanInterval': '全舰队扫描间隔（天）',
+  'training.fullScanHelp': '默认 3 天更新一次全舰队参考。扫描时间会保留，重新开任务不会重置；没有可用记录时先扫描一次。',
+  'training.intervalHelp': '默认 6 小时，三种调度共用。仅在间隔到期，或心情按当前控制线及单图消耗预留将需要等待/换船时，读取参与换船的舰队及已开启的培养条件。先完成当前地图，再于下次出击前读取。',
   'training.trainingShips': '培养舰船', 'training.completedShips': '完成舰船', 'training.historyShips': '旧记录舰船',
   'training.fleet': '舰队', 'training.slot': '舰位', 'training.emotion': '心情（最近记录）',
   'training.historyLimit': '最多显示最近 6 条，共 {count} 条；完整历史记录保留。',
@@ -11,12 +13,14 @@ export const trainingZhCN = {
   'training.level': '实读等级', 'training.affinity': '实读好感',
   'training.levelTitle': '等级调度', 'training.affinityTitle': '好感调度', 'training.levelEnable': '启用等级调度', 'training.affinityEnable': '启用好感调度',
   'training.targetLevel': '目标等级', 'training.targetAffinity': '目标好感', 'training.interval': '共用实读间隔（小时，0为每次结算，无上限）',
-  'training.help': '默认关闭，仅联动普通主线和活动。共用换船舰位和候补，固定舰船不参与完成判定。开始培养、换船后立即实读；结算后检查间隔，到期先打完当前地图，再于下次出击前读取，不主动撤退。共用间隔到期核对全部开启条件，两项同开须同一艘全部达标。心情换船保留进度，完成换船才永久排除。当前仅验证国服，识别不可靠时不记录完成。',
+  'training.help': '默认关闭，仅联动普通主线和活动。共用换船舰位和候补，固定舰船不参与完成判定。全舰队参考与调度实读分别计时，重新开任务不重置；无可用记录时初始化，换船及中断恢复仍核实实际舰船。到期或心情触线时先打完当前地图，再于下次出击前读取，不主动撤退。核对全部开启条件，两项同开须同一艘全部达标。心情换船保留进度，完成换船才永久排除。当前仅验证国服，识别不可靠时不记录完成。',
   'training.slotConfig': '换船配置：设置舰位与候补舰队', 'training.saved': '换船调度设置已保存', 'training.records': '培养记录（重启后保留）', 'training.empty': '尚无实读记录',
   'training.ship': '舰船', 'training.status': '培养状态', 'training.completed': '培养完成', 'training.pending': '继续培养／待核对',
 }
 export const trainingZhTW: typeof trainingZhCN = {
-  'training.intervalHelp': '三種調度共用：開始及換船後立即實讀艦名、心情及已啟用的培養條件；間隔到期先完成目前地圖，再於下次出擊前讀取。',
+  'training.fullScanInterval': '全艦隊掃描間隔（天）',
+  'training.fullScanHelp': '預設 3 天更新一次全艦隊參考。掃描時間會保留，重新開任務不會重置；無可用記錄時先掃描一次。',
+  'training.intervalHelp': '預設 6 小時，三種調度共用。僅在間隔到期，或心情按目前控制線及單圖消耗預留將需要等待/換船時，讀取參與換船的艦隊與已啟用的培養條件。先完成目前地圖，再於下次出擊前讀取。',
   'training.trainingShips': '培養艦船', 'training.completedShips': '完成艦船', 'training.historyShips': '舊紀錄艦船',
   'training.fleet': '艦隊', 'training.slot': '艦位', 'training.emotion': '心情（最近紀錄）',
   'training.historyLimit': '最多顯示最近 6 筆，共 {count} 筆；完整歷史紀錄保留。',
@@ -28,12 +32,14 @@ export const trainingZhTW: typeof trainingZhCN = {
   'training.level': '實讀等級', 'training.affinity': '實讀好感',
   'training.levelTitle': '等級調度', 'training.affinityTitle': '好感調度', 'training.levelEnable': '啟用等級調度', 'training.affinityEnable': '啟用好感調度',
   'training.targetLevel': '目標等級', 'training.targetAffinity': '目標好感', 'training.interval': '共用實讀間隔（小時，0為每次結算，無上限）',
-  'training.help': '預設關閉，僅連動普通主線與活動。共用交替艦位及候補，固定艦不判定完成。開始及換船後立即實讀；結算後檢查間隔，到期先完成當前地圖，下次出擊前讀取，不主動撤退。共用間隔到期核對全部條件，兩項同開須同艦全部達標。心情交替保留進度，完成交替才永久排除。目前僅驗證國服，識別不可靠時不記錄完成。',
+  'training.help': '預設關閉，僅連動普通主線與活動。共用交替艦位及候補，固定艦不判定完成。全艦隊參考與調度實讀分別計時，重新開任務不重置；無可用記錄時初始化，換船及中斷恢復仍核實實際艦船。到期或心情觸線時先完成目前地圖，再於下次出擊前讀取，不主動撤退。核對全部啟用條件，兩項同開須同艦全部達標。心情交替保留進度，完成交替才永久排除。目前僅驗證國服，識別不可靠時不記錄完成。',
   'training.slotConfig': '換船設定：配置艦位及候補艦隊', 'training.saved': '換船調度設定已儲存', 'training.records': '培養紀錄（重啟後保留）', 'training.empty': '尚無實讀紀錄',
   'training.ship': '艦船', 'training.status': '培養狀態', 'training.completed': '培養完成', 'training.pending': '繼續培養／待確認',
 }
 export const trainingEnUS: typeof trainingZhCN = {
-  'training.intervalHelp': 'Shared by all three modes. Read names, morale and enabled training goals at start and after swaps; when due, finish the current map and read before the next sortie.',
+  'training.fullScanInterval': 'Full fleet scan interval (days)',
+  'training.fullScanHelp': 'Refresh all fleets every 3 days by default. Scan times survive task restarts; scan once if no valid record exists.',
+  'training.intervalHelp': 'Shared by all modes, 6 hours by default. Read participating fleets and enabled goals only when due or morale requires waiting/swapping under the current control and map reserve. Finish the current map, then read before the next sortie.',
   'training.trainingShips': 'Training ships', 'training.completedShips': 'Completed ships', 'training.historyShips': 'Historical ships',
   'training.fleet': 'Fleet', 'training.slot': 'Slot', 'training.emotion': 'Morale (last recorded)',
   'training.historyLimit': 'Latest 6 shown, {count} in total. Full history is retained.',
@@ -45,12 +51,14 @@ export const trainingEnUS: typeof trainingZhCN = {
   'training.level': 'Verified level', 'training.affinity': 'Verified affinity',
   'training.levelTitle': 'Level training', 'training.affinityTitle': 'Affinity training', 'training.levelEnable': 'Enable level training', 'training.affinityEnable': 'Enable affinity training',
   'training.targetLevel': 'Target level', 'training.targetAffinity': 'Target affinity', 'training.interval': 'Shared read interval (hours; 0 after every battle; no upper limit)',
-  'training.help': 'Off by default; normal main and events only. Shares rotation slots and reserves; fixed ships cannot complete training. Read at start and after swaps. When due, finish the current map and read before the next sortie without retreating; verify all enabled goals together. Morale swaps retain progress, completion swaps exclude the ship. CN layout only; uncertain reads never mark completion.',
+  'training.help': 'Off by default; normal main and events only. Shares rotation slots and reserves; fixed ships cannot complete training. Full scans and scheduling reads have separate persistent timers. Initialize missing records and verify ships after swaps or interrupted operations. When due or morale reaches its control line, finish the current map and read before the next sortie without retreating. Verify all enabled goals on the same ship. Morale swaps retain progress; completion swaps exclude the ship. CN layout only; uncertain reads never mark completion.',
   'training.slotConfig': 'Rotation configuration: slots and reserves', 'training.saved': 'Rotation scheduling settings saved', 'training.records': 'Training records (persist across restarts)', 'training.empty': 'No verified readings',
   'training.ship': 'Ship', 'training.status': 'Training status', 'training.completed': 'Training complete', 'training.pending': 'Training / verify',
 }
 export const trainingJaJP: typeof trainingZhCN = {
-  'training.intervalHelp': '3種類で共用します。開始・交代後に艦名、コンディションと有効な育成項目を実読し、間隔経過後は現在の海域を完了して次の出撃前に読み取ります。',
+  'training.fullScanInterval': '全艦隊スキャン間隔（日）',
+  'training.fullScanHelp': '初期値は3日です。時刻はタスク再開後も保持し、有効な記録がない場合は初回スキャンを行います。',
+  'training.intervalHelp': '3種類で共用し、初期値は6時間です。間隔経過時、または既存の制御値と海域消費分から待機・交代が必要になる時だけ、交代対象艦隊と有効な育成項目を読み取ります。現在の海域を完了して次の出撃前に確認します。',
   'training.trainingShips': '育成中の艦船', 'training.completedShips': '育成完了の艦船', 'training.historyShips': '過去の記録',
   'training.fleet': '艦隊', 'training.slot': '配置', 'training.emotion': 'コンディション（前回記録）',
   'training.historyLimit': '最新6件を表示、全{count}件。履歴全体は保持します。',
@@ -62,7 +70,7 @@ export const trainingJaJP: typeof trainingZhCN = {
   'training.level': '実読レベル', 'training.affinity': '実読好感度',
   'training.levelTitle': 'レベル育成', 'training.affinityTitle': '好感度育成', 'training.levelEnable': 'レベル育成を有効化', 'training.affinityEnable': '好感度育成を有効化',
   'training.targetLevel': '目標レベル', 'training.targetAffinity': '目標好感度', 'training.interval': '共通読取間隔（時間、0は毎戦闘後、上限なし）',
-  'training.help': '初期設定は無効、通常メイン・イベントのみ。交代配置と候補を共用し、固定艦は完了判定しません。開始・交代後に実読し、間隔経過後も撤退せず現在の海域を完了、次の出撃前に全目標を同じ艦で確認します。コンディション交代は進捗を保持、完了交代のみ除外。中国版のみ検証、不確実な読取で完了にしません。',
+  'training.help': '初期設定は無効、通常メイン・イベントのみ。交代配置と候補を共用し、固定艦は完了判定しません。全艦隊と調度の読取時刻は別々に保持し、タスク再開ではリセットしません。初回・交代後・中断復帰時は実際の艦を確認します。間隔経過時やコンディション制御値到達時も撤退せず現在の海域を完了し、次の出撃前に同じ艦の全目標を確認します。コンディション交代は進捗を保持、完了交代のみ除外。中国版のみ検証、不確実な読取で完了にしません。',
   'training.slotConfig': '交代設定：配置と候補艦隊', 'training.saved': '交代調整設定を保存しました', 'training.records': '育成記録（再起動後も保持）', 'training.empty': '実読記録なし',
   'training.ship': '艦船', 'training.status': '育成状態', 'training.completed': '育成完了', 'training.pending': '育成中／要確認',
 }

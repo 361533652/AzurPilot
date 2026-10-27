@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 
-test('换船调度集中三种开关，共用换船配置并按不限上限的小时保存', async ({page}) => {
+test('换船调度集中三种开关，分别保存天数扫描及共用小时实读间隔', async ({page}) => {
   const requests: {method: string; params?: {changes?: {path: string; value: unknown}[]}}[] = []
   await page.addInitScript(() => {
     localStorage.setItem('azurpilot.language', 'zh-CN')
@@ -29,10 +29,19 @@ test('换船调度集中三种开关，共用换船配置并按不限上限的�
   const affinity = page.getByRole('region', {name: '好感调度', exact: true})
   const interval = '共用实读间隔（小时，0为每次结算，无上限）'
   const sharedInterval = page.getByRole('spinbutton', {name: interval, exact: true})
+  const fullInterval = page.getByRole('spinbutton', {name: '全舰队扫描间隔（天）', exact: true})
   for (const title of ['心情调度', '等级调度', '好感调度'])
     await expect(page.getByRole('switch', {name: `启用${title}`, exact: true})).toHaveAttribute('aria-checked', 'false')
   await expect(sharedInterval).toHaveCount(1)
-  await expect(sharedInterval).toHaveValue('0.5')
+  await expect(sharedInterval).toHaveValue('6')
+  await expect(fullInterval).toHaveValue('3')
+  await page.screenshot({path: 'test-results/fleet-scan-intervals-defaults.png', fullPage: true, animations: 'disabled'})
+  expect(await fullInterval.getAttribute('max')).toBeNull()
+  await fullInterval.fill('0')
+  await expect(page.getByRole('button', {name: '保存调度设置', exact: true})).toBeDisabled()
+  await fullInterval.fill('1.5')
+  await expect(page.getByRole('button', {name: '保存调度设置', exact: true})).toBeDisabled()
+  await fullInterval.fill('10000')
   await expect(level.getByRole('spinbutton')).toHaveCount(1)
   await expect(affinity.getByRole('spinbutton')).toHaveCount(1)
   await level.getByRole('spinbutton', {name: '目标等级', exact: true}).fill('125')
@@ -61,6 +70,7 @@ test('换船调度集中三种开关，共用换船配置并按不限上限的�
     await expect(page.getByRole('switch', {name: `启用${title}`, exact: true})).toHaveAttribute('aria-checked', 'true')
   await expect(selected).toBeChecked()
   await expect(sharedInterval).toHaveValue('48.5')
+  await expect(fullInterval).toHaveValue('10000')
   await expect(level.getByRole('spinbutton', {name: '目标等级', exact: true})).toHaveValue('125')
   await expect(affinity.getByRole('spinbutton', {name: '目标好感', exact: true})).toHaveValue('200')
   await sharedInterval.fill('-1')
@@ -91,6 +101,8 @@ test('换船调度集中三种开关，共用换船配置并按不限上限的�
   const intervals = patches.flatMap(item => item.params?.changes ?? []).filter(item => /CheckInterval/.test(item.path))
   expect(intervals.length).toBeGreaterThan(0)
   expect(intervals.every(item => item.path === 'FleetInfo.FleetTraining.CheckIntervalHours')).toBe(true)
+  expect(patches.flatMap(item => item.params?.changes ?? [])
+    .some(item => item.path === 'FleetInfo.FleetTraining.FullScanIntervalDays' && item.value === 10000)).toBe(true)
 })
 
 test('换船调度记录按舰位展示真实舰名心情，三框区分且历史各不超过六条', async ({page}) => {
