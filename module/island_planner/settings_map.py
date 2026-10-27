@@ -241,6 +241,20 @@ def restrict_calculator(calculator, meal_options, product_options):
     return excluded
 
 
+def daily_need(calculator):
+    """每日需要的库存宽度：计划消耗量（日缓冲）+ 季节任务/额外目标的每日速率。
+
+    目标物品在计划中是「累积」而不是被消耗，不出现在日缓冲里；不加上它，
+    AzurPilot 的阈值/后厨目标不会为目标物品开工。
+    """
+    need = dict(calculator.product_daily_buffer_items)
+    for item_id, data in (getattr(calculator, 'demand_items', None) or {}).items():
+        rate = data.get('rate_per_day', 0)
+        if rate > 0:
+            need[item_id] = need.get(item_id, 0) + rate
+    return need
+
+
 def _item_name_map(names):
     return {DISH_ITEM_IDS[name]: name for name in names if name in DISH_ITEM_IDS}
 
@@ -268,7 +282,7 @@ def kitchen_settings(calculator, restaurant_id, meal_options, product_options):
     meal_names = _item_name_map(meal_options)
     product_names = _item_name_map(product_options)
     capacity = calculator.restaurant_capacity[restaurant_id]
-    buffer = calculator.product_daily_buffer_items
+    buffer = daily_need(calculator)
     idle = calculator.idle_accumulating_items_per_day
 
     sales = {
@@ -285,7 +299,7 @@ def kitchen_settings(calculator, restaurant_id, meal_options, product_options):
     others = [item_id for item_id in produced if item_id not in sold and buffer.get(item_id, 0) > 0]
     for item_id in sorted(others, key=lambda i: (-buffer[i], i)):
         if item_id in meal_names:
-            meals.append((meal_names[item_id], int(buffer[item_id])))
+            meals.append((meal_names[item_id], ceil(buffer[item_id] - 1e-9)))
     if len(meals) > MEAL_SLOTS:
         dropped = [name for name, _ in meals[MEAL_SLOTS:]]
         notes.append(f'{task}: only {MEAL_SLOTS} meal slots, dropped {dropped}')
@@ -323,7 +337,7 @@ def crop_settings(calculator):
     Returns:
         tuple[dict, list[str]]: ({配置路径: 值}, 提示信息)。
     """
-    buffer = calculator.product_daily_buffer_items
+    buffer = daily_need(calculator)
     idle = calculator.idle_accumulating_items_per_day
     values = {}
     notes = []
@@ -352,7 +366,7 @@ def _idle_note(name, items, idle):
 
 def threshold_settings(calculator):
     """矿山、林场、渔场的最低库存：一天计划消耗量，不用的为 0。"""
-    buffer = calculator.product_daily_buffer_items
+    buffer = daily_need(calculator)
     idle = calculator.idle_accumulating_items_per_day
     values = {}
     notes = []

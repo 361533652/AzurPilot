@@ -468,6 +468,7 @@ page_island_visit.link(button=ISLAND_VISIT_GOTO_MANAGEMENT, destination=page_isl
 page_island_mill.link(button=ISLAND_MILL_GOTO_ISLAND, destination=page_island)
 page_island_season.link(button=ISLAND_SEASON_GOTO_ISLAND, destination=page_island)
 page_island.link(button=ISLAND_GOTO_ISLAND_TECHNOLOGY, destination=page_island_technology)
+page_island.link(button=ISLAND_GOTO_ISLAND_SEASON, destination=page_island_season)
 page_island_technology.link(button=BACK_ARROW_WHITE, destination=page_island)
 page_island_phone.link(button=ISLAND_PHONE_GOTO_MAIN, destination=page_main)
 page_island_phone.link(button=ISLAND_PHONE_GOTO_ISLAND, destination=page_island)

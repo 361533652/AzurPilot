@@ -1234,6 +1234,9 @@ class GeneratedConfig:
     # 配置组 `IslandProductionPlanner`
     IslandProductionPlanner_ApplySettings = False  # True, False
     IslandProductionPlanner_RescanTechnology = True  # True, False
+    IslandProductionPlanner_ScanSeasonTasks = True  # True, False
+    IslandProductionPlanner_SeasonTaskTargets = None
+    IslandProductionPlanner_ExtraTargets = None
     IslandProductionPlanner_DailyProfitLowerLimit = 50000
     IslandProductionPlanner_DailyBufferSafetyMargin = 0
     IslandProductionPlanner_FieldsEfficiency = 0  # 0, 0.04, 0.12

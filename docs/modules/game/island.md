@@ -158,9 +158,11 @@ flowchart TD
 工具页任务，思路、数据表与线性规划移植自 ALAS（LmeSzinc/AzurLaneAutoScript，GPL-3.0）的 Island Production Planner，仅作为「计算器」把方案写入 AzurPilot 已有配置，生产仍由上表各任务执行。
 
 1. **科技状态**：读取 `IslandProductionPlanner.Storage.Storage.IslandTechnologyStatus`；没有保存或勾选 `RescanTechnology` 时进入 `page_island_technology`（岛屿主页右上 `ISLAND_GOTO_ISLAND_TECHNOLOGY`，`BACK_ARROW_WHITE` 返回）扫描，扫描后自动取消勾选。扫描与语言无关：用 `assets/island/technology/technology_chart_{2..6}.png` 连线轮廓模板匹配当前视野，按 `data.py` 节点坐标读亮度（>160 即解锁）；左侧 2~6 号标签按颜色识别，1 号标签无生产科技不扫描。点击带 2 秒间隔，每个标签最多滑动 15 次。
-2. **求解**：`ProductionPlanCalculator` 以「每日净增物品的季节 PT」为目标，约束包括物品平衡、各生产分组工时（解锁岗位数 × 24 小时 × 效率）、餐厅货架（等级决定货架数 2/2/3/4、容量 5/6 + 服务员加成）、每日岛币净收入 ≥ `DailyProfitLowerLimit`。SciPy 自带 `scipy.optimize.milp`，不需要 ALAS 的兼容层。求解前 `restrict_calculator` 排除 AzurPilot 后厨选项里没有的配方、商区选项里没有的出售菜品，以及农田配置里没有的作物；季节活动按服务器时间从 `data.py` 读取。
-3. **餐厅营业与服务员**：分批经营开启时只有 `Batch1Shops`/`Batch2Shops` 中的店参与出售；`IslandBusinessShopN.Char1/2` 中对本店有加成的角色（肇和、柴郡、海伦娜、欧根亲王、奥古斯特、贝尔法斯特、长风）计入加成，其余角色及 None（工作啾代班）只占位。店铺等级由本任务的 `*Grade` 手动填写。
-4. **写回**（`settings_map.py`，`ApplySettings` 关闭时只在日志预览，标 `*` 的为会改变的项）：
+2. **季节任务与额外目标**：`ScanSeasonTasks` 开启时进入 `page_island_season`（岛屿主页右上 `ISLAND_GOTO_ISLAND_SEASON`）底部第 3 个「任务」标签，先 `ISLAND_SEASON_TASK_RECEIVE_ALL` 一键领取已完成任务的奖励（否则已完成任务会被当成目标），再按 `TEMPLATE_ISLAND_SEASON_REWARD` 定位任务卡、OCR 任务名（EN 用 cnocr 并按任务表还原空格，编辑距离纠正到当前季节任务），遇到 `TEMPLATE_ISLAND_SEASON_TASK_OBTAINED` 或滚到底停止（最多翻 20 页），把以物品为目标的未完成任务汇总写入 `SeasonTaskTargets`（预览模式也写）。`ExtraTargets` 为手动追加目标（YAML，值为数量或 `{count, period}`）。两者合并为需求：期限默认本季剩余天数，按 ALAS 方式换算成每日速率并作为约束；当前科技无法生产的物品记录警告后忽略。同名物品（两个 Corn）优先取可生产的。ALAS 的「卡住的季节订单」由其订单任务记录，AzurPilot 不处理季节订单，改由 `ExtraTargets` 手动表达。
+3. **求解**：`ProductionPlanCalculator` 以「每日净增物品的季节 PT」为目标，约束包括物品平衡、各生产分组工时（解锁岗位数 × 24 小时 × 效率）、餐厅货架（等级决定货架数 2/2/3/4、容量 5/6 + 服务员加成）、每日岛币净收入 ≥ `DailyProfitLowerLimit`。SciPy 自带 `scipy.optimize.milp`，不需要 ALAS 的兼容层。求解前 `restrict_calculator` 排除 AzurPilot 后厨选项里没有的配方、商区选项里没有的出售菜品，以及农田配置里没有的作物；季节活动按服务器时间从 `data.py` 读取。
+4. **餐厅营业与服务员**：分批经营开启时只有 `Batch1Shops`/`Batch2Shops` 中的店参与出售；`IslandBusinessShopN.Char1/2` 中对本店有加成的角色（肇和、柴郡、海伦娜、欧根亲王、奥古斯特、贝尔法斯特、长风）计入加成，其余角色及 None（工作啾代班）只占位。店铺等级由本任务的 `*Grade` 手动填写。
+5. **写回**（`settings_map.py`，`ApplySettings` 关闭时只在日志预览，标 `*` 的为会改变的项）：
+   - 下列「一天用量/消耗」均含目标物品的每日速率（`daily_need`），目标物品在计划中是累积而非消耗，不计入会导致不为其开工。
    - 后厨 `Meal1~8/MealNumber1~8`：先列出售菜品（按日销量降序，目标 = 货架容量 + 一天用量），再列原料/中间品（按日消耗降序，目标 = 一天用量）；超过 8 个时丢弃末尾并告警。
    - `*NextTask.AwayCook`：该后厨闲时累积量最大的产品，没有则 None。
    - 商区 `Product1~5`：计划出售的菜品，按日销量降序。
@@ -168,7 +170,7 @@ flowchart TD
    - 矿山/林场/渔场 `IslandMine/IslandForest/IslandFishery.Min*`：一天计划消耗量，不用的为 0；求解前排除 AzurPilot 不生产的煤炭、自然之木和未配置的鱼种。闲时累积同作物只作提示（由 `MineSilver`/`CutElegant`/`PlantYellowfinTuna` 安排）。
    - 牧场 `IslandRancher.MinChicken`（禽肉）/`MinPork`（鲜肉）取计划日产量（按牧场科技等级放大，禽肉为副产物，每 3 批摊一次；用到时至少为 1），`Milk`/`Wool` 按计划是否养牛/羊开关。
    - 制造业 `WoodProcessing/ElectronicProcessing/Industrial/Handmade.Positions`：计划工作量需要的岗位数（不超过已解锁岗位与 2）。AzurPilot 各产线产品写死（文件柜、净水滤芯、铁钉/刀叉餐具、皮革/鞋靴/季节手工品），求解前排除其余制造配方。
-5. 无可行方案时不改配置，日志给出瓶颈（通常是岛币下限过高）。
+6. 无可行方案时不改配置，日志给出瓶颈（通常是岛币下限过高）。
 
 ## 7. 调用关系
 
@@ -315,7 +317,7 @@ stateDiagram-v2
 - `SEASONAL_ITEMS` 中冬季为空、代码保留的 `'none'` 季节分支在当前配置选项下不可达；赛季迭代（新季节物品上线）完全依赖手动维护代码。
 - 制造业部分季节物品（夏季茉莉精油、秋季花束）在季节表中保留但有意不配置制作；`filter_element` 复用了 `TEMPLATE_FILE_CABINET` 模板（资源未单独提取），为已知的临时妥协。
 - 货物黑名单目前只实现了 Milk 一种识别模板。
-- 岛屿生产规划器不能指定制造业产线内的产品比例（铁钉与餐具、皮革与鞋靴由 `island_manufacture.py` 按库存规则切换），只控制岗位数；季节任务目标、卡住的季节订单与每日订单不参与规划（ALAS 有，AzurPilot 尚未接入）。`data.py` 需在游戏更新后从 ALAS 重新复制。
+- 岛屿生产规划器不能指定制造业产线内的产品比例（铁钉与餐具、皮革与鞋靴由 `island_manufacture.py` 按库存规则切换），只控制岗位数；季节订单需在 `ExtraTargets` 手动填写；每日订单不参与规划。`data.py` 需在游戏更新后从 ALAS 重新复制。
 - 各生产玩法每轮固定追加 6 小时兜底延时，依赖 `Duration` OCR 读取剩余时间，极端字体渲染下可能识别失败退化为兜底值。
 
 ## 19. 调试方法

@@ -20925,6 +20925,22 @@
           false
         ]
       },
+      "ScanSeasonTasks": {
+        "type": "checkbox",
+        "value": true,
+        "option": [
+          true,
+          false
+        ]
+      },
+      "SeasonTaskTargets": {
+        "type": "textarea",
+        "value": ""
+      },
+      "ExtraTargets": {
+        "type": "textarea",
+        "value": ""
+      },
       "DailyProfitLowerLimit": {
         "type": "input",
         "value": 50000

@@ -256,8 +256,10 @@ class PlannerTaskTest(unittest.TestCase):
         technology = {str(tech_id): True for tech_id in DIC_ISLAND_TECHNOLOGY}
         with patch.object(IslandProductionPlanner, '__init__', lambda self: None):
             planner = IslandProductionPlanner()
+        overrides.setdefault('IslandProductionPlanner_ScanSeasonTasks', False)
         planner.config = FakeConfig(technology, IslandProductionPlanner_RescanTechnology=False, **overrides)
         planner.get_technology_status = lambda: self.fail('saved technology must not trigger a scan')
+        planner.scan_season_task_targets = lambda: {3009: 30}
         return planner, planner.run()
 
     def test_preview_does_not_write(self):
@@ -279,6 +281,60 @@ class PlannerTaskTest(unittest.TestCase):
                                            IslandProductionPlanner_DailyProfitLowerLimit=10 ** 9)
         self.assertFalse(result)
         self.assertEqual(planner.config.written, {})
+
+
+    def test_targets_reach_kitchen_settings(self):
+        # 苹果派不在默认方案里；加入目标后啾啾简餐后厨应为其开工
+        planner, result = self.run_planner(IslandProductionPlanner_ApplySettings=True,
+                                           IslandProductionPlanner_ExtraTargets='Apple Pie: 84')
+        self.assertTrue(result)
+        meals = [planner.config.written.get(f'IslandJuuEatery.IslandJuuEatery.Meal{i}') for i in range(1, 9)]
+        self.assertIn('apple_pie', meals)
+
+    def test_scan_writes_season_targets(self):
+        planner, result = self.run_planner(IslandProductionPlanner_ScanSeasonTasks=True)
+        self.assertTrue(result)
+        self.assertEqual(
+            planner.config.written['IslandProductionPlanner.IslandProductionPlanner.SeasonTaskTargets'].strip(),
+            'Apple Pie (3009): 30')
+
+
+class TargetParsingTest(unittest.TestCase):
+    def setUp(self):
+        self.previous_server = server.server
+        server.server = 'en'
+
+    def tearDown(self):
+        server.server = self.previous_server
+
+    def test_parse_and_merge(self):
+        from module.island_planner.planner import merge_targets, parse_targets
+        season = parse_targets('Apple Pie: 30\nCorn: 100', 'SeasonTaskTargets')
+        extra = parse_targets('Apple Pie: {count: 10, period: 2}\nNot An Item: 5\n3011: 4', 'ExtraTargets')
+        self.assertEqual(season, {3009: [30], 2001: [100]})
+        self.assertEqual(extra, {3009: [{'count': 10, 'period': 2}], 3011: [4]})
+        merged = merge_targets(season, extra)
+        from module.island_planner.utils import normalize_item_needs
+        needs = normalize_item_needs(merged, default_period=8)
+        # 30 个 8 天 + 10 个 2 天：前 2 天至少 10 个，8 天共 40 个
+        self.assertEqual(needs[3009]['total_need_count'], 40)
+        self.assertAlmostEqual(needs[3009]['rate_per_day'], 5.0)
+        self.assertEqual(parse_targets('[1, 2', 'ExtraTargets'), {})
+
+    def test_season_task_matching(self):
+        from module.island_planner.data import DIC_ISLAND_TASK
+        from module.island_planner.season_tasks import match_task_name, task_item_targets
+        item_tasks = [tid for tid, task in DIC_ISLAND_TASK.items()
+                      if task['target'] and next(iter(task['target'])) in DIC_ISLAND_ITEM]
+        self.assertTrue(item_tasks)
+        task_id = item_tasks[0]
+        name = DIC_ISLAND_TASK[task_id]['name']['en']
+        # OCR 少一个字母也能纠正到同一任务
+        self.assertEqual(match_task_name(name[:-1], item_tasks[:20]), task_id)
+        self.assertIsNone(match_task_name('', item_tasks))
+        targets = task_item_targets([task_id, task_id, 10001000])
+        item_id, count = next(iter(DIC_ISLAND_TASK[task_id]['target'].items()))
+        self.assertEqual(targets, {item_id: count * 2})
 
 
 class ScannerGeometryTest(unittest.TestCase):

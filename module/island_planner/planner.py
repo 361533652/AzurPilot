@@ -6,16 +6,22 @@ IslandProductionPlanner：扫描岛屿科技，用线性规划求出每日生产
 把方案写进 AzurPilot 已有的岛屿配置（店铺后厨、商区、农田作物目标），
 实际生产仍由 AzurPilot 自己的岛屿任务执行。
 """
+import module.config.server as server
 from module.base.decorator import cached_property
 from module.config.deep import deep_get
 from module.config.utils import filepath_args, read_file
 from module.island_planner import settings_map
 from module.island_planner.calculator import ProductionPlanCalculator
+from module.island_planner.data import DIC_ISLAND_ITEM
 from module.island_planner.scanner import IslandTechnologyScanner
+from module.island_planner.season_tasks import IslandSeasonTaskScanner
 from module.island_planner.utils import (
     get_current_activity_list,
     get_current_season_remaining_days,
+    item_mapping_to_yaml,
+    load_item_mapping,
     load_technology_status,
+    normalize_item_id,
 )
 from module.logger import logger
 
@@ -30,7 +36,54 @@ GRADE_KEYS = {
 }
 
 
-class IslandProductionPlanner(IslandTechnologyScanner):
+def resolve_item(key):
+    """物品名或 ID 转物品 ID。同名物品（如两个 Corn）优先取可以生产的那个。"""
+    if isinstance(key, str) and not key.strip().isdigit() and '(' not in key:
+        matches = [item_id for item_id, item in DIC_ISLAND_ITEM.items()
+                   if item['name'][server.server] == key.strip()]
+        if len(matches) > 1:
+            produced = [item_id for item_id in matches if item_id in ProductionPlanCalculator.RECIPE_PRODUCT_IDS]
+            return (produced or matches)[0]
+    return normalize_item_id(key)
+
+
+def parse_targets(text, name):
+    """解析目标文本（YAML 映射，键为物品英文名或 ID）。
+
+    值可以是数量（期限默认为本季剩余天数）、`{count: 数量, period: 天数}`，或这些的列表。
+    无法识别的物品记录警告后跳过，不影响其他条目。
+
+    Returns:
+        dict[int, list]: {物品ID: [单条需求, ...]}，供 merge_targets 合并。
+    """
+    try:
+        mapping = load_item_mapping(text, config_name=name)
+    except Exception as e:
+        logger.warning(f'[岛屿-规划] {name} 格式错误，已忽略: {e}')
+        return {}
+    targets = {}
+    for key, value in mapping.items():
+        try:
+            item_id = resolve_item(key)
+        except ValueError as e:
+            logger.warning(f'[岛屿-规划] {name}: {e}，已忽略')
+            continue
+        entries = value if isinstance(value, list) else [value]
+        targets.setdefault(item_id, []).extend(entries)
+    return targets
+
+
+def merge_targets(*target_maps):
+    """合并多份目标。每条需求独立计入（同一物品的数量相加），
+    交给 calculator 的 normalize_item_needs 按期限换算成每日速率。"""
+    merged = {}
+    for targets in target_maps:
+        for item_id, entries in targets.items():
+            merged.setdefault(item_id, []).extend(entries)
+    return merged
+
+
+class IslandProductionPlanner(IslandSeasonTaskScanner, IslandTechnologyScanner):
     """
     Pages:
         in: 任意页面（需要扫描科技时）
@@ -69,6 +122,26 @@ class IslandProductionPlanner(IslandTechnologyScanner):
             self.config.cross_set(f'{TASK}.{TASK}.RescanTechnology', False)
         return status
 
+    def load_targets(self):
+        """季节任务目标（可扫描更新）与手动额外目标。
+
+        ALAS 的「卡住的季节订单」由其订单任务自动记录；AzurPilot 不处理季节订单，
+        需要为订单备货时把物品写进 ExtraTargets。
+        """
+        if self.get('ScanSeasonTasks'):
+            targets = self.scan_season_task_targets()
+            text = item_mapping_to_yaml(targets, use_item_name=True) if targets else ''
+            # 扫描结果属于规划器自己的输入，预览模式也保存，便于查看和手动修改
+            self.config.cross_set(f'{TASK}.{TASK}.SeasonTaskTargets', text)
+        else:
+            text = self.get('SeasonTaskTargets')
+        season = parse_targets(text, 'SeasonTaskTargets')
+        extra = parse_targets(self.get('ExtraTargets'), 'ExtraTargets')
+        for name, targets in (('季节任务目标', season), ('额外目标', extra)):
+            if targets:
+                logger.info(f'[岛屿-规划] {name}: {targets}')
+        return merge_targets(season, extra)
+
     def create_calculator(self, technology_status):
         grades = {rid: self.get(key) for rid, key in GRADE_KEYS.items()}
         chars = {
@@ -97,6 +170,7 @@ class IslandProductionPlanner(IslandTechnologyScanner):
     def run(self):
         logger.hr('Island production planner', level=1)
         technology_status = self.load_technology()
+        targets = self.load_targets()
         calculator = self.create_calculator(technology_status)
 
         meal_options = {
@@ -114,7 +188,12 @@ class IslandProductionPlanner(IslandTechnologyScanner):
         remaining = get_current_season_remaining_days()
         if remaining is not None:
             logger.info(f'[岛屿-规划] 本季剩余 {remaining:.1f} 天')
-        calculator.solve_production_plan()
+        elif targets:
+            # 没有进行中的季节时目标没有默认期限，按 1 天处理，避免整体求解失败
+            logger.warning('[岛屿-规划] 没有进行中的季节，未写期限的目标按 1 天计算')
+            remaining = 1
+        # 目标物品当前无法生产时由 calculator 记录警告后忽略，不影响其他物品
+        calculator.solve_production_plan(task_target_items=targets, task_target_period=remaining)
         calculator.print_solved_production_plan()
         if not calculator.lp_success:
             logger.warning('[岛屿-规划] 没有可行方案，配置未修改。可降低「每日岛币净收入下限」后重试')

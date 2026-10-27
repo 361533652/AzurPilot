@@ -2583,6 +2583,16 @@ IslandProductionPlanner:
     type: checkbox
     value: true
     option: [ true, false ]
+  ScanSeasonTasks:
+    type: checkbox
+    value: true
+    option: [ true, false ]
+  SeasonTaskTargets:
+    type: textarea
+    value: ''
+  ExtraTargets:
+    type: textarea
+    value: ''
   DailyProfitLowerLimit: 50000
   DailyBufferSafetyMargin: 0
   FieldsEfficiency:

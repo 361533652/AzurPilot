@@ -4009,6 +4009,9 @@
     "IslandProductionPlanner": {
       "ApplySettings": false,
       "RescanTechnology": true,
+      "ScanSeasonTasks": true,
+      "SeasonTaskTargets": null,
+      "ExtraTargets": null,
       "DailyProfitLowerLimit": 50000,
       "DailyBufferSafetyMargin": 0,
       "FieldsEfficiency": 0,

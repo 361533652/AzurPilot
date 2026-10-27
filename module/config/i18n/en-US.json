@@ -6968,6 +6968,20 @@
       "True": "Enabled",
       "False": "Disabled"
     },
+    "ScanSeasonTasks": {
+      "name": "Scan season tasks",
+      "help": "Each run opens the Tasks tab of the season page, claims rewards for finished tasks, reads the unfinished ones and writes the items they need into \"Season task targets\".",
+      "True": "Enabled",
+      "False": "Disabled"
+    },
+    "SeasonTaskTargets": {
+      "name": "Season task targets",
+      "help": "One \"item English name: amount\" per line; the plan spreads production over the days left in the season. Rewritten on every run while \"Scan season tasks\" is on; edit it by hand when that is off."
+    },
+    "ExtraTargets": {
+      "name": "Extra targets",
+      "help": "Extra stock goals you add by hand, same format, or \"item: {count: amount, period: days}\" for a deadline. AzurPilot does not handle season orders, so to stock up for an order, write its items here. Items that cannot be produced yet are skipped with a note in the log."
+    },
     "DailyProfitLowerLimit": {
       "name": "Minimum daily island coin income",
       "help": "The plan keeps the daily net change in island coins at or above this. Can be negative (spend coins for PT) or 0 (break even). Lower it if no plan is found."
