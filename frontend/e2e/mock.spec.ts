@@ -497,7 +497,10 @@ test('舰队科技完整图鉴区分累计里程碑与当前持有', async ({pag
   await expect(table.getByRole('link', {name: '杜威', exact: true})).toHaveAttribute('title', /当前持有: 0/)
   await expect(table.getByRole('button', {name: '杜威 · 满星 · 已完成', exact: true})).toHaveAttribute('aria-pressed', 'true')
   await page.getByRole('button', {name: '未获得', exact: true}).click()
-  await expect(table.locator('tbody tr')).toHaveCount(0)
+  // 搜索是包含匹配：普通杜威已完成，杜威·META 仍未获得。
+  await expect(table.locator('tr[data-group="10102"]')).toHaveCount(0)
+  await expect(table.locator('tbody tr')).toHaveCount(1)
+  await expect(table.locator('tbody tr')).toContainText('杜威·META')
   await page.getByRole('button', {name: '未获得', exact: true}).click()
   await page.locator('.ft-filters').getByRole('button', {name: 'Lv.120', exact: true}).click()
   await expect(table.locator('tr[data-group="10102"]')).toHaveCount(1)
