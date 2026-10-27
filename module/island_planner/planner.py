@@ -122,7 +122,7 @@ class IslandProductionPlanner(IslandTechnologyScanner):
 
         values, notes = settings_map.build_settings(calculator, meal_options, product_options)
         for note in notes:
-            logger.warning(f'[岛屿-规划] {note}')
+            logger.info(f'[岛屿-规划] {note}')
         changed = {path: value for path, value in values.items() if self.config.cross_get(path) != value}
         logger.hr('Planned settings', level=2)
         for path, value in values.items():

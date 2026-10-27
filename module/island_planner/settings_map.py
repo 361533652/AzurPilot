@@ -9,7 +9,7 @@
 - 挂机生产 `Island*NextTask.AwayCook`：该后厨闲时累积量最大的产品，没有则为 None。
 - 商区 `IslandBusinessShop1~5.Product1~5`：该餐厅计划出售的菜品，按日销量降序。
 - 农田 `IslandFarm/IslandOrchard/IslandNursery.CropTargets`：区域内所有作物都写明目标，
-  计划消耗的作物为一天消耗量（再加一天闲时累积量），不需要的作物为 0。
+  计划消耗的作物为一天消耗量，不需要的作物为 0；只为攒 PT 的闲时作物只在日志中提示。
 
 AzurPilot 不会做或卖的菜品、不会种的作物，会在求解前从模型中排除，
 避免规划出 AzurPilot 执行不了的方案。
@@ -255,17 +255,32 @@ def kitchen_settings(calculator, restaurant_id, meal_options, product_options):
 
 
 def crop_settings(calculator):
-    """三个种植区域的 CropTargets。"""
+    """三个种植区域的 CropTargets。
+
+    目标只含一天的计划消耗量（ALAS 的日缓冲），不含闲时累积量：AzurPilot 按
+    「库存/目标」比例排序补种，若把闲时累积量计入目标，只为攒 PT 的作物会挤占
+    真正需要的作物。闲时累积的作物作为提示返回，由用户在区域的默认作物岗位数中安排。
+
+    Returns:
+        tuple[dict, list[str]]: ({配置路径: 值}, 提示信息)。
+    """
     buffer = calculator.product_daily_buffer_items
     idle = calculator.idle_accumulating_items_per_day
     values = {}
+    notes = []
     for area, data in CROP_AREAS.items():
         targets = {}
+        idle_crops = []
         for crop, item_id in CROP_ITEM_IDS[area].items():
-            amount = buffer.get(item_id, 0) + idle.get(item_id, 0)
+            amount = buffer.get(item_id, 0)
             targets[crop] = ceil(amount - 1e-9) if amount > 0 else 0
+            if idle.get(item_id, 0) > 0:
+                idle_crops.append((idle[item_id], crop))
         values[f'{data["task"]}.{data["group"]}.CropTargets'] = format_crop_targets(targets)
-    return values
+        if idle_crops:
+            text = ', '.join(f'{crop} {amount:.0f}/day' for amount, crop in sorted(idle_crops, reverse=True))
+            notes.append(f'{data["group"]}: spare posts can grow {text} for season PT (default crop settings)')
+    return values, notes
 
 
 def build_settings(calculator, meal_options, product_options):
@@ -282,7 +297,9 @@ def build_settings(calculator, meal_options, product_options):
             meal_options.get(restaurant_id, ()), product_options.get(restaurant_id, ()))
         values.update(kitchen_values)
         notes.extend(kitchen_notes)
-    values.update(crop_settings(calculator))
+    crop_values, crop_notes = crop_settings(calculator)
+    values.update(crop_values)
+    notes.extend(crop_notes)
     return values, notes
 
 

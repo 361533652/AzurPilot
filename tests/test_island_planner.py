@@ -109,11 +109,14 @@ class FakeCalculatorTest(unittest.TestCase):
             ['tofu_meat', 'tofu_combo', 'None', 'None', 'None'])
 
     def test_crop_settings(self):
-        values = sm.crop_settings(self.make())
+        values, notes = sm.crop_settings(self.make())
         farm = parse_crop_targets(values['IslandFarm.IslandFarm.CropTargets'])
-        self.assertEqual(farm['rice'], 25)
+        # 目标只含一天消耗，闲时累积量只作提示，避免攒 PT 的作物挤占真正需要的作物
+        self.assertEqual(farm['rice'], 20)
         self.assertEqual(farm['wheat'], 0)
         self.assertEqual(set(farm), set(sm.CROP_ITEM_IDS['farm']))
+        self.assertEqual(len(notes), 1)
+        self.assertIn('rice 4/day', notes[0])
 
 
 class SolveTest(unittest.TestCase):
