@@ -91,6 +91,8 @@ test('换船调度集中三种开关，分别保存天数扫描及共用小时�
   await expect(sharedInterval).toHaveCount(1)
   await expect(sharedInterval).toHaveValue('6')
   await expect(fullInterval).toHaveValue('3')
+  await expect(page.getByText(/每次检查后必须等满间隔/)).toBeVisible()
+  await expect(page.getByText(/只有确认需要换船后才检查此间隔/)).toBeVisible()
   await page.screenshot({path: 'test-results/fleet-scan-intervals-defaults.png', fullPage: true, animations: 'disabled'})
   expect(await fullInterval.getAttribute('max')).toBeNull()
   await fullInterval.fill('0')
