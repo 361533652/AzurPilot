@@ -7,7 +7,7 @@ import {ErrorBox, Loading, PageTitle} from '../components/ui'
 import {rotationRules} from './FleetRotation'
 
 type Row = {
-  level?: number | null; exp?: number | null; affinity?: number | null; checked_at?: string
+  level?: number | null; display_level?: number | null; exp?: number | null; affinity?: number | null; checked_at?: string
   completed_for?: Record<string, number>; completed_at?: string; fleet?: number; slot?: number; emotion?: number | null
 }
 type PositionedRow = Row & {name: string; key: string}
@@ -81,7 +81,7 @@ export function TrainingRecords({snapshot}: {snapshot: RecordSnapshot}) {
             <td>{row.fleet ? ui('fleet.title', {number: row.fleet}) : ui('training.unread')}</td>
             <td>{row.slot ? ui('fleet.slot', {number: row.slot}) : ui('training.unread')}</td>
             <td>{row.name || ui('fleet.unknown')}</td><td>{row.emotion ?? ui('training.unread')}</td>
-            <td>{row.level ?? ui('training.unread')}</td><td>{row.exp ?? ui('training.unread')}</td><td>{row.affinity ?? ui('training.unread')}</td>
+            <td title={row.display_level == null ? undefined : ui('training.displayLevel', {level: row.display_level})}>{row.level ?? ui('training.unread')}</td><td>{row.exp ?? ui('training.unread')}</td><td>{row.affinity ?? ui('training.unread')}</td>
             <td>{row.checked_at ? row.checked_at.replace('T', ' ') : ui('training.unread')}</td>
           </tr>)}</tbody>
           </table>

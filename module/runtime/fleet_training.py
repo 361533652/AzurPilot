@@ -196,8 +196,9 @@ def observe(saved, name, reading, targets, *, fleet=None, slot=None, emotion=Non
     # 同次检查重新写入全部已启用条件，不能把旧高好感与新等级拼成完成。
     record.update({metric: reading.get(metric) for metric in targets})
     if 'level' in targets:
-        # 经验已经随等级实读，独立保存供页面展示，不参与完成判定。
+        # level 已按大世界经验表折算；保留界面等级与原始经验，避免重复累加存储经验。
         record['exp'] = reading.get('exp')
+        record['display_level'] = reading.get('display_level', reading.get('level'))
     if type(fleet) is int and 1 <= fleet <= 6 and type(slot) is int and 1 <= slot <= 6:
         # 保存当次已确认的位置和已有心情读数，仅用于记录展示，不额外操作游戏。
         record.update(fleet=fleet, slot=slot,
