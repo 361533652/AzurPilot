@@ -121,8 +121,10 @@ class IslandSeasonTaskScanner(IslandUI):
         """季节页底部 6 个标签：主页、PT 奖励、任务、商店、排名、历史。"""
         grids = ButtonGrid(origin=(14, 677), delta=(213, 0), button_shape=(186, 33), grid_shape=(6, 1),
                            name='ISLAND_SEASON_BOTTOM_NAVBAR')
+        # 激活标签是整块浅色底（实测约 4900 像素）；EN 服较长的白色标签文字最多约 940 像素，
+        # ALAS 的 500 会把未激活标签也判为激活，因此提高到 2500
         return Navbar(grids=grids, active_color=(237, 237, 237), inactive_color=(65, 78, 96),
-                      active_count=500, inactive_count=500)
+                      active_count=2500, inactive_count=500)
 
     def has_white_band(self, threshold=1200):
         """领奖后的横幅弹窗：画面中部有一条足够高的白色横带。"""
