@@ -36,6 +36,20 @@ GRADE_KEYS = {
 }
 
 
+def efficiency_rate(value):
+    """效率加成配置转成比例。
+
+    配置以整数百分比保存（0/4/12）：WebUI 用「.」分隔翻译键，0.04 这类小数选项会被拆开，
+    无法正常选择。早期保存的小数（0.04）与无法解析的值也兼容处理。
+    """
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        logger.warning(f'[岛屿-规划] 效率加成无法识别: {value}，按 0 处理')
+        return 0.
+    return value / 100 if value >= 1 else max(value, 0.)
+
+
 def resolve_item(key):
     """物品名或 ID 转物品 ID。同名物品（如两个 Corn）优先取可以生产的那个。"""
     if isinstance(key, str) and not key.strip().isdigit() and '(' not in key:
@@ -158,9 +172,9 @@ class IslandProductionPlanner(IslandSeasonTaskScanner, IslandTechnologyScanner):
             technology_status=technology_status,
             activity_list=get_current_activity_list(),
             place_efficiency={
-                101: float(self.get('FieldsEfficiency')),
-                501: float(self.get('OrchardEfficiency')),
-                502: float(self.get('NurseryEfficiency')),
+                101: efficiency_rate(self.get('FieldsEfficiency')),
+                501: efficiency_rate(self.get('OrchardEfficiency')),
+                502: efficiency_rate(self.get('NurseryEfficiency')),
             },
             restaurant_settings=settings_map.restaurant_settings(grades, chars, open_ids),
             daily_profit_lower_limit=self.get('DailyProfitLowerLimit'),

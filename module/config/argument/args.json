@@ -20954,8 +20954,8 @@
         "value": 0,
         "option": [
           0,
-          0.04,
-          0.12
+          4,
+          12
         ]
       },
       "OrchardEfficiency": {
@@ -20963,8 +20963,8 @@
         "value": 0,
         "option": [
           0,
-          0.04,
-          0.12
+          4,
+          12
         ]
       },
       "NurseryEfficiency": {
@@ -20972,8 +20972,8 @@
         "value": 0,
         "option": [
           0,
-          0.04,
-          0.12
+          4,
+          12
         ]
       },
       "RestaurantGrade": {

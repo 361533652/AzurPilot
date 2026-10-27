@@ -1239,9 +1239,9 @@ class GeneratedConfig:
     IslandProductionPlanner_ExtraTargets = None
     IslandProductionPlanner_DailyProfitLowerLimit = 50000
     IslandProductionPlanner_DailyBufferSafetyMargin = 0
-    IslandProductionPlanner_FieldsEfficiency = 0  # 0, 0.04, 0.12
-    IslandProductionPlanner_OrchardEfficiency = 0  # 0, 0.04, 0.12
-    IslandProductionPlanner_NurseryEfficiency = 0  # 0, 0.04, 0.12
+    IslandProductionPlanner_FieldsEfficiency = 0  # 0, 4, 12
+    IslandProductionPlanner_OrchardEfficiency = 0  # 0, 4, 12
+    IslandProductionPlanner_NurseryEfficiency = 0  # 0, 4, 12
     IslandProductionPlanner_RestaurantGrade = 'bronze'  # bronze, silver, gold, diamond
     IslandProductionPlanner_TeahouseGrade = 'bronze'  # bronze, silver, gold, diamond
     IslandProductionPlanner_JuuEateryGrade = 'bronze'  # bronze, silver, gold, diamond

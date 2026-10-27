@@ -2597,13 +2597,13 @@ IslandProductionPlanner:
   DailyBufferSafetyMargin: 0
   FieldsEfficiency:
     value: 0
-    option: [ 0, 0.04, 0.12 ]
+    option: [ 0, 4, 12 ]
   OrchardEfficiency:
     value: 0
-    option: [ 0, 0.04, 0.12 ]
+    option: [ 0, 4, 12 ]
   NurseryEfficiency:
     value: 0
-    option: [ 0, 0.04, 0.12 ]
+    option: [ 0, 4, 12 ]
   RestaurantGrade: &IslandPlannerGrade
     value: bronze
     option: [ bronze, silver, gold, diamond ]

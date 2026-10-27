@@ -337,6 +337,18 @@ class TargetParsingTest(unittest.TestCase):
         self.assertEqual(targets, {item_id: count * 2})
 
 
+class EfficiencyTest(unittest.TestCase):
+    def test_efficiency_rate(self):
+        from module.island_planner.planner import efficiency_rate
+        # 配置为整数百分比；兼容早期的小数值与 WebUI 拆坏的字符串
+        self.assertEqual(efficiency_rate(0), 0)
+        self.assertAlmostEqual(efficiency_rate(4), 0.04)
+        self.assertAlmostEqual(efficiency_rate(12), 0.12)
+        self.assertAlmostEqual(efficiency_rate(0.04), 0.04)
+        self.assertAlmostEqual(efficiency_rate('04'), 0.04)
+        self.assertEqual(efficiency_rate('bad'), 0)
+
+
 class ScannerGeometryTest(unittest.TestCase):
     def test_node_positions_cover_scanned_tabs(self):
         from module.island_planner.scanner import SCANNED_TABS, get_technology_tab_and_position, node_in_view
