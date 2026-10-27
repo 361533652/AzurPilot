@@ -5,14 +5,12 @@ from typing import Optional
 
 import requests
 
+from deploy.api_endpoints import FORCE_UPDATE_CONTROL_URL as CLOUD_FORCE_UPDATE_CONTROL_URL
 from deploy.config import GIT_OVER_CDN_FALLBACK_REPOSITORIES, DeployConfig, ErrorCodes, ExecutionError
 from deploy.git_over_cdn.client import GitOverCdnClient
 from deploy.git_over_cdn.endpoints import CLOUDFLARE_UPDATE_URLS, FALLBACK_UPDATE_URLS
 from deploy.logger import logger
 from deploy.utils import *
-
-
-CLOUD_FORCE_UPDATE_CONTROL_URL = 'https://alas-apiv2.nanoda.work/api/force_update'
 
 
 def peer_fallback_repository(url: str) -> Optional[str]:

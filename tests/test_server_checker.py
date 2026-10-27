@@ -13,7 +13,7 @@ from module.exception import ScriptError
 from module.server_checker import ServerChecker
 from module.server_status import GatewayServer, ServerStatusQueryError
 
-API_BASE = "https://server-checker.nanoda.work/api/v1/servers"
+API_BASE = "https://api.azurpilot.com/api/v1/servers"
 
 
 def make_response(status_code=200, payload=None, text=""):

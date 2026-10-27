@@ -1,22 +1,22 @@
 """API 客户端模块。
 
 负责与 API 服务器进行 HTTP 交互，包括 CL1 数据提交和公告获取，
-支持主域名 (nanoda.work) 和备用域名 (nanoda.work) 的自动故障转移。
+默认统一使用 api.azurpilot.com，保留既有的主备端点请求流程。
 """
-import threading
 from typing import Any, Dict, List, Tuple, Optional
 
 import requests
 
+from deploy.api_endpoints import API_BASE_URL
 from module.logger import logger
 
 
 class ApiClient:
-    """统一的 API 客户端，支持双域名故障转移。"""
+    """统一的 API 客户端，保留主备端点配置。"""
     
     # 主域名和备用域名列表
-    PRIMARY_DOMAIN = 'https://alas-apiv2.nanoda.work'
-    FALLBACK_DOMAIN = 'https://alas-apiv2.nanoda.work'
+    PRIMARY_DOMAIN = API_BASE_URL
+    FALLBACK_DOMAIN = API_BASE_URL
     
     # API端点路径
     CL1_DATA_PATH = '/api/telemetry'

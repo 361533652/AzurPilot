@@ -46,6 +46,7 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
+from deploy.api_endpoints import MAINTENANCE_API_URL
 from module.base.runtime_params import (
     HANDOVER_CONSUME_RETRY_MINUTES,
     HANDOVER_MAINTAIN_CHECK_MINUTES,
@@ -100,7 +101,7 @@ HANDOVER_WEEKDAY_NAMES = ['周一', '周二', '周三', '周四', '周五', '周
 
 # 停服维护时间接口，顶层是国服公告的聚合结果，servers 里按 cn/jp/en/tw 分别给出
 # maintenance_date(YYYY-MM-DD) 与 start_time(HH:MM)
-HANDOVER_MAINTAIN_API = 'https://api-blhx-maintain.nanoda.work/api/maintenance'
+HANDOVER_MAINTAIN_API = MAINTENANCE_API_URL
 # 接口里服务器时区的形状，如 `UTC+8`、`UTC-7`、`UTC+08:00`
 HANDOVER_MAINTAIN_TIMEZONE = re.compile(r'^UTC([+-])(\d{1,2})(?::?(\d{2}))?$')
 # 委托结束时间的初始值，表示脚本手上没有开过委托

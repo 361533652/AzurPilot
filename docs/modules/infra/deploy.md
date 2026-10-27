@@ -96,6 +96,22 @@ Alas.bat → python -m deploy.installer
 
 `GitManager.git_install()` 按本地配置直接执行 Git/CDN 更新，不再请求云端更新总开关。云端仅保留运行期间的强制更新开关，其访问失败不阻止正常版本检查。
 
+### 统一云 API 入口
+
+核心云接口地址集中在 `deploy/api_endpoints.py`，统一使用 `https://api.azurpilot.com`：
+
+| 用途 | 路径与协议 |
+| --- | --- |
+| CL1 月度累计上报 | `POST /api/telemetry`，保留原 JSON 字段 |
+| 公告 | `GET /api/get/announcement`，根级 `announcementId`；无公告返回 `{}` |
+| 强制更新 | `GET /api/force_update`，根级 JSON 布尔值 |
+| 停服维护 | `GET /api/maintenance`，按 `data.servers` 区分服务器 |
+| 单服状态 | `GET /api/v1/servers/{region}_{server_id}`，保留复合 ID 与网关直连后备逻辑 |
+
+服务还提供 `/api/v2/get/notice/data.json` 和 `/api/v2/get/update/data.json` 两个 Worker 静态文档。当前客户端继续读取兼容路径，避免把文档对象当作旧接口布尔值。已移除的 `/api/updata` 总开关不恢复。
+
+源码更新 CDN、远程连接注册、ATX 下载和交易所由各自服务配置管理，使用各自的地址。
+
 ### 启动后的依赖自举
 
 仓库的 `[tool.uv] cache-dir` 与启动器的 `UV_CACHE_DIR` 统一指向项目内 `.uv-cache/`，
