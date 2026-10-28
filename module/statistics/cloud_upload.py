@@ -99,6 +99,42 @@ class CloudUploadQueue:
                    if d.is_dir() and not d.is_symlink() and JOB_NAME.fullmatch(d.name)
                    for p in d.iterdir() if p.is_file() and not p.is_symlink())
 
+    def _upgrade_legacy(self, job):
+        """Send a queued v1 group straight to 123 Pan instead of through A.
+
+        A's uplink is saturated, so a legacy group is upgraded to the direct
+        protocol before its first send. It gets a fresh upload ID because A may
+        still hold the older v1 attempt, and the per-file hashes are persisted
+        so a retry never hashes the same screenshots twice.
+        """
+        metadata = json.loads((job / 'metadata.json').read_text(encoding='utf-8'))
+        if metadata.get('upload_version') == 2:
+            return job
+        sizes = metadata.get('file_sizes')
+        if not isinstance(sizes, list) or not sizes:
+            raise ValueError('invalid outbox manifest')
+        hashes = []
+        for index in range(len(sizes)):
+            md5, sha = hashlib.md5(), hashlib.sha256()
+            with (job / f'{index}.png').open('rb') as file:
+                for block in iter(lambda: file.read(64 << 10), b''):
+                    md5.update(block)
+                    sha.update(block)
+            hashes.append({'md5': md5.hexdigest(), 'sha256': sha.hexdigest()})
+        upload_id = str(uuid.uuid4())
+        upgraded = {**metadata, 'upload_id': upload_id, 'upload_version': 2, 'files': hashes}
+        payload = json.dumps(upgraded, ensure_ascii=False).encode('utf-8')
+        if len(payload) > (256 << 10):
+            raise ValueError('cloud metadata exceeds limit')
+        staging = job / 'metadata.json.next'
+        staging.write_bytes(payload)
+        target = self.root / f'{upload_id}.pending'
+        with self.lock:
+            job.rename(target)
+            (target / 'metadata.json.next').replace(target / 'metadata.json')
+            self.next_try.pop(job.name, None)
+        return target
+
     def enqueue(self, images, metadata):
         with self.lock:
             self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -294,6 +330,7 @@ class CloudUploadQueue:
             if self.next_try.get(job.name, 0) > time.monotonic():
                 continue
             try:
+                job = self._upgrade_legacy(job)
                 self.send(job, session)
             except Exception as error:
                 self.next_try[job.name] = time.monotonic() + 60
