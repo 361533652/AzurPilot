@@ -38,9 +38,10 @@ jobs:
         with:
           ref: dev
           fetch-depth: 0
+          filter: blob:none
       - name: Reconcile squash ancestry without changing files
         env:
-          GH_TOKEN: ${ github.token }}
-          PR_EVENT_NUMBER: ${ github.event.pull_request.number }}
-          MANUAL_PR_NUMBER: ${ inputs.pr_number }}
+          GH_TOKEN: ${{ github.token }}
+          PR_EVENT_NUMBER: ${{ github.event.pull_request.number }}
+          MANUAL_PR_NUMBER: ${{ inputs.pr_number }}
         run: bash .github/scripts/sync-dev-squash-ancestry.sh
