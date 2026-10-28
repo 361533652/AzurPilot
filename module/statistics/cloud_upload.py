@@ -133,7 +133,6 @@ class CloudUploadQueue:
             job.rename(target)
             (target / 'metadata.json.next').replace(target / 'metadata.json')
             self.next_try.pop(job.name, None)
-        logger.info('[云端统计] 旧队列任务改为直传 123 盘，不再经过 A')
         return target
 
     def enqueue(self, images, metadata):
