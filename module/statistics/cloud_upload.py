@@ -27,6 +27,9 @@ MAX_GROUP_BYTES = 500 << 20
 MAX_SPOOL_BYTES = 512 << 20
 JOB_NAME = re.compile(r'^[0-9a-f-]{36}\.(?:pending|part)$')
 
+# 云端上传硬开关：False 时不再入队，也不发送已存在的暂存任务。
+UPLOAD_ENABLED = False
+
 
 class UploadDeferred(Exception):
     """Another instance in this process has already received server backoff."""
@@ -442,7 +445,7 @@ class CloudUploadQueue:
                                 if age > (7 * 86400 if job.name.endswith('.pending') else 86400):
                                     self._remove(job)
                                     self.next_try.pop(job.name, None)
-                    if self.enabled():
+                    if UPLOAD_ENABLED and self.enabled():
                         self.drain_once(session)
                 except OSError as error:
                     logger.warning(f'[云端统计] 暂存目录暂不可用: {type(error).__name__}')
@@ -479,6 +482,8 @@ def queue_for(config):
 
 
 def enqueue(config, images, genre, combat_count, collected_at):
+    if not UPLOAD_ENABLED:
+        return None
     queue, device, instance = queue_for(config)
     project = 'research' if genre in ('research', 'research_refresh') else 'drop'
     scene = 'research_complete' if genre == 'research' else genre
