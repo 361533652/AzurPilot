@@ -2246,17 +2246,25 @@ class AzurLaneAutoScript:
     def _release_restart_cooldown(self, task):
         """关闭连续重启限制后解除该任务的故障冷却。
 
-        只有当持久化排期仍等于故障冷却截止时间时才重新预约任务，
-        用户后来另设的排期保持不动；任务是否禁用交给 task_call 判断。
+        只有当持久化排期仍等于故障冷却截止时间时才把它提前到当前时间，
+        用户后来另设的排期保持不动；任务是否启用不变，禁用任务不会被重新
+        打开。这里直接写 Scheduler.NextRun 而不走 task_call()，避免在接管
+        模式下把任务塞进接管队列或重复入队。
         """
         deadline = self.task_restart_delays.pop(task, None)
         if deadline is None:
-            return
+            return False
         next_run = self.config.cross_get(keys=[task, 'Scheduler', 'NextRun'], default=None)
         if next_run != deadline:
-            return
-        if self.config.task_call(task, force_call=False):
-            logger.info(f'[配置] 已解除任务 `{task}` 的连续重启冷却')
+            return False
+        self.config.cross_set(f'{task}.Scheduler.NextRun', current_time().replace(microsecond=0))
+        logger.info(f'[配置] 已解除任务 `{task}` 的连续重启冷却')
+        return True
+
+    def _release_restart_cooldowns(self):
+        """关闭连续重启限制后清空所有任务的故障冷却记录。"""
+        for task in list(self.task_restart_delays):
+            self._release_restart_cooldown(task)
 
     def get_next_task(self):
         """在已有任务就绪后应用清油优先级，覆盖预热和正常等待路径。"""
@@ -2554,14 +2562,17 @@ class AzurLaneAutoScript:
                         else:
                             logger.warning('[AzurPilot] 计划的模拟器重启失败，继续正常运行')
 
+                # 用户关掉连续重启限制后，旧的故障冷却不应再拦下任务。被冷却的
+                # 任务在截止时间之前不会被 get_next_task() 选中，所以必须在取
+                # 任务之前统一清理，不能等到它自己排到队首。
+                if self.task_restart_delays and int(self.config.Error_TaskRestartLimit) <= 0:
+                    self._release_restart_cooldowns()
+
                 # 获取任务
                 task = self.get_next_task()
                 if task == 'Restart':
                     # 即使存在旧的冷却记录，也必须放行重启；敏感任务检查仍由恢复入口执行。
                     self.task_restart_delays.pop(task, None)
-                if int(self.config.Error_TaskRestartLimit) <= 0:
-                    # 用户关掉连续重启限制后，旧的故障冷却不应再拦下任务。
-                    self._release_restart_cooldown(task)
                 deadline = self.task_restart_delays.get(task)
                 if deadline is not None:
                     if deadline > current_time():
