@@ -80,7 +80,7 @@
     },
     "Ambush11": {
       "name": "Ambush 1-1",
-      "help": ""
+      "help": "Farm ambushes on 1-1 without defeating the boss to gain resources. Supports automatic ship replacement through the Emergency Commission flow."
     },
     "EventGeneral": {
       "name": "Event General",
@@ -300,7 +300,7 @@
     },
     "OpsiHazard1Leveling": {
       "name": "Corrosion 1 Leveling",
-      "help": ""
+      "help": "This task has many settings, but the defaults suit most needs. Understand Corrosion 1 leveling before changing them; use custom settings at your own risk."
     },
     "OpsiScheduling": {
       "name": "Smart Scheduling",
@@ -7782,7 +7782,7 @@
       "ShipExpProgressTitle": "Daily EXP Check: Detected Ship Levels and Progress",
       "LastCheckTime": "Last check time: {value}",
       "AvgOpsiRoundTime": "Avg OpSi-1 round time: {value}{unit}",
-      "TodayBattleUnit": "",
+      "TodayBattleUnit": " battles",
       "NoTodayBattleData": "No battle data for today yet. It will update automatically after battles.",
       "LoadShipExpFailed": "Failed to load ship EXP data: {e}",
       "TargetExpRequired": "EXP required for target level",
