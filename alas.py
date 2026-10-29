@@ -2209,6 +2209,8 @@ class AzurLaneAutoScript:
         limit = int(self.config.Error_TaskRestartLimit)
         if limit <= 0:
             self.task_restart_record.pop(task, None)
+            # 关掉限制后，本限制产生的进程内冷却也不该继续拦截该任务。
+            self.task_restart_delays.pop(task, None)
             return False
         count = self.task_restart_record.get(task, 0) + 1
         self.task_restart_record[task] = count
@@ -2240,6 +2242,21 @@ class AzurLaneAutoScript:
         except Exception as exc:
             logger.warning(f'[AzurPilot] 任务延后 WebUI 通知失败：{exc}')
         return True
+
+    def _release_restart_cooldown(self, task):
+        """关闭连续重启限制后解除该任务的故障冷却。
+
+        只有当持久化排期仍等于故障冷却截止时间时才重新预约任务，
+        用户后来另设的排期保持不动；任务是否禁用交给 task_call 判断。
+        """
+        deadline = self.task_restart_delays.pop(task, None)
+        if deadline is None:
+            return
+        next_run = self.config.cross_get(keys=[task, 'Scheduler', 'NextRun'], default=None)
+        if next_run != deadline:
+            return
+        if self.config.task_call(task, force_call=False):
+            logger.info(f'[配置] 已解除任务 `{task}` 的连续重启冷却')
 
     def get_next_task(self):
         """在已有任务就绪后应用清油优先级，覆盖预热和正常等待路径。"""
@@ -2542,6 +2559,9 @@ class AzurLaneAutoScript:
                 if task == 'Restart':
                     # 即使存在旧的冷却记录，也必须放行重启；敏感任务检查仍由恢复入口执行。
                     self.task_restart_delays.pop(task, None)
+                if int(self.config.Error_TaskRestartLimit) <= 0:
+                    # 用户关掉连续重启限制后，旧的故障冷却不应再拦下任务。
+                    self._release_restart_cooldown(task)
                 deadline = self.task_restart_delays.get(task)
                 if deadline is not None:
                     if deadline > current_time():

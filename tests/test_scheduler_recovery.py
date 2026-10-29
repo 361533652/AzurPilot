@@ -292,6 +292,55 @@ class TestSchedulerRecovery(unittest.TestCase):
         script.config.task_delay.assert_not_called()
         self.assertEqual(script.config.task_call.call_count, 5)
 
+    def test_disabling_limit_releases_matching_cooldown(self):
+        script = self.make_script()
+        script.config.Error_TaskRestartLimit = 0
+        tomorrow = datetime.now().replace(microsecond=0) + timedelta(days=1)
+        script.task_restart_delays = {'Commission': tomorrow}
+        script.config.cross_get.return_value = tomorrow
+
+        self.run_tasks(script, ['Commission'])
+
+        self.assertEqual(script.task_restart_delays, {})
+        script.config.task_call.assert_called_once_with('Commission', force_call=False)
+        script.commission.assert_called_once_with()
+
+    def test_disabling_limit_keeps_user_rescheduled_task(self):
+        script = self.make_script()
+        script.config.Error_TaskRestartLimit = 0
+        tomorrow = datetime.now().replace(microsecond=0) + timedelta(days=1)
+        script.task_restart_delays = {'Commission': tomorrow}
+        script.config.cross_get.return_value = tomorrow + timedelta(hours=3)
+
+        self.run_tasks(script, ['Commission'])
+
+        self.assertEqual(script.task_restart_delays, {})
+        script.config.task_call.assert_not_called()
+
+    def test_disabling_limit_does_not_force_enable_disabled_task(self):
+        script = self.make_script()
+        script.config.Error_TaskRestartLimit = 0
+        tomorrow = datetime.now().replace(microsecond=0) + timedelta(days=1)
+        script.task_restart_delays = {'Commission': tomorrow}
+        script.config.cross_get.return_value = tomorrow
+        script.config.task_call.return_value = False
+
+        self.run_tasks(script, ['Commission'])
+
+        script.config.task_call.assert_called_once_with('Commission', force_call=False)
+        self.assertNotIn('Commission', script.task_restart_delays)
+
+    def test_disabling_limit_clears_cooldown_before_counting_failure(self):
+        script = self.make_script()
+        script.config.Error_TaskRestartLimit = 0
+        script.task_restart_record = {'Commission': 2}
+        script.task_restart_delays = {'Commission': datetime.now() + timedelta(hours=1)}
+
+        self.assertFalse(script._record_task_restart('Commission', 'recoverable'))
+
+        self.assertEqual(script.task_restart_record, {})
+        self.assertEqual(script.task_restart_delays, {})
+
     def test_failed_restart_task_is_never_deferred(self):
         script = self.make_script()
         script.config.Error_TaskRestartLimit = 2
