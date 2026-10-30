@@ -10,8 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Callable, Generic, TypeVar
 
-import requests
-from requests.adapters import HTTPAdapter
+from deploy import http
 
 T = TypeVar("T")
 
@@ -167,23 +166,21 @@ class GitOverCdnClient:
 
     @staticmethod
     def _create_session(max_retries=3):
-        """创建配置了请求头和重试策略的 requests.Session。
+        """创建配置了请求头和重试策略的 http.Session。
 
         Args:
             max_retries (int): 最大重试次数。
 
         Returns:
-            requests.Session: 已配置的会话对象。
+            http.Session: 已配置的会话对象。
         """
-        session = requests.Session()
+        session = http.Session(download=True, retries=max_retries)
         session.trust_env = False
         device_id = _read_device_id()
         # X-Device-Id 供 CDN 统计设备；Cloudflare-Workers-Version-Key 供 Cloudflare
         # 灰度亲和路由（同一设备始终命中同一 Worker 版本）
         session.headers[DEVICE_ID_HEADER] = device_id
         session.headers[CLOUDFLARE_VERSION_KEY_HEADER] = device_id
-        session.mount('http://', HTTPAdapter(max_retries=max_retries))
-        session.mount('https://', HTTPAdapter(max_retries=max_retries))
         return session
 
     @cached_property
@@ -191,7 +188,7 @@ class GitOverCdnClient:
         """获取复用的 HTTP 会话对象。
 
         Returns:
-            requests.Session: 会话对象。
+            http.Session: 会话对象。
         """
         return self._create_session()
 
