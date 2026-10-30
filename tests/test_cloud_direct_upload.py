@@ -168,6 +168,17 @@ def test_partial_ack_retry_duplicate_and_rejection(release):
     assert queue.drain_once()
 
 
+def test_full_icon_queue_does_not_interrupt_local_identification(release):
+    queue, api, image = service(release)
+    queue.MAX_JOBS = 0
+    cell = np.zeros((96, 96, 3), np.uint8)
+    cell[21:70, 40:89] = image
+    identity = queue.identify(cell, '1')
+    assert identity['item'].startswith('U?')
+    assert identity['source_template_id'] == identity['item']
+    assert list((queue.root / 'icons').glob('*.json')) == []
+
+
 def test_pause_capacity_and_restart(release):
     queue, api, image = service(release)
     queue.enqueue(record())

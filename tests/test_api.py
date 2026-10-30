@@ -43,9 +43,11 @@ class ConfigApiTests(unittest.TestCase):
         imports = self.configs.directory / 'import'
         imports.mkdir(exist_ok=True)
         source = imports / 'shared.json'
-        source.write_text(json.dumps({'General': {}}), encoding='utf-8')
+        source.write_text(json.dumps({'Alas': {}}), encoding='utf-8')
         (imports / 'link.json').symlink_to(source)
-        self.assertNotIn('link', [entry['name'] for entry in self.configs.importable()])
+        names = [entry['name'] for entry in self.configs.importable()]
+        self.assertIn('shared', names)
+        self.assertNotIn('link', names)
 
     def test_dorm_food_reserve_defaults_for_old_configs(self):
         from module.config.config_updater import ConfigUpdater

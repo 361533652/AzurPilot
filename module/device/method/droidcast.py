@@ -110,7 +110,10 @@ class DroidCast(Uiautomator2):
 
         transposed = self._droidcast_raw_transposed
         try:
-            resp = self.droidcast_session.get(self.droidcast_url('/preview'), timeout=3, stream=True)
+            # droidcast_url() can append scaled preview dimensions on emulators.
+            # Probe the native endpoint to inspect the raw framebuffer layout.
+            preview_url = f'http://127.0.0.1:{self._droidcast_port}/preview'
+            resp = self.droidcast_session.get(preview_url, timeout=3, stream=True)
             try:
                 head = resp.raw.read(33)
             finally:

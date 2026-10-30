@@ -195,7 +195,10 @@ def record_commission_drops(images, config, *, collected_at=None):
             amounts[row['item']] = amounts.get(row['item'], 0) + row['amount']
         local = {**event, 'items': amounts, 'item_entries': event['items']}
         db.add_cloud_commission_drop(config.config_name, local)
-        enqueue_record(config, 'commission', **event)
+        try:
+            enqueue_record(config, 'commission', **event)
+        except Exception as error:
+            logger.warning(f'[云端统计] 委托上报入队失败，本地记录已保留: {error}')
     if diagnostics:
         path = queue_for(config).root / 'diagnostics' / (uuid.uuid4().hex + '.json')
         write_json(path, {'collected_at': stamp, 'errors': diagnostics})

@@ -224,7 +224,11 @@ class AzurStats:
         self.config = config
         from module.statistics.cloud_upload import resume_pending, update_policy
         update_policy(config)
-        resume_pending(config)
+        try:
+            resume_pending(config)
+        except Exception as error:
+            # Offline cloud data corruption must not prevent local statistics.
+            logger.warning(f'[云端统计] 待处理队列恢复失败，本地统计继续运行: {error}')
 
     meowofficer_farming_labels = ['侵蚀等级', '上次记录时间', '有效战斗轮数', '平均黄币/轮', '平均金菜/轮', '平均深渊/轮', '平均隐秘/轮']
     meowofficer_farming_map = [

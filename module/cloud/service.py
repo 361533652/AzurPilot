@@ -84,7 +84,11 @@ class CloudService:
         with config_transaction(self._lock_path):
             path = self.root / 'icons' / (source[2:] + '.json')
             if not path.exists():
-                self._capacity()
+                try:
+                    self._capacity()
+                except CloudError as error:
+                    logger.warning(f'[云端统计] 图标队列已满，保留本地待编号身份: {error}')
+                    return {'item': source, 'source_template_id': source, 'tag': ''}
                 ok, png = cv2.imencode('.png', cv2.cvtColor(icon, cv2.COLOR_RGB2BGR))
                 if not ok:
                     raise CloudError('Could not encode template icon')
