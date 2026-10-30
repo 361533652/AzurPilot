@@ -335,7 +335,7 @@ def test_structured_records_are_submitted_before_slow_screenshots(release):
 
     def upload(*_args):
         calls.append('screenshot')
-        # Even a slow screenshot endpoint cannot hold up the main queue.
+        # Records already queued at the start of this drain are submitted first.
         assert not list((queue.root / 'jobs').glob('*.json'))
         return {'stored': True, 'sha256': pending.stem}
 
@@ -361,6 +361,64 @@ def test_main_backoff_does_not_block_later_screenshot_upload(release):
     api.upload_screenshot.assert_called_once()
     api.submit.assert_called_once()
     assert not pending.exists()
+
+
+
+def test_unregistered_records_do_not_starve_later_numbered_records(release):
+    queue, api, _ = service(release)
+    for number in range(1, 206):
+        queue.enqueue(record(number, items=[{'item': 'U?waiting', 'amount': 1, 'tag': ''}]))
+    queue.enqueue(record(206))
+    api.submit = Mock(side_effect=lambda records: {
+        'schema_version': 3,
+        'results': [{'record_id': row['record_id'], 'status': 'accepted'} for row in records],
+    })
+    queue._submit()
+    api.submit.assert_called_once()
+    assert [row['record_id'] for row in api.submit.call_args.args[0]] == ['record-0206']
+    assert len(list((queue.root / 'jobs').glob('*.json'))) == 205
+
+
+def test_submit_limits_each_batch_to_200_ready_records(release):
+    queue, api, _ = service(release)
+    for number in range(1, 203):
+        queue.enqueue(record(number))
+    api.submit = Mock(side_effect=lambda records: {
+        'schema_version': 3,
+        'results': [{'record_id': row['record_id'], 'status': 'accepted'} for row in records],
+    })
+    queue._submit()
+    assert len(api.submit.call_args.args[0]) == 200
+    assert len(list((queue.root / 'jobs').glob('*.json'))) == 2
+    queue._submit()
+    assert len(api.submit.call_args.args[0]) == 2
+    assert not list((queue.root / 'jobs').glob('*.json'))
+
+
+def test_records_arriving_during_screenshot_upload_wait_until_next_drain(release):
+    queue, api, _ = service(release)
+    queue.enqueue(record())
+    queue.capture(np.zeros((720, 1280, 3), np.uint8),
+                  [{'source': 'U-READY', 'bounds': [0, 0, 96, 96]}], scene='research')
+    pending = next((queue.root / 'screenshots').glob('*.json'))
+    batches = []
+
+    def submit(records):
+        batches.append([row['record_id'] for row in records])
+        return {'schema_version': 3, 'results': [
+            {'record_id': row['record_id'], 'status': 'accepted'} for row in records]}
+
+    def upload(*_args):
+        queue.enqueue(record(2))
+        return {'stored': True, 'sha256': pending.stem}
+
+    api.submit = Mock(side_effect=submit)
+    api.upload_screenshot = Mock(side_effect=upload)
+    assert queue.drain_once()
+    assert batches == [['record-0001']]
+    assert list((queue.root / 'jobs').glob('*.json'))
+    assert queue.drain_once()
+    assert batches == [['record-0001'], ['record-0002']]
 
 
 def test_partial_ack_retry_duplicate_and_rejection(release):

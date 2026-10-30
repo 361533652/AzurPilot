@@ -231,7 +231,10 @@ class CloudService:
     def _submit(self):
         paths, records = [], []
         bindings = self._bindings()
-        for path in sorted((self.root / 'jobs').glob('*.json'))[:200]:
+        # Waiting for a template ID must not starve later, already numbered records.
+        for path in sorted((self.root / 'jobs').glob('*.json')):
+            if len(records) >= 200:
+                break
             job = read_json(path)
             record = job['record']
             sources = []
