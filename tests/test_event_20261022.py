@@ -9,7 +9,9 @@ from unittest.mock import Mock, call, patch
 from campaign.event_20261022_cn import sp, t1
 from module.campaign.campaign_base import CampaignBase
 from module.config.config import AzurLaneConfig
-from module.config.config_updater import refresh_campaign_events
+from module.config.config_updater import _event_stage_exists, refresh_campaign_events
+from module.campaign.stage_name import normalize_event_stage
+from module.handler.fast_forward import to_map_file_name, to_map_input_name
 from module.template import assets as template_assets
 
 
@@ -111,6 +113,14 @@ class WindFogCorridorTests(unittest.TestCase):
                 self.assertEqual(data['Event']['Campaign']['Event'], EVENT)
                 self.assertEqual(data['Event']['Campaign']['Name'], expected)
                 self.assertEqual(data['EventSp']['Campaign']['Name'], 'SP')
+
+    def test_hyphenated_stage_aliases_match_runtime_and_validation(self):
+        folder = ROOT / 'campaign' / EVENT
+        for stage, expected in (('SP-6', 't6'), ('A-1', 't1'), ('B-3', 't6')):
+            with self.subTest(stage=stage):
+                self.assertEqual(normalize_event_stage(to_map_file_name(stage), EVENT), expected)
+                self.assertEqual(to_map_input_name(stage), stage.replace('-', '').upper())
+                self.assertTrue(_event_stage_exists(folder, stage))
 
     def test_localized_event_names_survive_config_generation(self):
         for language, expected in (
