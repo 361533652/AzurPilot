@@ -35,8 +35,8 @@ class CloudService:
         self._thread_lock = threading.Lock()
         self._stop, self._wake = threading.Event(), threading.Event()
         self._thread = None
-        self._next_sync = self._next_attempt = 0
-        self._failures = 0
+        self._next_sync = self._next_attempt = self._next_screenshot_attempt = 0
+        self._failures = self._screenshot_failures = 0
         self._lock_path = self.root / 'state.json'
         options = {'public_key': public_key} if public_key else {}
         self.catalog = TemplateCatalog(self.root / 'catalog', self.api,
@@ -289,34 +289,50 @@ class CloudService:
                 path.unlink()
 
     def drain_once(self):
-        if not self.enabled() or time.monotonic() < self._next_attempt:
+        if not self.enabled():
+            return False
+        now = time.monotonic()
+        main_ready = now >= self._next_attempt
+        screenshot_ready = now >= self._next_screenshot_attempt
+        if not (main_ready or screenshot_ready):
             return False
         if not self._pump_lock.acquire(blocking=False):
             return False
         try:
-            # A separate lock serializes workers across processes without blocking recognition writes.
+            # Both queues share the worker lock but have independent retry clocks.
             with config_transaction(self.root / 'worker.json'):
-                self.catalog.refresh()
-                errors = []
-                try:
-                    self._register()
-                except Exception as error:
-                    errors.append(error)
-                if time.monotonic() >= self._next_sync:
+                if screenshot_ready:
                     try:
-                        self.catalog.sync()
-                        self._next_sync = time.monotonic() + 300
+                        self._upload_screenshots()
+                    except Exception as error:
+                        self._screenshot_failures += 1
+                        delay = max(getattr(error, 'retry_after', 30),
+                                    min(300, 2 ** min(self._screenshot_failures, 8)))
+                        self._next_screenshot_attempt = time.monotonic() + delay
+                        reason = str(error) if isinstance(error, CloudError) else type(error).__name__
+                        logger.warning(f'[云端统计] 原图上传暂缓，数据保留: {reason}')
+                    else:
+                        self._screenshot_failures = 0
+                        self._next_screenshot_attempt = 0
+                if main_ready:
+                    self.catalog.refresh()
+                    errors = []
+                    try:
+                        self._register()
                     except Exception as error:
                         errors.append(error)
-                try:
-                    self._upload_screenshots()
-                except Exception as error:
-                    errors.append(error)
-                self._refresh_history()
-                self._submit()
-                if errors:
-                    raise errors[0]
-            self._failures = 0
+                    if time.monotonic() >= self._next_sync:
+                        try:
+                            self.catalog.sync()
+                            self._next_sync = time.monotonic() + 300
+                        except Exception as error:
+                            errors.append(error)
+                    self._refresh_history()
+                    self._submit()
+                    if errors:
+                        raise errors[0]
+            if main_ready:
+                self._failures = 0
             return True
         except Exception as error:
             self._failures += 1
