@@ -1,4 +1,4 @@
-"""Connect local reward collectors to public v3 structured records and 49px icons."""
+"""Connect local rewards to structured records, template icons and private full screenshots."""
 
 import atexit
 import hashlib
@@ -36,7 +36,7 @@ def resume_pending(config):
     instance = hashlib.sha256((device + '\0' + config.config_name).encode()).hexdigest()[:16]
     root = get_database().directory / 'cloud' / instance
     if (root / 'catalog' / 'active.json').exists() or any((root / 'jobs').glob('*.json')) \
-            or any((root / 'icons').glob('*.json')):
+            or any((root / 'icons').glob('*.json')) or any((root / 'screenshots').glob('*.json')):
         queue_for(config).start()
 
 
@@ -63,7 +63,22 @@ def resolver_for(config, scene):
         return None
     queue = queue_for(config)
     queue.start()
-    return lambda image, name: queue.identify(image, name, scene=scene)
+    return RewardResolver(queue, scene)
+
+
+class RewardResolver:
+    def __init__(self, queue, scene):
+        self.queue, self.scene = queue, scene
+
+    def __call__(self, image, name):
+        return self.queue.identify(image, name, scene=self.scene)
+
+    def capture(self, image, items):
+        observations = [
+            {'source': item.source_template_id, 'bounds': [int(v) for v in item._button.area]}
+            for item in items if item.name.startswith(('U-', 'U?'))
+        ]
+        self.queue.capture(image, observations, scene=self.scene)
 
 
 def enqueue_record(config, scene, items, *, source_items=None, record_id=None,

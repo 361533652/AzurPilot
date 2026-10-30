@@ -91,6 +91,11 @@ class PublicAPI:
         return self.json('POST', self.main + '/api/v3/post/drops', limit=1 << 20,
                          json={'drops': drops})
 
+    def upload_screenshot(self, image_base64, references, scene):
+        return self.json('POST', self.templates + '/api/v3/post/templates/screenshots',
+                         limit=65536, json={'image_base64': image_base64, 'references': references,
+                                           'scene': scene, 'client': 'AzurPilot'})
+
     def statistics(self, scene, *, options=False, **filters):
         if scene not in ('commission', 'research'):
             raise ValueError('Unsupported statistics scene')
