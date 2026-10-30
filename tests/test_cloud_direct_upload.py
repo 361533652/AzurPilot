@@ -209,6 +209,10 @@ def test_cached_temporary_items_also_capture_full_frames_and_known_items_do_not(
     queue.enabled = lambda: False
     resolver.capture(np.ones_like(frame), [item])
     assert len(list((queue.root / 'screenshots').glob('*.json'))) == 1
+    queue.enabled = lambda: True
+    queue.MAX_JOBS = 1
+    resolver.capture(np.ones_like(frame), [item])  # A full evidence queue must not abort local recognition.
+    assert len(list((queue.root / 'screenshots').glob('*.json'))) == 1
 
 
 def test_main_server_outage_does_not_block_template_screenshot_upload(release):

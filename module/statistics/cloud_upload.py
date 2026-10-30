@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 
 from module.base.device_id import get_device_id
 from module.cloud.service import CloudService
+from module.cloud.protocol import CloudError
+from module.logger import logger
 from module.persistence.database import get_database
 from module.statistics.cl1_database import Cl1Database
 
@@ -78,7 +80,10 @@ class RewardResolver:
             {'source': item.source_template_id, 'bounds': [int(v) for v in item._button.area]}
             for item in items if item.name.startswith(('U-', 'U?'))
         ]
-        self.queue.capture(image, observations, scene=self.scene)
+        try:
+            self.queue.capture(image, observations, scene=self.scene)
+        except CloudError as error:
+            logger.warning(f'[云端统计] 原图队列暂不可用，保留本地统计: {error}')
 
 
 def enqueue_record(config, scene, items, *, source_items=None, record_id=None,
