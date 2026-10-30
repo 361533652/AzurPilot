@@ -46,6 +46,14 @@ options = api.statistics('commission', options=True, server='jp')
 `template_id` 是当前正式 ID 或 U-ID，`identity_id` 是原始身份，后者用于保留订正能力。
 客户端固定从配置的 Worker 域名更新模板，不跳转到响应指定的其他域名。
 
+**先注册模板，再提交依赖它的统计。** 对尚未映射的未知图标，先向模板服务器
+`POST /api/v3/post/templates/unknown` 注册，取得并持久化服务端分配的
+`identity_id`；随后才能向主统计服务器提交引用该 ID 的掉落记录。
+离线生成的 `U?` 仅是本地待编号键，未取得服务端确定性编号的记录必须保留在队列中，
+绝不能把 `U?` 发送到主统计接口。已知、已取得有效 ID 的记录不必等待其他未知图标注册。
+完整截图上传同样依赖取得服务端 `identity_id`，但在编号完成后可晚于结构化统计独立上传，
+因此慢速原图上传不会阻塞已具备确定性编号的统计。
+
 掉落上传体是 `{"drops": [...]}`。每条包括 `record_id`、`scene`、`server`、
 `status`、带时区的 `collected_at`、`template_revision`、`client`、匿名 `device_id`
 和 `items`。每项物品是 `{"item": "U-...", "tag": "bonus", "amount": 2}`。

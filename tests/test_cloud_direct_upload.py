@@ -154,6 +154,47 @@ def test_offline_icon_is_49px_and_waits_for_server_id(release):
     assert not list((queue.root / 'jobs').glob('*.json'))
 
 
+
+def test_template_server_assigns_identity_before_statistics_and_full_screenshot(release):
+    queue, api, image = service(release)
+    cell = np.zeros((96, 96, 3), np.uint8)
+    cell[21:70, 40:89] = image
+    identity = queue.identify(cell, '1')
+    assert identity['item'].startswith('U?')
+    queue.enqueue(record(items=[{**identity, 'amount': 3}]))
+    frame = np.zeros((720, 1280, 3), np.uint8)
+    frame[200:296, 100:196] = cell
+    queue.capture(frame, [{'source': identity['source_template_id'],
+                           'bounds': [100, 200, 196, 296]}], scene='research')
+    pending = next((queue.root / 'screenshots').glob('*.json'))
+    calls = []
+
+    def register(*_args):
+        calls.append('register')
+        return {'match': 'new', 'template_id': 'U-SERVER', 'identity_id': 'U-SERVER'}
+
+    def submit(records):
+        calls.append('submit')
+        assert calls == ['register', 'submit']
+        assert records[0]['items'] == [{'item': 'U-SERVER', 'amount': 3, 'tag': ''}]
+        return {'schema_version': 3, 'results': [
+            {'record_id': records[0]['record_id'], 'status': 'accepted'}]}
+
+    def upload(_image_base64, references, _scene):
+        calls.append('screenshot')
+        assert calls == ['register', 'submit', 'screenshot']
+        assert references == [{'identity_id': 'U-SERVER', 'bounds': [100, 200, 196, 296]}]
+        return {'stored': True, 'sha256': pending.stem}
+
+    api.register = Mock(side_effect=register)
+    api.submit = Mock(side_effect=submit)
+    api.upload_screenshot = Mock(side_effect=upload)
+    assert queue.drain_once()
+    assert calls == ['register', 'submit', 'screenshot']
+    assert not list((queue.root / 'jobs').glob('*.json'))
+    assert not pending.exists()
+
+
 def test_source_screenshot_waits_for_ids_retries_and_deduplicates_after_restart(release):
     queue, api, image = service(release)
     cell = np.zeros((96, 96, 3), np.uint8)

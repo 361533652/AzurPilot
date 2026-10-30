@@ -301,8 +301,8 @@ class CloudService:
         try:
             # Both queues share the worker lock but have independent retry clocks.
             with config_transaction(self.root / 'worker.json'):
-                # Submit structured records first: synchronous screenshot uploads can take
-                # up to ten network timeouts, but must not delay the main queue.
+                # Register unknown icons with the template server first to obtain stable
+                # identity IDs; then submit dependent records before slow full-frame uploads.
                 main_error = None
                 if main_ready:
                     try:
