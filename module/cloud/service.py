@@ -301,6 +301,30 @@ class CloudService:
         try:
             # Both queues share the worker lock but have independent retry clocks.
             with config_transaction(self.root / 'worker.json'):
+                # Submit structured records first: synchronous screenshot uploads can take
+                # up to ten network timeouts, but must not delay the main queue.
+                main_error = None
+                if main_ready:
+                    try:
+                        self.catalog.refresh()
+                        errors = []
+                        try:
+                            self._register()
+                        except Exception as error:
+                            errors.append(error)
+                        if time.monotonic() >= self._next_sync:
+                            try:
+                                self.catalog.sync()
+                                self._next_sync = time.monotonic() + 300
+                            except Exception as error:
+                                errors.append(error)
+                        self._refresh_history()
+                        self._submit()
+                        if errors:
+                            raise errors[0]
+                    except Exception as error:
+                        # Still service screenshots when the main endpoint fails.
+                        main_error = error
                 if screenshot_ready:
                     try:
                         self._upload_screenshots()
@@ -314,23 +338,8 @@ class CloudService:
                     else:
                         self._screenshot_failures = 0
                         self._next_screenshot_attempt = 0
-                if main_ready:
-                    self.catalog.refresh()
-                    errors = []
-                    try:
-                        self._register()
-                    except Exception as error:
-                        errors.append(error)
-                    if time.monotonic() >= self._next_sync:
-                        try:
-                            self.catalog.sync()
-                            self._next_sync = time.monotonic() + 300
-                        except Exception as error:
-                            errors.append(error)
-                    self._refresh_history()
-                    self._submit()
-                    if errors:
-                        raise errors[0]
+                if main_error is not None:
+                    raise main_error
             if main_ready:
                 self._failures = 0
             return True

@@ -279,6 +279,32 @@ def test_screenshot_outage_does_not_delay_structured_records(release):
     assert list((queue.root / 'screenshots').glob('*.json'))
 
 
+def test_structured_records_are_submitted_before_slow_screenshots(release):
+    queue, api, _ = service(release)
+    queue.enqueue(record())
+    queue.capture(np.zeros((720, 1280, 3), np.uint8),
+                  [{'source': 'U-READY', 'bounds': [0, 0, 96, 96]}], scene='research')
+    pending = next((queue.root / 'screenshots').glob('*.json'))
+    calls = []
+
+    def submit(records):
+        calls.append('submit')
+        return {'schema_version': 3, 'results': [
+            {'record_id': row['record_id'], 'status': 'accepted'} for row in records]}
+
+    def upload(*_args):
+        calls.append('screenshot')
+        # Even a slow screenshot endpoint cannot hold up the main queue.
+        assert not list((queue.root / 'jobs').glob('*.json'))
+        return {'stored': True, 'sha256': pending.stem}
+
+    api.submit = Mock(side_effect=submit)
+    api.upload_screenshot = Mock(side_effect=upload)
+    assert queue.drain_once()
+    assert calls == ['submit', 'screenshot']
+    assert not pending.exists()
+
+
 def test_main_backoff_does_not_block_later_screenshot_upload(release):
     queue, api, _ = service(release)
     queue.enqueue(record())
