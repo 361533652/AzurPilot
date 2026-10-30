@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import json
+import time
 from datetime import datetime, timezone
 from unittest.mock import Mock
 
@@ -256,6 +257,43 @@ def test_main_server_outage_does_not_block_template_screenshot_upload(release):
     api.upload_screenshot.assert_called_once()
     assert not pending.exists()
     assert list((queue.root / 'jobs').glob('*.json'))
+
+
+def test_screenshot_outage_does_not_delay_structured_records(release):
+    queue, api, _ = service(release)
+    frame = np.zeros((720, 1280, 3), np.uint8)
+    queue.capture(frame, [{'source': 'U-READY', 'bounds': [0, 0, 96, 96]}], scene='research')
+    api.upload_screenshot = Mock(side_effect=CloudError('template offline', retry_after=120))
+    api.submit = Mock(side_effect=lambda records: {
+        'schema_version': 3,
+        'results': [{'record_id': row['record_id'], 'status': 'accepted'} for row in records],
+    })
+    queue.enqueue(record(1))
+    assert queue.drain_once()
+    assert queue._next_attempt == 0
+    assert queue._next_screenshot_attempt > time.monotonic()
+    queue.enqueue(record(2))
+    assert queue.drain_once()
+    assert api.submit.call_count == 2
+    api.upload_screenshot.assert_called_once()
+    assert list((queue.root / 'screenshots').glob('*.json'))
+
+
+def test_main_backoff_does_not_block_later_screenshot_upload(release):
+    queue, api, _ = service(release)
+    queue.enqueue(record())
+    api.submit = Mock(side_effect=CloudError('main offline', retry_after=120))
+    assert not queue.drain_once()
+    assert queue._next_attempt > time.monotonic()
+
+    queue.capture(np.zeros((720, 1280, 3), np.uint8),
+                  [{'source': 'U-READY', 'bounds': [0, 0, 96, 96]}], scene='research')
+    pending = next((queue.root / 'screenshots').glob('*.json'))
+    api.upload_screenshot = Mock(return_value={'stored': True, 'sha256': pending.stem})
+    assert queue.drain_once()
+    api.upload_screenshot.assert_called_once()
+    api.submit.assert_called_once()
+    assert not pending.exists()
 
 
 def test_partial_ack_retry_duplicate_and_rejection(release):
