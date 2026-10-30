@@ -2,6 +2,7 @@
 
 import base64
 import hashlib
+import json
 import re
 import threading
 import time
@@ -20,6 +21,8 @@ from module.logger import logger
 class CloudService:
     MAX_JOBS = 10000
     MAX_BYTES = 64 << 20
+    MAX_SCREENSHOT_JOBS = 100
+    MAX_SCREENSHOT_BYTES = 64 << 20
 
     def __init__(self, root, device_id, *, api=None, public_key=None, apply_mappings=None,
                  enabled=lambda: True):
@@ -57,10 +60,20 @@ class CloudService:
         self.history(self.mappings(published))
 
     def _capacity(self):
-        files = [path for folder in ('jobs', 'icons', 'screenshots')
+        # Screenshot backlog must not exhaust capacity reserved for records and icons.
+        files = [path for folder in ('jobs', 'icons')
                  for path in (self.root / folder).glob('*.json')]
         if len(files) >= self.MAX_JOBS or sum(path.stat().st_size for path in files) >= self.MAX_BYTES:
             raise CloudError('Cloud queue is full; local statistics are retained', retry_after=300)
+
+    def _screenshot_capacity(self, target, job):
+        files = list((self.root / 'screenshots').glob('*.json'))
+        if not target.exists() and len(files) >= self.MAX_SCREENSHOT_JOBS:
+            raise CloudError('Cloud screenshot queue is full', retry_after=300)
+        size = len(json.dumps(job, ensure_ascii=False, separators=(',', ':')).encode())
+        old_size = target.stat().st_size if target.exists() else 0
+        if sum(path.stat().st_size for path in files) - old_size + size > self.MAX_SCREENSHOT_BYTES:
+            raise CloudError('Cloud screenshot queue is full', retry_after=300)
 
     def identify(self, image, local_name='', *, scene='research'):
         """Runs offline; registration completes before dependent statistics and screenshots."""
@@ -118,19 +131,20 @@ class CloudService:
             path = self.root / 'screenshots' / (digest + '.json')
             job = read_json(path, {'image_base64': base64.b64encode(raw).decode(),
                                    'scene': scene, 'observations': []})
-            self._capacity()
             for row in pending:
                 if row not in job['observations']:
                     job['observations'].append(row)
+            self._screenshot_capacity(path, job)
             write_json(path, job)
         self.start()
 
     def _upload_screenshots(self):
-        for path in sorted((self.root / 'screenshots').glob('*.json'))[:10]:
-            if not self.enabled():
+        attempted = 0
+        bindings = self._bindings()
+        for path in sorted((self.root / 'screenshots').glob('*.json')):
+            if attempted >= 10 or not self.enabled():
                 return
             job = read_json(path)
-            bindings = self._bindings()
             references = []
             for row in job['observations']:
                 identity = row['source']
@@ -140,6 +154,7 @@ class CloudService:
                     break
                 references.append({'identity_id': identity, 'bounds': row['bounds']})
             else:
+                attempted += 1
                 response = self.api.upload_screenshot(job['image_base64'], references, job['scene'])
                 if response.get('stored') is not True or response.get('sha256') != path.stem:
                     raise CloudError('Invalid source screenshot acknowledgement')

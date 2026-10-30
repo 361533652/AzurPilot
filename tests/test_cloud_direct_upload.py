@@ -12,7 +12,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from module.cloud.catalog import TemplateCatalog, decode_icon, icon_features, map_items
-from module.cloud.files import read_json
+from module.cloud.files import read_json, write_json
 from module.cloud.protocol import CloudError, PublicAPI
 from module.cloud.service import CloudService
 
@@ -210,9 +210,38 @@ def test_cached_temporary_items_also_capture_full_frames_and_known_items_do_not(
     resolver.capture(np.ones_like(frame), [item])
     assert len(list((queue.root / 'screenshots').glob('*.json'))) == 1
     queue.enabled = lambda: True
-    queue.MAX_JOBS = 1
+    queue.MAX_SCREENSHOT_JOBS = 1
     resolver.capture(np.ones_like(frame), [item])  # A full evidence queue must not abort local recognition.
     assert len(list((queue.root / 'screenshots').glob('*.json'))) == 1
+
+
+def test_unbound_screenshots_do_not_starve_ready_jobs(release):
+    queue, api, _ = service(release)
+    folder = queue.root / 'screenshots'
+    for index in range(11):
+        write_json(folder / f'{index:064x}.json', {
+            'image_base64': 'AA==', 'scene': 'research',
+            'observations': [{'source': 'U?pending' if index < 10 else 'U-READY',
+                              'bounds': [0, 0, 96, 96]}],
+        })
+    api.upload_screenshot = Mock(return_value={'stored': True, 'sha256': f'{10:064x}'})
+    queue._upload_screenshots()
+    api.upload_screenshot.assert_called_once()
+    assert not (folder / f'{10:064x}.json').exists()
+    assert len(list(folder.glob('*.json'))) == 10
+
+
+def test_screenshot_backlog_has_separate_capacity_from_structured_jobs(release):
+    queue, api, _ = service(release)
+    frame = np.zeros((720, 1280, 3), np.uint8)
+    observation = [{'source': 'U-READY', 'bounds': [0, 0, 96, 96]}]
+    queue.capture(frame, observation, scene='research')
+    queue.MAX_JOBS = 1
+    queue.MAX_BYTES = 1024  # The screenshot JSON exceeds this, but is not a structured job.
+    assert queue.enqueue(record()) == 'record-0001'
+    queue.MAX_SCREENSHOT_JOBS = 1
+    with pytest.raises(CloudError, match='screenshot'):
+        queue.capture(np.ones_like(frame), observation, scene='research')
 
 
 def test_main_server_outage_does_not_block_template_screenshot_upload(release):
