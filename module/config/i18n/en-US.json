@@ -6831,6 +6831,22 @@
       "help": "Off by default. Uses training slots and reserves. Verify every enabled goal on the same ship before completion; morale swaps keep progress."
     }
   },
+  "FleetDorm": {
+    "_info": {
+      "name": "Rest after rotation",
+      "help": "After all swaps, arrange the entire current fleet on the selected dorm floor, then continue the task."
+    },
+    "Enabled": {
+      "name": "Enable rest after rotation",
+      "help": "Off by default. Clear the selected floor and select the entire current fleet by its number, including fixed slots. Priority: all-battle fleet, mob fleet, boss fleet. Skip rest and continue if the floor is locked, slots are insufficient or selection cannot be verified. CN only."
+    },
+    "Floor": {
+      "name": "Dorm floor",
+      "help": "Train on the first floor or rest on the second. Floors and slots are not purchased automatically.",
+      "floor_1": "First floor (training)",
+      "floor_2": "Second floor (rest)"
+    }
+  },
   "FleetTraining": {
     "_info": {
       "name": "Training records",
