@@ -1085,14 +1085,6 @@ def main() -> int:
         logger.warning('[GUI] 启动文件日志不可用，继续输出到控制台')
     logger.info('[GUI] 开始检查普通业务存储；启动日志：%s', logger.log_file or '控制台')
     try:
-        from deploy.sync_upstream import sync_with_upstream
-        if not sync_with_upstream():
-            logger.critical('[GUI] 检测到与上游官方代码冲突，启动已拦截！请在 DSH 中召唤小肥鱼排错。')
-            return EXIT_STARTUP_FAILURE
-    except Exception as exc:
-        logger.warning('[GUI] 上游同步检查跳过: %s', exc)
-
-    try:
         from module.persistence.database import initialize
         initialize()
     except Exception as exc:
@@ -1127,4 +1119,17 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # 上游同步只在真实启动时执行：它会联网、增删远程仓库并改写工作区，
+    # 而 main() 也由单元测试直接调用，不能把这类副作用塞进 main()。
+    # 启动器与 Alas.bat 都以脚本方式运行本文件，因此这条路径必然生效。
+    try:
+        from deploy.sync_upstream import sync_with_upstream
+    except Exception as exc:  # 同步器不可用不应阻断启动
+        logger.warning('[GUI] 上游同步模块不可用，跳过同步：%s', exc)
+    else:
+        if not sync_with_upstream():
+            logger.critical(
+                '[GUI] 检测到与上游官方代码冲突，启动已拦截！请在 DSH 中召唤小肥鱼排错。'
+            )
+            sys.exit(EXIT_STARTUP_FAILURE)
     sys.exit(main())
