@@ -12916,7 +12916,22 @@
         "type": "select",
         "value": "campaign_main",
         "option": [
-          "campaign_main"
+          "event_20261022_cn"
+        ],
+        "option_cn": [
+          "event_20261022_cn"
+        ],
+        "option_en": [
+          "event_20261022_cn"
+        ],
+        "option_jp": [
+          "event_20261022_cn"
+        ],
+        "option_tw": [
+          "event_20261022_cn"
+        ],
+        "option_bold": [
+          "event_20261022_cn"
         ]
       },
       "Mode": {

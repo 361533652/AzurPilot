@@ -1863,7 +1863,7 @@
   "OperationHandover": {
     "_info": {
       "name": "Operation handover settings",
-      "help": ""
+      "help": "Supports main and event stages. Names such as 12-4 use the main campaign; D3, T6, and SP3 use the selected event. Event difficulty follows the stage name. Handover availability is checked in game."
     },
     "Count": {
       "name": "Handover count",

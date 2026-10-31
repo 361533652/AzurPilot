@@ -69,6 +69,8 @@ ARCHIVES_PREFIX = {
 MAINS = ['Main', 'Main2', 'Main3']
 EVENTS = ['Event', 'Event2', 'Event3', 'EventA', 'EventB', 'EventC', 'EventD', 'EventSp']
 GEMS_FARMINGS = ['GemsFarming', 'ThreeOilLowCost']
+# 根据关卡名在主线与所选活动之间切换的任务。
+MIXED_CAMPAIGNS = GEMS_FARMINGS + ['OperationHandover']
 RAIDS = ['Raid', 'RaidDaily', 'RaidScuttle']
 WAR_ARCHIVES = ['WarArchives']
 COALITIONS = ['Coalition', 'CoalitionSp', 'CoalitionScuttle']
@@ -104,7 +106,7 @@ def refresh_campaign_events(data, args, is_template=False):
     """刷新已结束的活动，避免旧关卡名指向新活动中不存在的地图。"""
     options = campaign_event_options(data, args)
     if not is_template:
-        for task in EVENTS + RAIDS + COALITIONS + GEMS_FARMINGS:
+        for task in EVENTS + RAIDS + COALITIONS + MIXED_CAMPAIGNS:
             candidates = options.get(task, [])
             if candidates and deep_get(data, f'{task}.Campaign.Event', 'campaign_main') not in candidates:
                 deep_set(data, f'{task}.Campaign.Event', candidates[0])
@@ -596,10 +598,10 @@ class ConfigGenerator:
                         if not hasattr(self, f'_{server}_latest_event_date'):
                             setattr(self, f'_{server}_latest_event_date', int(event.date))
                         if int(event.date) == getattr(self, f'_{server}_latest_event_date'):
-                            for task in EVENTS + GEMS_FARMINGS:
+                            for task in EVENTS + MIXED_CAMPAIGNS:
                                 insert(task)
 
-        for task in EVENTS + GEMS_FARMINGS + WAR_ARCHIVES + RAIDS + COALITIONS:
+        for task in EVENTS + MIXED_CAMPAIGNS + WAR_ARCHIVES + RAIDS + COALITIONS:
             latest = {}
             for server in ARCHIVES_PREFIX.keys():
                 latest[server] = deep_get(self.args, keys=f'{task}.Campaign.Event.option_{server}', default=[])
