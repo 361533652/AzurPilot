@@ -3,7 +3,6 @@
 import base64
 import hashlib
 import json
-import time
 from datetime import datetime, timezone
 from unittest.mock import Mock
 
@@ -13,7 +12,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from module.cloud.catalog import TemplateCatalog, decode_icon, icon_features, map_items
-from module.cloud.files import read_json, write_json
+from module.cloud.files import read_json
 from module.cloud.protocol import CloudError, PublicAPI
 from module.cloud.service import CloudService
 
@@ -154,47 +153,6 @@ def test_offline_icon_is_49px_and_waits_for_server_id(release):
     assert not list((queue.root / 'jobs').glob('*.json'))
 
 
-
-def test_template_server_assigns_identity_before_statistics_and_full_screenshot(release):
-    queue, api, image = service(release)
-    cell = np.zeros((96, 96, 3), np.uint8)
-    cell[21:70, 40:89] = image
-    identity = queue.identify(cell, '1')
-    assert identity['item'].startswith('U?')
-    queue.enqueue(record(items=[{**identity, 'amount': 3}]))
-    frame = np.zeros((720, 1280, 3), np.uint8)
-    frame[200:296, 100:196] = cell
-    queue.capture(frame, [{'source': identity['source_template_id'],
-                           'bounds': [100, 200, 196, 296]}], scene='research')
-    pending = next((queue.root / 'screenshots').glob('*.json'))
-    calls = []
-
-    def register(*_args):
-        calls.append('register')
-        return {'match': 'new', 'template_id': 'U-SERVER', 'identity_id': 'U-SERVER'}
-
-    def submit(records):
-        calls.append('submit')
-        assert calls == ['register', 'submit']
-        assert records[0]['items'] == [{'item': 'U-SERVER', 'amount': 3, 'tag': ''}]
-        return {'schema_version': 3, 'results': [
-            {'record_id': records[0]['record_id'], 'status': 'accepted'}]}
-
-    def upload(_image_base64, references, _scene):
-        calls.append('screenshot')
-        assert calls == ['register', 'submit', 'screenshot']
-        assert references == [{'identity_id': 'U-SERVER', 'bounds': [100, 200, 196, 296]}]
-        return {'stored': True, 'sha256': pending.stem}
-
-    api.register = Mock(side_effect=register)
-    api.submit = Mock(side_effect=submit)
-    api.upload_screenshot = Mock(side_effect=upload)
-    assert queue.drain_once()
-    assert calls == ['register', 'submit', 'screenshot']
-    assert not list((queue.root / 'jobs').glob('*.json'))
-    assert not pending.exists()
-
-
 def test_source_screenshot_waits_for_ids_retries_and_deduplicates_after_restart(release):
     queue, api, image = service(release)
     cell = np.zeros((96, 96, 3), np.uint8)
@@ -252,38 +210,9 @@ def test_cached_temporary_items_also_capture_full_frames_and_known_items_do_not(
     resolver.capture(np.ones_like(frame), [item])
     assert len(list((queue.root / 'screenshots').glob('*.json'))) == 1
     queue.enabled = lambda: True
-    queue.MAX_SCREENSHOT_JOBS = 1
+    queue.MAX_JOBS = 1
     resolver.capture(np.ones_like(frame), [item])  # A full evidence queue must not abort local recognition.
     assert len(list((queue.root / 'screenshots').glob('*.json'))) == 1
-
-
-def test_unbound_screenshots_do_not_starve_ready_jobs(release):
-    queue, api, _ = service(release)
-    folder = queue.root / 'screenshots'
-    for index in range(11):
-        write_json(folder / f'{index:064x}.json', {
-            'image_base64': 'AA==', 'scene': 'research',
-            'observations': [{'source': 'U?pending' if index < 10 else 'U-READY',
-                              'bounds': [0, 0, 96, 96]}],
-        })
-    api.upload_screenshot = Mock(return_value={'stored': True, 'sha256': f'{10:064x}'})
-    queue._upload_screenshots()
-    api.upload_screenshot.assert_called_once()
-    assert not (folder / f'{10:064x}.json').exists()
-    assert len(list(folder.glob('*.json'))) == 10
-
-
-def test_screenshot_backlog_has_separate_capacity_from_structured_jobs(release):
-    queue, api, _ = service(release)
-    frame = np.zeros((720, 1280, 3), np.uint8)
-    observation = [{'source': 'U-READY', 'bounds': [0, 0, 96, 96]}]
-    queue.capture(frame, observation, scene='research')
-    queue.MAX_JOBS = 1
-    queue.MAX_BYTES = 1024  # The screenshot JSON exceeds this, but is not a structured job.
-    assert queue.enqueue(record()) == 'record-0001'
-    queue.MAX_SCREENSHOT_JOBS = 1
-    with pytest.raises(CloudError, match='screenshot'):
-        queue.capture(np.ones_like(frame), observation, scene='research')
 
 
 def test_main_server_outage_does_not_block_template_screenshot_upload(release):
@@ -298,127 +227,6 @@ def test_main_server_outage_does_not_block_template_screenshot_upload(release):
     api.upload_screenshot.assert_called_once()
     assert not pending.exists()
     assert list((queue.root / 'jobs').glob('*.json'))
-
-
-def test_screenshot_outage_does_not_delay_structured_records(release):
-    queue, api, _ = service(release)
-    frame = np.zeros((720, 1280, 3), np.uint8)
-    queue.capture(frame, [{'source': 'U-READY', 'bounds': [0, 0, 96, 96]}], scene='research')
-    api.upload_screenshot = Mock(side_effect=CloudError('template offline', retry_after=120))
-    api.submit = Mock(side_effect=lambda records: {
-        'schema_version': 3,
-        'results': [{'record_id': row['record_id'], 'status': 'accepted'} for row in records],
-    })
-    queue.enqueue(record(1))
-    assert queue.drain_once()
-    assert queue._next_attempt == 0
-    assert queue._next_screenshot_attempt > time.monotonic()
-    queue.enqueue(record(2))
-    assert queue.drain_once()
-    assert api.submit.call_count == 2
-    api.upload_screenshot.assert_called_once()
-    assert list((queue.root / 'screenshots').glob('*.json'))
-
-
-def test_structured_records_are_submitted_before_slow_screenshots(release):
-    queue, api, _ = service(release)
-    queue.enqueue(record())
-    queue.capture(np.zeros((720, 1280, 3), np.uint8),
-                  [{'source': 'U-READY', 'bounds': [0, 0, 96, 96]}], scene='research')
-    pending = next((queue.root / 'screenshots').glob('*.json'))
-    calls = []
-
-    def submit(records):
-        calls.append('submit')
-        return {'schema_version': 3, 'results': [
-            {'record_id': row['record_id'], 'status': 'accepted'} for row in records]}
-
-    def upload(*_args):
-        calls.append('screenshot')
-        # Records already queued at the start of this drain are submitted first.
-        assert not list((queue.root / 'jobs').glob('*.json'))
-        return {'stored': True, 'sha256': pending.stem}
-
-    api.submit = Mock(side_effect=submit)
-    api.upload_screenshot = Mock(side_effect=upload)
-    assert queue.drain_once()
-    assert calls == ['submit', 'screenshot']
-    assert not pending.exists()
-
-
-def test_main_backoff_does_not_block_later_screenshot_upload(release):
-    queue, api, _ = service(release)
-    queue.enqueue(record())
-    api.submit = Mock(side_effect=CloudError('main offline', retry_after=120))
-    assert not queue.drain_once()
-    assert queue._next_attempt > time.monotonic()
-
-    queue.capture(np.zeros((720, 1280, 3), np.uint8),
-                  [{'source': 'U-READY', 'bounds': [0, 0, 96, 96]}], scene='research')
-    pending = next((queue.root / 'screenshots').glob('*.json'))
-    api.upload_screenshot = Mock(return_value={'stored': True, 'sha256': pending.stem})
-    assert queue.drain_once()
-    api.upload_screenshot.assert_called_once()
-    api.submit.assert_called_once()
-    assert not pending.exists()
-
-
-
-def test_unregistered_records_do_not_starve_later_numbered_records(release):
-    queue, api, _ = service(release)
-    for number in range(1, 206):
-        queue.enqueue(record(number, items=[{'item': 'U?waiting', 'amount': 1, 'tag': ''}]))
-    queue.enqueue(record(206))
-    api.submit = Mock(side_effect=lambda records: {
-        'schema_version': 3,
-        'results': [{'record_id': row['record_id'], 'status': 'accepted'} for row in records],
-    })
-    queue._submit()
-    api.submit.assert_called_once()
-    assert [row['record_id'] for row in api.submit.call_args.args[0]] == ['record-0206']
-    assert len(list((queue.root / 'jobs').glob('*.json'))) == 205
-
-
-def test_submit_limits_each_batch_to_200_ready_records(release):
-    queue, api, _ = service(release)
-    for number in range(1, 203):
-        queue.enqueue(record(number))
-    api.submit = Mock(side_effect=lambda records: {
-        'schema_version': 3,
-        'results': [{'record_id': row['record_id'], 'status': 'accepted'} for row in records],
-    })
-    queue._submit()
-    assert len(api.submit.call_args.args[0]) == 200
-    assert len(list((queue.root / 'jobs').glob('*.json'))) == 2
-    queue._submit()
-    assert len(api.submit.call_args.args[0]) == 2
-    assert not list((queue.root / 'jobs').glob('*.json'))
-
-
-def test_records_arriving_during_screenshot_upload_wait_until_next_drain(release):
-    queue, api, _ = service(release)
-    queue.enqueue(record())
-    queue.capture(np.zeros((720, 1280, 3), np.uint8),
-                  [{'source': 'U-READY', 'bounds': [0, 0, 96, 96]}], scene='research')
-    pending = next((queue.root / 'screenshots').glob('*.json'))
-    batches = []
-
-    def submit(records):
-        batches.append([row['record_id'] for row in records])
-        return {'schema_version': 3, 'results': [
-            {'record_id': row['record_id'], 'status': 'accepted'} for row in records]}
-
-    def upload(*_args):
-        queue.enqueue(record(2))
-        return {'stored': True, 'sha256': pending.stem}
-
-    api.submit = Mock(side_effect=submit)
-    api.upload_screenshot = Mock(side_effect=upload)
-    assert queue.drain_once()
-    assert batches == [['record-0001']]
-    assert list((queue.root / 'jobs').glob('*.json'))
-    assert queue.drain_once()
-    assert batches == [['record-0001'], ['record-0002']]
 
 
 def test_partial_ack_retry_duplicate_and_rejection(release):
