@@ -56,6 +56,20 @@ def test_domain_scope(url, expected):
     assert http.is_service_url(url) is expected
 
 
+@pytest.mark.parametrize('status, ready', [(200, True), (404, False)])
+def test_android_dist_head_probe_follows_service_redirects(status, ready):
+    from deploy import frontend
+
+    response = MagicMock()
+    response.__enter__.return_value.status_code = status
+    with (patch.object(frontend, 'android_dist_base', return_value='https://launcher-download.azurpilot.com'),
+          patch.object(frontend.http, 'head', return_value=response) as head):
+        assert frontend.android_dist_ready('deadbeef') is ready
+    head.assert_called_once_with(
+        'https://launcher-download.azurpilot.com/frontend-deadbeef.tar.xz.sha256',
+        download=True, timeout=10, allow_redirects=True)
+
+
 def test_deploy_http_settings_import_without_third_party_packages():
     subprocess.run(
         [sys.executable, '-S', '-c',

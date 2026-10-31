@@ -61,7 +61,7 @@ def android_dist_ready(commit, root=None):
     url = f'{base}/frontend-{commit}.tar.xz.sha256'
     try:
         if http.is_service_url(url):
-            with http.head(url, download=True, timeout=10) as response:
+            with http.head(url, download=True, timeout=10, allow_redirects=True) as response:
                 return response.status_code == 200
         request = urllib.request.Request(url, method='HEAD', headers={'User-Agent': _ANDROID_UA})
         with urllib.request.urlopen(request, timeout=10) as response:

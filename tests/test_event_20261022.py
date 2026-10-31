@@ -9,6 +9,9 @@ from unittest.mock import Mock, call, patch
 from campaign.event_20261022_cn import sp, t1
 from module.campaign.campaign_base import CampaignBase
 from module.config.config import AzurLaneConfig
+from module.config.config_updater import _event_stage_exists, refresh_campaign_events
+from module.campaign.stage_name import normalize_event_stage
+from module.handler.fast_forward import to_map_file_name, to_map_input_name
 from module.template import assets as template_assets
 
 
@@ -97,12 +100,34 @@ class WindFogCorridorTests(unittest.TestCase):
                 with self.subTest(task=task, server=server):
                     self.assertEqual(args[task]['Campaign']['Event'][f'option_{server}'], [EVENT])
 
+    def test_expired_event_resets_missing_stage_but_preserves_valid_stage(self):
+        args = json.loads((ROOT / 'module/config/argument/args.json').read_text(encoding='utf-8'))
+        for old_stage, expected in (('D3', 'T1'), ('12-4', 'T1'), ('T6', 'T6')):
+            with self.subTest(old_stage=old_stage):
+                data = {
+                    'Alas': {'Emulator': {'PackageName': 'com.hkmanjuu.azurlane.gp'}},
+                    'Event': {'Campaign': {'Event': 'event_20250912_cn', 'Name': old_stage}},
+                    'EventSp': {'Campaign': {'Event': 'event_20250912_cn', 'Name': 'D3'}},
+                }
+                refresh_campaign_events(data, args)
+                self.assertEqual(data['Event']['Campaign']['Event'], EVENT)
+                self.assertEqual(data['Event']['Campaign']['Name'], expected)
+                self.assertEqual(data['EventSp']['Campaign']['Name'], 'SP')
+
+    def test_hyphenated_stage_aliases_match_runtime_and_validation(self):
+        folder = ROOT / 'campaign' / EVENT
+        for stage, expected in (('SP-6', 't6'), ('A-1', 't1'), ('B-3', 't6')):
+            with self.subTest(stage=stage):
+                self.assertEqual(normalize_event_stage(to_map_file_name(stage), EVENT), expected)
+                self.assertEqual(to_map_input_name(stage), stage.replace('-', '').upper())
+                self.assertTrue(_event_stage_exists(folder, stage))
+
     def test_localized_event_names_survive_config_generation(self):
         for language, expected in (
             ('zh-CN', '飓风与雾霭回廊'),
             ('en-US', 'Tempesta and the Corridor of Fog'),
             ('ja-JP', 'テンペスタと霧靄回廊'),
-            ('zh-TW', '飓风与雾霭回廊'),
+            ('zh-TW', '颶風與霧靄迴廊'),
         ):
             with self.subTest(language=language):
                 path = ROOT / f'module/config/i18n/{language}.json'
