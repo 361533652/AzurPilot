@@ -1,26 +1,28 @@
 """API 客户端模块。
 
 负责与 API 服务器进行 HTTP 交互，包括 CL1 数据提交和公告获取，
-支持主域名 (nanoda.work) 和备用域名 (nanoda.work) 的自动故障转移。
+默认统一使用 api.azurpilot.com，保留既有的主备端点请求流程。
 """
-import threading
 from typing import Any, Dict, List, Tuple, Optional
+from datetime import datetime, timezone
+import uuid
 
-import requests
+from module.base import http
 
+from deploy.api_endpoints import API_BASE_URL
 from module.logger import logger
 
 
 class ApiClient:
-    """统一的 API 客户端，支持双域名故障转移。"""
+    """统一的 API 客户端，保留主备端点配置。"""
     
     # 主域名和备用域名列表
-    PRIMARY_DOMAIN = 'https://alas-apiv2.nanoda.work'
-    FALLBACK_DOMAIN = 'https://alas-apiv2.nanoda.work'
+    PRIMARY_DOMAIN = API_BASE_URL
+    FALLBACK_DOMAIN = API_BASE_URL
     
     # API端点路径
-    CL1_DATA_PATH = '/api/telemetry'
-    ANNOUNCEMENT_PATH = '/api/get/announcement'
+    CL1_DATA_PATH = '/api/v2/post/cl1'
+    ANNOUNCEMENT_PATH = '/api/v2/get/notice/data.json'
 
     # 公告检查间隔（秒），1.5分钟 = 90秒
     ANNOUNCEMENT_CHECK_INTERVAL = 90
@@ -35,10 +37,10 @@ class ApiClient:
         Returns:
             list[str]: 端点完整 URL 列表。
         """
-        return [
+        return list(dict.fromkeys([
             f'{cls.PRIMARY_DOMAIN}{path}',
             f'{cls.FALLBACK_DOMAIN}{path}'
-        ]
+        ]))
     
     @classmethod
     def _post_with_fallback(cls, path: str, json_data: Dict[str, Any], timeout: int = 5) -> Tuple[bool, int, str]:
@@ -90,6 +92,7 @@ class ApiClient:
             
         endpoints = cls._get_endpoints(path)
         last_error = None
+        last_status = 0
         
         for i, endpoint in enumerate(endpoints):
             try:
@@ -97,20 +100,21 @@ class ApiClient:
                 logger.debug(f'[基础-API] 尝试使用{domain_type}: {endpoint}')
                 
                 if method == 'GET':
-                    response = requests.get(
+                    response = http.get(
                         endpoint,
                         params=params,
                         timeout=timeout,
-                        headers={'User-Agent': 'alas AzurPilot'}
+                        headers={'User-Agent': http.USER_AGENT}
                     )
                 else:
-                    response = requests.post(
+                    response = http.post(
                         endpoint,
                         json=json_data,
                         timeout=timeout,
                         headers={
                             'Content-Type': 'application/json',
-                            'User-Agent': 'alas AzurPilot'
+                            'User-Agent': http.USER_AGENT,
+                            'X-AzurPilot-ID': str((json_data or {}).get('device_id', '')),
                         }
                     )
                 
@@ -121,18 +125,21 @@ class ApiClient:
                 else:
                     logger.warning(f'[基础-API] {domain_type}返回错误状态: {response.status_code}')
                     last_error = f'HTTP {response.status_code}'
+                    last_status = response.status_code
+                    if 400 <= last_status < 500 and last_status != 429:
+                        break
                     
-            except requests.exceptions.Timeout:
+            except http.exceptions.Timeout:
                 logger.warning(f'[基础-API] {domain_type if i > 0 else "主域名"}请求超时')
                 last_error = 'Timeout'
-            except requests.exceptions.RequestException as e:
+            except http.exceptions.RequestException as e:
                 logger.warning(f'[基础-API] {domain_type if i > 0 else "主域名"}请求失败: {e}')
                 last_error = str(e)
             except Exception as e:
                 logger.warning(f'[基础-API] {domain_type if i > 0 else "主域名"}发生异常: {e}')
                 last_error = str(e)
         
-        return False, 0, last_error or 'Unknown error'
+        return False, last_status, last_error or 'Unknown error'
     
     @staticmethod
     def _submit_cl1_data(data: Dict[str, Any], timeout: int):
@@ -153,19 +160,46 @@ class ApiClient:
             logger.attr('明石遭遇次数', data.get('akashi_encounters', 0))
             logger.attr('明石出现概率', f"{data.get('akashi_probability', 0):.2%}")
             
+            payload = ApiClient.cl1_payload(data)
             success, status_code, response_text = ApiClient._post_with_fallback(
                 ApiClient.CL1_DATA_PATH,
-                data,
+                payload,
                 timeout=timeout
             )
             
             if success:
+                import json
+                acknowledgement = json.loads(response_text)
+                if (not isinstance(acknowledgement, dict)
+                        or acknowledgement.get('schema_version') != 2
+                        or acknowledgement.get('request_id') != payload['request_id']
+                        or (acknowledgement.get('accepted') is not True
+                            and acknowledgement.get('duplicate') is not True)):
+                    logger.warning('[基础-API] CL1 回执无效，等待下次快照提交')
+                    return False
                 logger.info('[基础-API] CL1 数据提交成功')
+                return True
             else:
                 logger.warning(f'[基础-API] CL1 数据提交失败: {response_text}')
+                return False
 
         except Exception as e:
             logger.exception(f'[基础-API] CL1 数据提交异常: {e}')
+            return False
+
+    @staticmethod
+    def cl1_payload(data: Dict[str, Any]) -> Dict[str, Any]:
+        """Send raw monthly counters; the main statistics service computes derived metrics."""
+        return {
+            'request_id': data.get('request_id') or str(uuid.uuid4()),
+            'device_id': data['device_id'],
+            'instance_id': data['instance_id'],
+            'month': data['month'],
+            'collected_at': data.get('collected_at') or datetime.now(timezone.utc).isoformat(),
+            'battle_count': data['battle_count'],
+            'akashi_encounters': data.get('akashi_encounters', 0),
+            'akashi_ap': data.get('akashi_ap', data.get('net_stamina_gain', 0)),
+        }
     
     @classmethod
     def submit_cl1_data(cls, data: Dict[str, Any], timeout: int = 10):
@@ -178,7 +212,7 @@ class ApiClient:
             timeout (int): 请求超时时间（秒），默认 10 秒。
         """
         from module.base.async_executor import async_executor
-        async_executor.submit(cls._submit_cl1_data, data, timeout)
+        return async_executor.submit(cls._submit_cl1_data, data, timeout)
 
     @classmethod
     def get_announcement(cls, timeout: int = 1, current_id: int = None) -> Optional[Dict[str, Any]]:
@@ -214,6 +248,18 @@ class ApiClient:
                 import json
                 try:
                     data = json.loads(response_text)
+
+                    if not isinstance(data, dict) or data.get('schema_version') != 2 or 'announcement' not in data:
+                        logger.warning('[基础-API] 公告文档格式不正确')
+                        return None
+                    notice = data['announcement']
+                    if notice is None:
+                        return {}  # Explicit withdrawal; distinct from a failed request.
+                    if not isinstance(notice, dict) or not notice.get('id'):
+                        return None
+                    if str(notice['id']) == str(current_id):
+                        return None
+                    data = {**notice, 'announcementId': notice['id']}
                     
                     # 如果返回空字典或无ID，也视为无更新
                     if not data or not data.get('announcementId'):

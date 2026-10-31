@@ -230,3 +230,18 @@ AzurPilot 后端通过 `STOCK_EXCHANGE_URL` 配置交易所 origin，默认 `htt
 `POST /watchlist` 接受 `{stockId,selected}` 并返回 `{watchlist}`，属于本人接口。自选跨重启、赛季及设备保留；列表默认过滤退市，筛选可组合上市状态、报价、涨跌方向、价格/涨跌幅区间、归属及更新时间，范围可切换全部、自选和持仓。`GET /orders` 返回完整持久委托回执，包括旧版本已从账户快照截断的记录；界面不截断委托、成交或公开挂单。
 
 持仓总浮动盈亏为所有多头 `(现价×股数−成本)` 与空头 `(成本−现价×空头股数)` 的合计，账面成本已包含开仓交易费用；融资利息与借券费不重复扣入浮盈亏。注册、确认与身份弹窗统一通过 portal 放到页面顶层，内容滚动且头尾按钮固定，支持焦点限制与恢复，验证码可随窄屏缩放，提示消息不拦截操作。
+
+## 本地启动器 WS v2
+
+Python 后端提供独立的 `/api/v2/launcher/ws`，启动器主动连接；控制命令、通知与登录票据共用一条连接。页面仍通过业务 WS 调用 `launcher.status`、`launcher.autostart.set` 和 `launcher.command.get`，订阅全局 `launcher` 主题。`auth.launcher` 消费 60 秒一次性票据，不传输或存储访问密码。以上操作与主题限定本机直连，写操作遵循 DEMO 只读保护。
+
+任务通知入口为 `POST /api/v2/internal/notifications`。旧启动器 HTTP/SSE 路径已移除，完整格式与恢复约定见 [启动器协议 v2](../docs/modules/webui/launcher-protocol-v2.md)。
+
+
+## 舰队数据分析与共享船坞
+
+舰队管理中的「舰队数据分析」统一提供共享船坞数据、心智分析与舰船科技分析。旧 `task/MindCalculator`、`mind-calculator` 和 `task/FleetTechnology` 链接跳转到相应分析标签；旧扫描任务不再显示在工具菜单。
+
+`dock.report({instance})` 返回共享扫描报告（`revision`、`updated_at`、`min_level`、`max_level`、`ships`、`complete`、`review_count`、`source`、`scan_range`）。`dock.configure({instance,min_level,max_level})` 保存 1–125 级范围并返回报告；点击统一扫描入口才调用 `tasks.run({instance,task:"DockScan"})`。扫描读取船坞舰名和等级，需要导航与滚动，不进行升级、突破、觉醒或换船。页面展示扫描时间、实际快照范围 `scan_range`、数据来源、完成情况与待核对数量；`min_level`/`max_level` 是下一次扫描设置，修改设置不会伪装成已扫描数据。
+
+心智的编辑、导入、截图识别和导出继续使用 `mind.*`；舰船科技的人工历史修订继续使用 `fleetTech.patch`。两者的草稿和人工设置独立，分析页面本身不触发游戏任务。

@@ -142,6 +142,7 @@
       "BackUpMethod": "zip",
       "ZipMethod": "zip",
       "AzurStatsID": null,
+      "CloudUpload": true,
       "API": "default",
       "ResearchRecord": "do_not",
       "CommissionRecord": "do_not",
@@ -2328,7 +2329,7 @@
       "Enable": true,
       "SelectNewOperation": false,
       "NewOperationMaxDate": 15,
-      "JoinThreshold": 1,
+      "JoinThreshold": 1.0,
       "AttackBoss": true,
       "BossFleetRecommend": false
     },
@@ -3358,12 +3359,14 @@
       "Positions": 3,
       "WorkerFilter": "WorkerJuu",
       "MinFarm": 660,
+      "CropTargets": null,
       "PlantPotatoes": 4
     },
     "IslandOrchard": {
       "Positions": 4,
       "WorkerFilter": "WorkerJuu",
       "MinOrchard": 300,
+      "CropTargets": null,
       "IgnoreAvocado": true,
       "PlantRubber": 0,
       "AmagiChanRubber": false
@@ -3372,6 +3375,7 @@
       "Positions": 2,
       "WorkerFilter": "WorkerJuu",
       "MinNursery": 0,
+      "CropTargets": null,
       "IgnorePineapple": true,
       "PlantLavender": 2
     },
@@ -3793,7 +3797,30 @@
     },
     "FleetRotation": {
       "Enabled": false,
+      "SelectedOnly": false,
       "Rules": "{}",
+      "State": {}
+    },
+    "FleetLevelTraining": {
+      "Enabled": false,
+      "Target": 120
+    },
+    "FleetAffinityTraining": {
+      "Enabled": false,
+      "Target": 100
+    },
+    "FleetDorm": {
+      "Enabled": false,
+      "Floor": "floor_1"
+    },
+    "FleetTraining": {
+      "FullScanRecord": "2020-01-01 00:00:00",
+      "CheckIntervalHours": 6.0,
+      "State": {}
+    },
+    "FleetEquipment": {
+      "Enabled": false,
+      "Codes": "{}",
       "State": {}
     },
     "Storage": {
@@ -3863,22 +3890,10 @@
       "Storage": {}
     }
   },
-  "MindCalculatorScan": {
-    "MindCalculator": {
-      "MinLevel": 95,
-      "MaxLevel": 125,
-      "Result": {},
-      "FleetTechRecord": {}
-    },
-    "Storage": {
-      "Storage": {}
-    }
-  },
-  "FleetTechScan": {
-    "FleetTech": {
-      "MinLevel": 95,
-      "MaxLevel": 125,
-      "Record": {}
+  "DockScan": {
+    "Dock": {
+      "MinLevel": 1,
+      "MaxLevel": 125
     },
     "Storage": {
       "Storage": {}
@@ -3989,6 +4004,28 @@
       "DeviceInterval": 2,
       "ScanLimit": 0,
       "ScanPasses": 12
+    },
+    "Storage": {
+      "Storage": {}
+    }
+  },
+  "IslandProductionPlanner": {
+    "IslandProductionPlanner": {
+      "ApplySettings": false,
+      "RescanTechnology": true,
+      "ScanSeasonTasks": true,
+      "SeasonTaskTargets": null,
+      "ExtraTargets": null,
+      "DailyProfitLowerLimit": 50000,
+      "DailyBufferSafetyMargin": 0,
+      "FieldsEfficiency": 0,
+      "OrchardEfficiency": 0,
+      "NurseryEfficiency": 0,
+      "RestaurantGrade": "bronze",
+      "TeahouseGrade": "bronze",
+      "JuuEateryGrade": "bronze",
+      "GrillGrade": "bronze",
+      "JuuCoffeeGrade": "bronze"
     },
     "Storage": {
       "Storage": {}

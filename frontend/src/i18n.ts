@@ -1,4 +1,7 @@
+import {analysisZhCN, analysisZhTW, analysisEnUS, analysisJaJP} from './fleet-analysis-i18n'
 import {rotationZhCN, rotationZhTW, rotationEnUS, rotationJaJP} from './fleet-rotation-i18n'
+import {trainingZhCN, trainingZhTW, trainingEnUS, trainingJaJP} from './fleet-training-i18n'
+import {equipmentZhCN, equipmentZhTW, equipmentEnUS, equipmentJaJP} from './fleet-equipment-i18n'
 import {fleetTechZhCN, fleetTechZhTW, fleetTechEnUS, fleetTechJaJP} from './fleet-tech/i18n'
 import {mindZhCN, mindZhTW, mindEnUS, mindJaJP} from './mind/i18n'
 /**
@@ -20,9 +23,12 @@ export const languages: Record<Language, string> = {
 
 const zhCN = {
   ...resourceZhCN,
+  ...analysisZhCN,
   ...mindZhCN,
   ...fleetTechZhCN,
   ...rotationZhCN,
+  ...trainingZhCN,
+  ...equipmentZhCN,
   'stats.category.storage': '仓库物品',
   'stats.runStorage': '运行仓库统计',
   'stats.storageStarted': '仓库统计已启动，完整扫描完成后更新数量。',
@@ -598,9 +604,12 @@ export type UiTranslator = (key: UiKey, params?: TranslationParams) => string
 
 const enUS: Record<UiKey, string> = {
   ...resourceEnUS,
+  ...analysisEnUS,
   ...mindEnUS,
   ...fleetTechEnUS,
   ...rotationEnUS,
+  ...trainingEnUS,
+  ...equipmentEnUS,
   'stats.category.storage': 'Inventory',
   'stats.runStorage': 'Scan inventory',
   'stats.storageStarted': 'Inventory scan started. Counts update after a complete scan.',
@@ -750,9 +759,12 @@ const enUS: Record<UiKey, string> = {
 
 const jaJP: Record<UiKey, string> = {
   ...resourceJaJP,
+  ...analysisJaJP,
   ...mindJaJP,
   ...fleetTechJaJP,
   ...rotationJaJP,
+  ...trainingJaJP,
+  ...equipmentJaJP,
   'stats.category.storage': '倉庫アイテム',
   'stats.runStorage': '倉庫を集計',
   'stats.storageStarted': '倉庫の集計を開始しました。全体の確認が終わると数量が更新されます。',
@@ -963,9 +975,12 @@ const jaJP: Record<UiKey, string> = {
 
 const zhTW: Record<UiKey, string> = {
   ...resourceZhTW,
+  ...analysisZhTW,
   ...mindZhTW,
   ...fleetTechZhTW,
   ...rotationZhTW,
+  ...trainingZhTW,
+  ...equipmentZhTW,
   'stats.category.storage': '倉庫物品',
   'stats.runStorage': '執行倉庫統計',
   'stats.storageStarted': '倉庫統計已啟動，完整掃描完成後更新數量。',
