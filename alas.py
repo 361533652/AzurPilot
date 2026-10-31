@@ -13,7 +13,6 @@ from cached_property import cached_property
 
 import module.config.server as server_config
 from module.base.decorator import del_cached_property
-from module.base.api_client import ApiClient
 from module.base.runtime_params import (
     WATCHDOG_CHECK_INTERVAL,
     WATCHDOG_TASK_TIMEOUT_DEFAULT,
@@ -78,8 +77,6 @@ def _get_task_display_name(task_command):
         except Exception:
             pass
     return _i18n_task_names.get(task_command, task_command)
-
-
 
 
 class AzurLaneAutoScript:
@@ -1115,6 +1112,11 @@ class AzurLaneAutoScript:
         command = inflection.underscore(command)
         self._storage_statistics_failed = False
         set_task(inflection.camelize(command))
+        # 会话按任务隔离；换船入口恢复持久扫描计时，不因任务重开而重扫。
+        rotation_context = self.__dict__.setdefault('_fleet_rotation_context', {})
+        if rotation_context.get('task') != inflection.camelize(command):
+            rotation_context.clear()
+            rotation_context['task'] = inflection.camelize(command)
         try:
             # Restart 的职责就是把游戏从“未运行/未出首帧”恢复起来。
             # Android 虚拟屏在没有实际内容提交前不会产生可读帧；若这里先截图，
@@ -1150,11 +1152,17 @@ class AzurLaneAutoScript:
             logger.error(str(e))
             self._storage_statistics_failed = True
             return False
-        except MindCalculatorScanError as e:
+        except (MindCalculatorScanError, FleetManagementError) as e:
             logger.error_context(
-                title='舰船科技扫描未完成' if command == 'fleet_tech_scan' else '心智单元船坞扫描未完成', reason=str(e), exc=e,
-                impact='本次扫描结束，保留上次完整舰船清单，不重启模拟器。',
-                action='查看错误截图和具体原因，确认船坞布局及控制方式后重新启动扫描。',
+                title=('舰队管理未完成' if isinstance(e, FleetManagementError) else
+                       '共享船坞扫描未完成'),
+                reason=str(e), exc=e,
+                impact=('本次舰队任务结束，不重启模拟器或重复换船；已操作但未核验的舰队参考记录会失效。'
+                        if isinstance(e, FleetManagementError) else
+                        '本次扫描结束，保留上次完整舰船清单，不重启模拟器。'),
+                action=('查看错误截图和游戏提示，核对当前编队后再启动任务。'
+                        if isinstance(e, FleetManagementError) else
+                        '查看错误截图和具体原因，确认船坞布局及控制方式后重新启动扫描。'),
                 level=50,
             )
             self.save_error_log()
@@ -1823,10 +1831,6 @@ class AzurLaneAutoScript:
         from module.event.maritime_escort import MaritimeEscort
         MaritimeEscort(config=self.config, device=self.device).run()
 
-    def opsi_ash_assist(self):
-        from module.os_ash.meta import AshBeaconAssist
-        AshBeaconAssist(config=self.config, device=self.device).run()
-
     def opsi_ash_beacon(self):
         from module.os_ash.meta import OpsiAshBeacon
         OpsiAshBeacon(config=self.config, device=self.device).run()
@@ -1898,7 +1902,9 @@ class AzurLaneAutoScript:
     def _run_campaign(self):
         """主线与普通活动槽位的战役调用；断点由公共 CampaignRun 保存。"""
         from module.campaign.run import CampaignRun
-        CampaignRun(config=self.config, device=self.device).run(
+        runner = CampaignRun(config=self.config, device=self.device)
+        runner._fleet_rotation_context = self.__dict__.setdefault('_fleet_rotation_context', {})
+        runner.run(
             name=self.config.Campaign_Name, folder=self.config.Campaign_Event, mode=self.config.Campaign_Mode)
 
     def main(self):
@@ -2016,17 +2022,17 @@ class AzurLaneAutoScript:
         from module.meowfficer.score_task import run_meowfficer_score
         run_meowfficer_score(config=self.config, device=self.device)
 
+    def island_production_planner(self):
+        from module.island_planner.planner import IslandProductionPlanner
+        IslandProductionPlanner(config=self.config, device=self.device, task="IslandProductionPlanner").run()
+
     def fleet_scan(self):
         from module.retire.fleet_management import FleetManagement
         FleetManagement(config=self.config, device=self.device, task="FleetScan").run()
 
-    def mind_calculator_scan(self):
-        from module.retire.mind_scan import MindCalculatorScan
-        MindCalculatorScan(config=self.config, device=self.device, task="MindCalculatorScan").run()
-
-    def fleet_tech_scan(self):
-        from module.retire.fleet_tech_scan import FleetTechScan
-        FleetTechScan(config=self.config, device=self.device, task="FleetTechScan").run()
+    def dock_scan(self):
+        from module.retire.dock_scan import DockScan
+        DockScan(config=self.config, device=self.device, task="DockScan").run()
 
     def game_manager(self):
         from module.daemon.game_manager import GameManager
@@ -2207,6 +2213,8 @@ class AzurLaneAutoScript:
         limit = int(self.config.Error_TaskRestartLimit)
         if limit <= 0:
             self.task_restart_record.pop(task, None)
+            # 关掉限制后，本限制产生的进程内冷却也不该继续拦截该任务。
+            self.task_restart_delays.pop(task, None)
             return False
         count = self.task_restart_record.get(task, 0) + 1
         self.task_restart_record[task] = count
@@ -2238,6 +2246,29 @@ class AzurLaneAutoScript:
         except Exception as exc:
             logger.warning(f'[AzurPilot] 任务延后 WebUI 通知失败：{exc}')
         return True
+
+    def _release_restart_cooldown(self, task):
+        """关闭连续重启限制后解除该任务的故障冷却。
+
+        只有当持久化排期仍等于故障冷却截止时间时才把它提前到当前时间，
+        用户后来另设的排期保持不动；任务是否启用不变，禁用任务不会被重新
+        打开。这里直接写 Scheduler.NextRun 而不走 task_call()，避免在接管
+        模式下把任务塞进接管队列或重复入队。
+        """
+        deadline = self.task_restart_delays.pop(task, None)
+        if deadline is None:
+            return False
+        next_run = self.config.cross_get(keys=[task, 'Scheduler', 'NextRun'], default=None)
+        if next_run != deadline:
+            return False
+        self.config.cross_set(f'{task}.Scheduler.NextRun', current_time().replace(microsecond=0))
+        logger.info(f'[配置] 已解除任务 `{task}` 的连续重启冷却')
+        return True
+
+    def _release_restart_cooldowns(self):
+        """关闭连续重启限制后清空所有任务的故障冷却记录。"""
+        for task in list(self.task_restart_delays):
+            self._release_restart_cooldown(task)
 
     def get_next_task(self):
         """在已有任务就绪后应用清油优先级，覆盖预热和正常等待路径。"""
@@ -2535,6 +2566,12 @@ class AzurLaneAutoScript:
                         else:
                             logger.warning('[AzurPilot] 计划的模拟器重启失败，继续正常运行')
 
+                # 用户关掉连续重启限制后，旧的故障冷却不应再拦下任务。被冷却的
+                # 任务在截止时间之前不会被 get_next_task() 选中，所以必须在取
+                # 任务之前统一清理，不能等到它自己排到队首。
+                if self.task_restart_delays and int(self.config.Error_TaskRestartLimit) <= 0:
+                    self._release_restart_cooldowns()
+
                 # 获取任务
                 task = self.get_next_task()
                 if task == 'Restart':
@@ -2652,8 +2689,6 @@ class AzurLaneAutoScript:
                         title=f"诶呀！{self.config_name}出现了问题喵！",
                         content=f"因为 {task} 任务失败次数过多喵！",
                     )
-                    logger.warning("[AzurPilot] 任务连续失败次数过多，正在上报错误日志...")
-                    ApiClient.submit_bug_log(f"AzurPilot <{self.config_name}> crashed\nTask `{task}` failed {failed} or more times.")
                     exit(1)
 
                 deferred = self._record_task_restart(task, success)
@@ -2739,18 +2774,11 @@ class AzurLaneAutoScript:
                 )
 
                 # 不再因连续失败次数达到上限而退出，改为持续重试
-                # 上报错误日志（首次失败时上报，避免刷屏）
                 if consecutive_global_failures == 1:
                     try:
                         self.save_error_log()
-                        logger.warning("[AzurPilot] 首次全局异常，正在上报错误日志...")
-                        ApiClient.submit_bug_log(
-                            f"AzurPilot <{self.config_name}> 调度器发生异常。\n"
-                            f"调度器将自动重试恢复（永不退出）。\n"
-                            f"{traceback.format_exc()}"
-                        )
-                    except Exception as report_e:
-                        logger.warning(f'[AzurPilot] 错误日志上报失败: {report_e}')
+                    except Exception as save_e:
+                        logger.warning(f'[AzurPilot] 保存错误日志失败: {save_e}')
 
                 # 尝试重启模拟器
                 logger.warning("[AzurPilot] 尝试通过重启模拟器 + 强制执行 RESTART 任务来恢复...")

@@ -762,6 +762,10 @@
         "type": "input",
         "value": null
       },
+      "CloudUpload": {
+        "type": "checkbox",
+        "value": true
+      },
       "API": {
         "type": "select",
         "value": "default",
@@ -803,7 +807,9 @@
         "value": "do_not",
         "option": [
           "do_not",
-          "save"
+          "save",
+          "upload",
+          "save_and_upload"
         ]
       },
       "OpsiHazard1Leveling": {
@@ -905,10 +911,6 @@
         ]
       },
       "TelemetryReport": {
-        "type": "checkbox",
-        "value": true
-      },
-      "BugReport": {
         "type": "checkbox",
         "value": true
       }
@@ -1130,7 +1132,7 @@
     "YukikazeTaskManager": {
       "TaskPriorityAdjustment": {
         "type": "task_priority",
-        "value": "Restart\n> OpsiCrossMonth\n> Commission > Tactical > Research\n> Exercise\n> Dorm > Meowfficer > Guild > Gacha\n> Reward > StorageStatistics\n> ShopFrequent > ShopOnce > Shipyard > Freebies\n> PrivateQuarters\n> OpsiExplore > OpsiExploreCleanup\n> OpsiPreventActionPointOverflow\n> Minigame > Awaken\n> OpsiAshBeacon\n> OpsiDaily > OpsiShop > OpsiVoucher > EventShop\n> OpsiAbyssal > OpsiStronghold > OpsiObscure > OpsiArchive\n> Daily > LimitChallenge > Hard > OpsiAshBeacon > OpsiAshAssist > OpsiMonthBoss\n> Sos > EventSp > EventA > EventB > EventC > EventD\n> RaidDaily > CoalitionSp > WarArchives > MaritimeEscort\n> IslandJuuEatery > IslandJuuCoffee > IslandGrill > IslandTeahouse > IslandRestaurant\n> IslandFarm > IslandRancher > IslandMineForest > IslandDailyGather > IslandManufacture\n> IslandAirDrop > IslandBusiness > IslandDailyOrder > IslandDailyInteract > IslandPearlSell > IslandCargoPreparation\n> Event > Event2 > Event3 > Raid > Hospital > HospitalEvent > Coalition > RaidScuttle > Main > Main2 > Main3\n> OpsiScheduling\n> OpsiMeowfficerFarming\n> GemsFarming\n> Ambush11\n> OpsiHazard1Leveling\n> ThreeOilLowCost\n> OperationHandover"
+        "value": "Restart\n> OpsiCrossMonth\n> Commission > Tactical > Research\n> Exercise\n> Dorm > Meowfficer > Guild > Gacha\n> Reward > StorageStatistics\n> ShopFrequent > ShopOnce > Shipyard > Freebies\n> PrivateQuarters\n> OpsiExplore > OpsiExploreCleanup\n> OpsiPreventActionPointOverflow\n> Minigame > Awaken\n> OpsiAshBeacon\n> OpsiDaily > OpsiShop > OpsiVoucher > EventShop\n> OpsiAbyssal > OpsiStronghold > OpsiObscure > OpsiArchive\n> Daily > LimitChallenge > Hard > OpsiAshBeacon > OpsiMonthBoss\n> Sos > EventSp > EventA > EventB > EventC > EventD\n> RaidDaily > CoalitionSp > WarArchives > MaritimeEscort\n> IslandJuuEatery > IslandJuuCoffee > IslandGrill > IslandTeahouse > IslandRestaurant\n> IslandFarm > IslandRancher > IslandMineForest > IslandDailyGather > IslandManufacture\n> IslandAirDrop > IslandBusiness > IslandDailyOrder > IslandDailyInteract > IslandPearlSell > IslandCargoPreparation\n> Event > Event2 > Event3 > Raid > Hospital > HospitalEvent > Coalition > RaidScuttle > Main > Main2 > Main3\n> OpsiScheduling\n> OpsiMeowfficerFarming\n> GemsFarming\n> Ambush11\n> OpsiHazard1Leveling\n> ThreeOilLowCost\n> OperationHandover"
       }
     },
     "Storage": {
@@ -2828,13 +2830,6 @@
         "type": "select",
         "value": "campaign_main",
         "option": [
-          "event_20240815_cn",
-          "event_20240912_cn",
-          "event_20241219_cn",
-          "event_20250227_cn",
-          "event_20250520_cn",
-          "event_20250814_cn",
-          "event_20250912_cn",
           "event_20261022_cn"
         ],
         "option_cn": [
@@ -2847,22 +2842,9 @@
           "event_20261022_cn"
         ],
         "option_tw": [
-          "event_20250912_cn",
-          "event_20250814_cn",
-          "event_20250520_cn",
-          "event_20250227_cn",
-          "event_20241219_cn",
-          "event_20240912_cn",
-          "event_20240815_cn"
+          "event_20261022_cn"
         ],
         "option_bold": [
-          "event_20240815_cn",
-          "event_20240912_cn",
-          "event_20241219_cn",
-          "event_20250227_cn",
-          "event_20250520_cn",
-          "event_20250814_cn",
-          "event_20250912_cn",
           "event_20261022_cn"
         ]
       },
@@ -3428,13 +3410,6 @@
         "type": "select",
         "value": "campaign_main",
         "option": [
-          "event_20240815_cn",
-          "event_20240912_cn",
-          "event_20241219_cn",
-          "event_20250227_cn",
-          "event_20250520_cn",
-          "event_20250814_cn",
-          "event_20250912_cn",
           "event_20261022_cn"
         ],
         "option_cn": [
@@ -3447,22 +3422,9 @@
           "event_20261022_cn"
         ],
         "option_tw": [
-          "event_20250912_cn",
-          "event_20250814_cn",
-          "event_20250520_cn",
-          "event_20250227_cn",
-          "event_20241219_cn",
-          "event_20240912_cn",
-          "event_20240815_cn"
+          "event_20261022_cn"
         ],
         "option_bold": [
-          "event_20240815_cn",
-          "event_20240912_cn",
-          "event_20241219_cn",
-          "event_20250227_cn",
-          "event_20250520_cn",
-          "event_20250814_cn",
-          "event_20250912_cn",
           "event_20261022_cn"
         ]
       },
@@ -4512,13 +4474,6 @@
         "type": "select",
         "value": "campaign_main",
         "option": [
-          "event_20240815_cn",
-          "event_20240912_cn",
-          "event_20241219_cn",
-          "event_20250227_cn",
-          "event_20250520_cn",
-          "event_20250814_cn",
-          "event_20250912_cn",
           "event_20261022_cn"
         ],
         "option_cn": [
@@ -4531,22 +4486,9 @@
           "event_20261022_cn"
         ],
         "option_tw": [
-          "event_20250912_cn",
-          "event_20250814_cn",
-          "event_20250520_cn",
-          "event_20250227_cn",
-          "event_20241219_cn",
-          "event_20240912_cn",
-          "event_20240815_cn"
+          "event_20261022_cn"
         ],
         "option_bold": [
-          "event_20240815_cn",
-          "event_20240912_cn",
-          "event_20241219_cn",
-          "event_20250227_cn",
-          "event_20250520_cn",
-          "event_20250814_cn",
-          "event_20250912_cn",
           "event_20261022_cn"
         ]
       },
@@ -5022,13 +4964,6 @@
         "type": "select",
         "value": "campaign_main",
         "option": [
-          "event_20240815_cn",
-          "event_20240912_cn",
-          "event_20241219_cn",
-          "event_20250227_cn",
-          "event_20250520_cn",
-          "event_20250814_cn",
-          "event_20250912_cn",
           "event_20261022_cn"
         ],
         "option_cn": [
@@ -5041,22 +4976,9 @@
           "event_20261022_cn"
         ],
         "option_tw": [
-          "event_20250912_cn",
-          "event_20250814_cn",
-          "event_20250520_cn",
-          "event_20250227_cn",
-          "event_20241219_cn",
-          "event_20240912_cn",
-          "event_20240815_cn"
+          "event_20261022_cn"
         ],
         "option_bold": [
-          "event_20240815_cn",
-          "event_20240912_cn",
-          "event_20241219_cn",
-          "event_20250227_cn",
-          "event_20250520_cn",
-          "event_20250814_cn",
-          "event_20250912_cn",
           "event_20261022_cn"
         ]
       },
@@ -5532,13 +5454,6 @@
         "type": "select",
         "value": "campaign_main",
         "option": [
-          "event_20240815_cn",
-          "event_20240912_cn",
-          "event_20241219_cn",
-          "event_20250227_cn",
-          "event_20250520_cn",
-          "event_20250814_cn",
-          "event_20250912_cn",
           "event_20261022_cn"
         ],
         "option_cn": [
@@ -5551,22 +5466,9 @@
           "event_20261022_cn"
         ],
         "option_tw": [
-          "event_20250912_cn",
-          "event_20250814_cn",
-          "event_20250520_cn",
-          "event_20250227_cn",
-          "event_20241219_cn",
-          "event_20240912_cn",
-          "event_20240815_cn"
+          "event_20261022_cn"
         ],
         "option_bold": [
-          "event_20240815_cn",
-          "event_20240912_cn",
-          "event_20241219_cn",
-          "event_20250227_cn",
-          "event_20250520_cn",
-          "event_20250814_cn",
-          "event_20250912_cn",
           "event_20261022_cn"
         ]
       },
@@ -8744,13 +8646,6 @@
         "type": "select",
         "value": "campaign_main",
         "option": [
-          "event_20240815_cn",
-          "event_20240912_cn",
-          "event_20241219_cn",
-          "event_20250227_cn",
-          "event_20250520_cn",
-          "event_20250814_cn",
-          "event_20250912_cn",
           "event_20261022_cn"
         ],
         "option_cn": [
@@ -8763,22 +8658,9 @@
           "event_20261022_cn"
         ],
         "option_tw": [
-          "event_20250912_cn",
-          "event_20250814_cn",
-          "event_20250520_cn",
-          "event_20250227_cn",
-          "event_20241219_cn",
-          "event_20240912_cn",
-          "event_20240815_cn"
+          "event_20261022_cn"
         ],
         "option_bold": [
-          "event_20240815_cn",
-          "event_20240912_cn",
-          "event_20241219_cn",
-          "event_20250227_cn",
-          "event_20250520_cn",
-          "event_20250814_cn",
-          "event_20250912_cn",
           "event_20261022_cn"
         ]
       },
@@ -9272,13 +9154,6 @@
         "type": "select",
         "value": "campaign_main",
         "option": [
-          "event_20240815_cn",
-          "event_20240912_cn",
-          "event_20241219_cn",
-          "event_20250227_cn",
-          "event_20250520_cn",
-          "event_20250814_cn",
-          "event_20250912_cn",
           "event_20261022_cn"
         ],
         "option_cn": [
@@ -9291,22 +9166,9 @@
           "event_20261022_cn"
         ],
         "option_tw": [
-          "event_20250912_cn",
-          "event_20250814_cn",
-          "event_20250520_cn",
-          "event_20250227_cn",
-          "event_20241219_cn",
-          "event_20240912_cn",
-          "event_20240815_cn"
+          "event_20261022_cn"
         ],
         "option_bold": [
-          "event_20240815_cn",
-          "event_20240912_cn",
-          "event_20241219_cn",
-          "event_20250227_cn",
-          "event_20250520_cn",
-          "event_20250814_cn",
-          "event_20250912_cn",
           "event_20261022_cn"
         ]
       },
@@ -9800,13 +9662,6 @@
         "type": "select",
         "value": "campaign_main",
         "option": [
-          "event_20240815_cn",
-          "event_20240912_cn",
-          "event_20241219_cn",
-          "event_20250227_cn",
-          "event_20250520_cn",
-          "event_20250814_cn",
-          "event_20250912_cn",
           "event_20261022_cn"
         ],
         "option_cn": [
@@ -9819,22 +9674,9 @@
           "event_20261022_cn"
         ],
         "option_tw": [
-          "event_20250912_cn",
-          "event_20250814_cn",
-          "event_20250520_cn",
-          "event_20250227_cn",
-          "event_20241219_cn",
-          "event_20240912_cn",
-          "event_20240815_cn"
+          "event_20261022_cn"
         ],
         "option_bold": [
-          "event_20240815_cn",
-          "event_20240912_cn",
-          "event_20241219_cn",
-          "event_20250227_cn",
-          "event_20250520_cn",
-          "event_20250814_cn",
-          "event_20250912_cn",
           "event_20261022_cn"
         ]
       },
@@ -10328,13 +10170,6 @@
         "type": "select",
         "value": "campaign_main",
         "option": [
-          "event_20240815_cn",
-          "event_20240912_cn",
-          "event_20241219_cn",
-          "event_20250227_cn",
-          "event_20250520_cn",
-          "event_20250814_cn",
-          "event_20250912_cn",
           "event_20261022_cn"
         ],
         "option_cn": [
@@ -10347,22 +10182,9 @@
           "event_20261022_cn"
         ],
         "option_tw": [
-          "event_20250912_cn",
-          "event_20250814_cn",
-          "event_20250520_cn",
-          "event_20250227_cn",
-          "event_20241219_cn",
-          "event_20240912_cn",
-          "event_20240815_cn"
+          "event_20261022_cn"
         ],
         "option_bold": [
-          "event_20240815_cn",
-          "event_20240912_cn",
-          "event_20241219_cn",
-          "event_20250227_cn",
-          "event_20250520_cn",
-          "event_20250814_cn",
-          "event_20250912_cn",
           "event_20261022_cn"
         ]
       },
@@ -10845,13 +10667,6 @@
         "type": "select",
         "value": "campaign_main",
         "option": [
-          "event_20240815_cn",
-          "event_20240912_cn",
-          "event_20241219_cn",
-          "event_20250227_cn",
-          "event_20250520_cn",
-          "event_20250814_cn",
-          "event_20250912_cn",
           "event_20261022_cn"
         ],
         "option_cn": [
@@ -10864,22 +10679,9 @@
           "event_20261022_cn"
         ],
         "option_tw": [
-          "event_20250912_cn",
-          "event_20250814_cn",
-          "event_20250520_cn",
-          "event_20250227_cn",
-          "event_20241219_cn",
-          "event_20240912_cn",
-          "event_20240815_cn"
+          "event_20261022_cn"
         ],
         "option_bold": [
-          "event_20240815_cn",
-          "event_20240912_cn",
-          "event_20241219_cn",
-          "event_20250227_cn",
-          "event_20250520_cn",
-          "event_20250814_cn",
-          "event_20250912_cn",
           "event_20261022_cn"
         ]
       },
@@ -12778,7 +12580,12 @@
       },
       "JoinThreshold": {
         "type": "input",
-        "value": 1
+        "value": 1.0,
+        "valuetype": "float",
+        "validate": [
+          0.0,
+          1.0
+        ]
       },
       "AttackBoss": {
         "type": "checkbox",
@@ -14620,7 +14427,7 @@
       },
       "ServerUpdate": {
         "type": "input",
-        "value": "00:00",
+        "value": "03:00",
         "display": "hide"
       },
       "Sensitive": {
@@ -14830,6 +14637,10 @@
         "type": "checkbox",
         "value": false
       },
+      "DossierSkipAssist": {
+        "type": "checkbox",
+        "value": false
+      },
       "RequestAssist": {
         "type": "checkbox",
         "value": true
@@ -14843,83 +14654,11 @@
         "value": true
       }
     },
-    "Equipment": {
+    "OpsiAshAssist": {
       "Enable": {
-        "type": "checkbox",
-        "value": false
-      },
-      "ClearBeforeApply": {
         "type": "checkbox",
         "value": true
       },
-      "Config": {
-        "type": "textarea",
-        "value": "flagship:\n  before: null\n  after: null\nup:\n  before: null\n  after: null\ndown:\n  before: null\n  after: null\nhead:\n  before: null\n  after: null\nmiddle:\n  before: null\n  after: null\ntail:\n  before: null\n  after: null",
-        "mode": "yaml"
-      }
-    },
-    "Storage": {
-      "Storage": {
-        "type": "storage",
-        "value": {},
-        "valuetype": "ignore",
-        "display": "disabled"
-      }
-    }
-  },
-  "OpsiAshAssist": {
-    "Scheduler": {
-      "Enable": {
-        "type": "checkbox",
-        "value": false,
-        "option": [
-          true,
-          false
-        ]
-      },
-      "PushNotification": {
-        "type": "checkbox",
-        "value": false,
-        "option": [
-          true,
-          false
-        ]
-      },
-      "NextRun": {
-        "type": "datetime",
-        "value": "2020-01-01 00:00:00",
-        "validate": "datetime"
-      },
-      "Command": {
-        "type": "input",
-        "value": "OpsiAshAssist",
-        "display": "hide"
-      },
-      "SuccessInterval": {
-        "type": "input",
-        "value": 30,
-        "display": "hide"
-      },
-      "FailureInterval": {
-        "type": "input",
-        "value": 30,
-        "display": "hide"
-      },
-      "ServerUpdate": {
-        "type": "input",
-        "value": "00:00",
-        "display": "hide"
-      },
-      "Sensitive": {
-        "type": "checkbox",
-        "value": false,
-        "option": [
-          true,
-          false
-        ]
-      }
-    },
-    "OpsiAshAssist": {
       "Tier": {
         "type": "input",
         "value": 15
@@ -17842,6 +17581,10 @@
         "type": "input",
         "value": 660
       },
+      "CropTargets": {
+        "type": "textarea",
+        "value": ""
+      },
       "PlantPotatoes": {
         "type": "select",
         "value": 4,
@@ -17872,6 +17615,10 @@
       "MinOrchard": {
         "type": "input",
         "value": 300
+      },
+      "CropTargets": {
+        "type": "textarea",
+        "value": ""
       },
       "IgnoreAvocado": {
         "type": "checkbox",
@@ -17909,6 +17656,10 @@
       "MinNursery": {
         "type": "input",
         "value": 0
+      },
+      "CropTargets": {
+        "type": "textarea",
+        "value": ""
       },
       "IgnorePineapple": {
         "type": "checkbox",
@@ -20126,6 +19877,10 @@
   },
   "FleetInfo": {
     "FleetInfo": {
+      "UpdateEmotion": {
+        "type": "checkbox",
+        "value": true
+      },
       "Result": {
         "type": "stored",
         "value": {},
@@ -20135,6 +19890,86 @@
         "type": "stored",
         "value": "2020-01-01 00:00:00",
         "validate": "datetime",
+        "display": "hide"
+      }
+    },
+    "FleetRotation": {
+      "Enabled": {
+        "type": "checkbox",
+        "value": false
+      },
+      "SelectedOnly": {
+        "type": "checkbox",
+        "value": false
+      },
+      "Rules": {
+        "type": "textarea",
+        "value": "{}"
+      },
+      "State": {
+        "type": "storage",
+        "value": {}
+      }
+    },
+    "FleetLevelTraining": {
+      "Enabled": {
+        "type": "checkbox",
+        "value": false
+      },
+      "Target": {
+        "type": "input",
+        "value": 120,
+        "validate": [
+          1,
+          125
+        ]
+      }
+    },
+    "FleetAffinityTraining": {
+      "Enabled": {
+        "type": "checkbox",
+        "value": false
+      },
+      "Target": {
+        "type": "input",
+        "value": 100,
+        "validate": [
+          1,
+          200
+        ]
+      }
+    },
+    "FleetTraining": {
+      "FullScanRecord": {
+        "type": "stored",
+        "value": "2020-01-01 00:00:00",
+        "validate": "datetime",
+        "display": "hide"
+      },
+      "CheckIntervalHours": {
+        "type": "input",
+        "value": 6.0,
+        "valuetype": "float",
+        "validate": "^[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$"
+      },
+      "State": {
+        "type": "stored",
+        "value": {},
+        "display": "hide"
+      }
+    },
+    "FleetEquipment": {
+      "Enabled": {
+        "type": "checkbox",
+        "value": false
+      },
+      "Codes": {
+        "type": "textarea",
+        "value": "{}"
+      },
+      "State": {
+        "type": "stored",
+        "value": {},
         "display": "hide"
       }
     },
@@ -20507,54 +20342,17 @@
       }
     }
   },
-  "MindCalculatorScan": {
-    "MindCalculator": {
+  "DockScan": {
+    "Dock": {
       "MinLevel": {
         "type": "input",
-        "value": 95,
+        "value": 1,
         "validate": "^[1-9][0-9]?$|^1[01][0-9]$|^12[0-5]$"
       },
       "MaxLevel": {
         "type": "input",
         "value": 125,
         "validate": "^[1-9][0-9]?$|^1[01][0-9]$|^12[0-5]$"
-      },
-      "Result": {
-        "type": "stored",
-        "value": {},
-        "display": "hide"
-      },
-      "FleetTechRecord": {
-        "type": "stored",
-        "value": {},
-        "display": "hide"
-      }
-    },
-    "Storage": {
-      "Storage": {
-        "type": "storage",
-        "value": {},
-        "valuetype": "ignore",
-        "display": "disabled"
-      }
-    }
-  },
-  "FleetTechScan": {
-    "FleetTech": {
-      "MinLevel": {
-        "type": "input",
-        "value": 95,
-        "validate": "^[1-9][0-9]?$|^1[01][0-9]$|^12[0-5]$"
-      },
-      "MaxLevel": {
-        "type": "input",
-        "value": 125,
-        "validate": "^[1-9][0-9]?$|^1[01][0-9]$|^12[0-5]$"
-      },
-      "Record": {
-        "type": "stored",
-        "value": {},
-        "display": "hide"
       }
     },
     "Storage": {
@@ -20897,6 +20695,135 @@
         "validate": [
           1,
           60
+        ]
+      }
+    },
+    "Storage": {
+      "Storage": {
+        "type": "storage",
+        "value": {},
+        "valuetype": "ignore",
+        "display": "disabled"
+      }
+    }
+  },
+  "IslandProductionPlanner": {
+    "IslandProductionPlanner": {
+      "ApplySettings": {
+        "type": "checkbox",
+        "value": false,
+        "option": [
+          true,
+          false
+        ]
+      },
+      "RescanTechnology": {
+        "type": "checkbox",
+        "value": true,
+        "option": [
+          true,
+          false
+        ]
+      },
+      "ScanSeasonTasks": {
+        "type": "checkbox",
+        "value": true,
+        "option": [
+          true,
+          false
+        ]
+      },
+      "SeasonTaskTargets": {
+        "type": "textarea",
+        "value": ""
+      },
+      "ExtraTargets": {
+        "type": "textarea",
+        "value": ""
+      },
+      "DailyProfitLowerLimit": {
+        "type": "input",
+        "value": 50000
+      },
+      "DailyBufferSafetyMargin": {
+        "type": "input",
+        "value": 0
+      },
+      "FieldsEfficiency": {
+        "type": "select",
+        "value": 0,
+        "option": [
+          0,
+          4,
+          12
+        ]
+      },
+      "OrchardEfficiency": {
+        "type": "select",
+        "value": 0,
+        "option": [
+          0,
+          4,
+          12
+        ]
+      },
+      "NurseryEfficiency": {
+        "type": "select",
+        "value": 0,
+        "option": [
+          0,
+          4,
+          12
+        ]
+      },
+      "RestaurantGrade": {
+        "type": "select",
+        "value": "bronze",
+        "option": [
+          "bronze",
+          "silver",
+          "gold",
+          "diamond"
+        ]
+      },
+      "TeahouseGrade": {
+        "type": "select",
+        "value": "bronze",
+        "option": [
+          "bronze",
+          "silver",
+          "gold",
+          "diamond"
+        ]
+      },
+      "JuuEateryGrade": {
+        "type": "select",
+        "value": "bronze",
+        "option": [
+          "bronze",
+          "silver",
+          "gold",
+          "diamond"
+        ]
+      },
+      "GrillGrade": {
+        "type": "select",
+        "value": "bronze",
+        "option": [
+          "bronze",
+          "silver",
+          "gold",
+          "diamond"
+        ]
+      },
+      "JuuCoffeeGrade": {
+        "type": "select",
+        "value": "bronze",
+        "option": [
+          "bronze",
+          "silver",
+          "gold",
+          "diamond"
         ]
       }
     },
