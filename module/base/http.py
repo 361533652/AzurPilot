@@ -1,5 +1,8 @@
 """HTTP/3-first runtime transport with shared QUIC capability and fallback state."""
 
+import os
+import tempfile
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import niquests
@@ -7,12 +10,27 @@ from niquests import RequestException as RequestException
 from niquests import exceptions as exceptions
 from niquests.structures import CaseInsensitiveDict, QuicSharedCache
 
-from deploy.http import BROWSER_USER_AGENT as BROWSER_USER_AGENT
-from deploy.http import DOWNLOAD_HEADERS as DOWNLOAD_HEADERS
-from deploy.http import GIT_HTTP_OPTIONS as GIT_HTTP_OPTIONS
-from deploy.http import USER_AGENT as USER_AGENT
-from deploy.http import download_file as download_file
-from deploy.http import is_service_url as is_service_url
+USER_AGENT = 'AzurPilot/2.1'
+BROWSER_USER_AGENT = (
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+    'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36'
+)
+DOWNLOAD_HEADERS = {
+    'User-Agent': BROWSER_USER_AGENT,
+    'Accept': '*/*',
+    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+}
+SERVICE_DOMAINS = ('azurpilot.com', 'nanoda.work')
+
+
+def is_service_url(url):
+    """Match the service roots and their subdomains, without suffix lookalikes."""
+    parsed = urlsplit(url)
+    host = (parsed.hostname or '').lower().rstrip('.')
+    return parsed.scheme in ('http', 'https') and any(
+        host == domain or host.endswith('.' + domain) for domain in SERVICE_DOMAINS
+    )
+
 
 _QUIC_CACHE = QuicSharedCache(max_size=12288)
 
@@ -72,3 +90,28 @@ def post(url, **kwargs):
 def head(url, **kwargs):
     kwargs.setdefault('allow_redirects', False)
     return request('HEAD', url, **kwargs)
+
+
+def download_file(url, target, *, timeout=(5, 30)):
+    """Atomically populate an upstream download cache without an Origin header."""
+    target = Path(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.is_file() and target.stat().st_size:
+        return str(target)
+    partial = None
+    try:
+        with get(url, download=True, stream=True, timeout=timeout,
+                 headers={'Accept-Encoding': 'identity'}) as response:
+            response.raise_for_status()
+            with tempfile.NamedTemporaryFile(dir=target.parent, suffix='.part', delete=False) as output:
+                partial = Path(output.name)
+                for chunk in response.iter_content(65536):
+                    output.write(chunk)
+            expected = response.headers.get('Content-Length')
+            if expected is not None and partial.stat().st_size != int(expected):
+                raise ValueError('Incomplete download')
+        os.replace(partial, target)
+    finally:
+        if partial is not None:
+            partial.unlink(missing_ok=True)
+    return str(target)

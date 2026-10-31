@@ -57,7 +57,7 @@ class CloudApiEndpointsTest(unittest.TestCase):
             with self.subTest(enabled=enabled):
                 response = Mock(text=json.dumps(enabled))
                 response.json.return_value = {'schema_version': 2, 'force_update': enabled}
-                with patch('deploy.git.http.get', return_value=response) as request:
+                with patch('deploy.git.requests.get', return_value=response) as request:
                     self.assertIs(GitManager.cloud_force_update_enabled(), enabled)
                 self.assertEqual(request.call_args.args[0], 'https://api.azurpilot.com/api/v2/get/update/data.json')
 

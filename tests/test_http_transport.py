@@ -1,10 +1,8 @@
 """Exercise actual QUIC/TLS connections against isolated local protocol servers."""
 
 import asyncio
-import builtins
 import ipaddress
 import json
-import shlex
 import ssl
 import subprocess
 import sys
@@ -25,7 +23,6 @@ from qh3.h3.events import DataReceived, HeadersReceived
 from qh3.quic.configuration import QuicConfiguration
 
 from module.base import http
-from deploy.git_over_cdn.client import GitOverCdnClient
 
 
 @pytest.fixture
@@ -56,52 +53,27 @@ def test_domain_scope(url, expected):
     assert http.is_service_url(url) is expected
 
 
-@pytest.mark.parametrize('status, ready', [(200, True), (404, False)])
-def test_android_dist_head_probe_follows_service_redirects(status, ready):
-    from deploy import frontend
+def test_runtime_http_import_does_not_require_deploy():
+    # Reproduce a launcher with only an older/partial deploy namespace available.
+    code = """import sys, types
+legacy = types.ModuleType('deploy')
+legacy.__path__ = []
+sys.modules['deploy'] = legacy
+from module.base import http
+assert http.USER_AGENT == 'AzurPilot/2.1'
+assert 'deploy.http' not in sys.modules
+"""
+    subprocess.run([sys.executable, '-c', code], check=True, capture_output=True, text=True)
 
-    response = MagicMock()
-    response.__enter__.return_value.status_code = status
-    with (patch.object(frontend, 'android_dist_base', return_value='https://launcher-download.azurpilot.com'),
-          patch.object(frontend.http, 'head', return_value=response) as head):
-        assert frontend.android_dist_ready('deadbeef') is ready
-    head.assert_called_once_with(
-        'https://launcher-download.azurpilot.com/frontend-deadbeef.tar.xz.sha256',
-        download=True, timeout=10, allow_redirects=True)
 
-
-def test_deploy_http_settings_import_without_third_party_packages():
+def test_deploy_entrypoints_do_not_load_runtime_http():
     subprocess.run(
-        [sys.executable, '-S', '-c',
-         'import sys; import deploy.http, deploy.frontend, deploy.git_over_cdn.client; '
-         'assert "niquests" not in sys.modules; assert "requests" not in sys.modules'],
+        [sys.executable, '-c',
+         'import sys; import deploy.git, deploy.Windows.git, deploy.frontend; '
+         'assert "deploy.http" not in sys.modules; assert "module.base.http" not in sys.modules; '
+         'assert "niquests" not in sys.modules'],
         check=True, capture_output=True, text=True,
     )
-
-
-@pytest.mark.parametrize('missing', ['module', 'module.base.http', 'niquests', 'broken_internal_module'])
-def test_deploy_bootstrap_fallback_only_when_optional_transport_is_missing(missing):
-    import requests
-    from deploy import http as deploy_http
-
-    original_import = builtins.__import__
-
-    def bootstrap_import(name, globals=None, locals=None, fromlist=(), level=0):
-        if name == 'module.base' and 'http' in fromlist:
-            raise ModuleNotFoundError(name=missing)
-        return original_import(name, globals, locals, fromlist, level)
-
-    with patch.object(builtins, '__import__', side_effect=bootstrap_import):
-        if missing == 'broken_internal_module':
-            with pytest.raises(ModuleNotFoundError):
-                deploy_http.Session(download=True)
-            return
-        with deploy_http.Session(download=True, retries=2) as session:
-            assert isinstance(session, requests.Session)
-            assert session.headers['User-Agent'] == http.BROWSER_USER_AGENT
-            assert session.headers['Accept-Language'] == http.DOWNLOAD_HEADERS['Accept-Language']
-            assert 'Origin' not in session.headers
-            assert session.get_adapter('https://').max_retries.total == 2
 
 
 @pytest.mark.parametrize('download', [False, True])
@@ -222,18 +194,6 @@ def test_failed_quic_endpoint_is_not_reenabled_for_a_new_session():
         assert ('api.azurpilot.com', 443) not in http._QUIC_CACHE
 
 
-def test_cdn_download_profile_keeps_routing_headers():
-    with GitOverCdnClient._create_session() as session:
-        with patch.object(niquests.Session, 'request', return_value=None) as request:
-            session.get('https://update.azurpilot.com/latest.json')
-        headers = request.call_args.kwargs['headers']
-        assert headers['User-Agent'] == http.BROWSER_USER_AGENT
-        assert 'Origin' not in headers
-        assert session.trust_env is False
-        assert 'X-Device-Id' in session.headers
-        assert 'Cloudflare-Workers-Version-Key' in session.headers
-
-
 @pytest.mark.parametrize('failure', [None, 'status', 'length', 'stream'])
 def test_atomic_download_preserves_only_complete_files(tmp_path, failure):
     target = tmp_path / 'cache' / 'agent.tar.gz'
@@ -248,8 +208,7 @@ def test_atomic_download_preserves_only_complete_files(tmp_path, failure):
             yield b'te'
             raise niquests.ConnectionError('disconnected')
         response.iter_content.side_effect = broken_stream
-    from deploy import http as deploy_http
-    with patch.object(deploy_http, 'get', return_value=response) as get:
+    with patch.object(http, 'get', return_value=response) as get:
         if failure:
             with pytest.raises((ValueError, niquests.RequestException)):
                 http.download_file('https://atx.azurpilot.com/agent.tar.gz', target)
@@ -280,22 +239,3 @@ def test_background_download_routes_service_domains(url, service):
     if service:
         assert modern.call_args.kwargs['download'] is True
     assert background_service.USER_AGENT == http.BROWSER_USER_AGENT
-
-
-@pytest.mark.parametrize('url, service', [
-    ('https://git.nanoda.work/git/AzurPilot', True),
-    ('https://azurpilot.com/git', True),
-    ('https://update.azurpilot.com/pack', True),
-    ('https://github.com/AzurLaneAutoScript', False),
-    ('https://azurpilot.com.evil.test/git', False),
-])
-def test_git_options_apply_only_to_service_downloads(url, service):
-    result = subprocess.run(
-        ['git', *shlex.split(http.GIT_HTTP_OPTIONS), '-c', 'http.userAgent=third-party-ua',
-         'config', '--get-urlmatch', 'http', url],
-        check=True, capture_output=True, text=True,
-    )
-    options = dict(line.split(' ', 1) for line in result.stdout.splitlines())
-    assert options['http.useragent'] == (http.BROWSER_USER_AGENT if service else 'third-party-ua')
-    if service:
-        assert options['http.version'] == 'HTTP/2'
