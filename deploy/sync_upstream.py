@@ -179,6 +179,57 @@ def push_to_origin(branch: Optional[str] = None) -> bool:
     return False
 
 
+def get_head_revision() -> str:
+    """读取当前 HEAD 的完整 SHA。
+
+    Returns:
+        str: 提交 SHA；读取失败时返回空字符串。
+    """
+    return run_git(["git", "rev-parse", "HEAD"]).stdout.strip()
+
+
+def dependencies_changed(before: str, after: str = "HEAD") -> bool:
+    """判断两次提交之间是否改动了 Python 依赖声明。
+
+    只有依赖声明发生变化时才值得重新同步环境：一方面新依赖会导致
+    WebUI 导入失败，另一方面启动前的依赖同步失败会直接拦住启动，
+    不应让与依赖无关的代码合并触发这个门槛。
+
+    Args:
+        before: 合并前的提交 SHA。
+        after: 合并后的提交引用，默认 HEAD。
+
+    Returns:
+        bool: 改动涉及 pyproject.toml 或 uv.lock 时返回 True。
+    """
+    if not before:
+        return False
+    res = run_git(["git", "diff", "--name-only", before, after])
+    if res.returncode != 0:
+        return False
+    changed = {line.strip() for line in res.stdout.splitlines() if line.strip()}
+    return bool(changed & {"pyproject.toml", "uv.lock"})
+
+
+def mark_dependency_sync_pending() -> None:
+    """标记「启动 WebUI 前必须重新同步依赖」。
+
+    合并会改写工作区代码，可能引入尚未安装的依赖（例如新增的 niquests）。
+    父监督器只在存在该标记时才执行启动前依赖同步，因此合并后必须主动标记，
+    否则 WebUI 会按旧环境导入新代码并崩溃。标记由监督器在同步成功后清除。
+    """
+    try:
+        from module.runtime.setting import mark_dependency_sync_pending as mark
+    except Exception as exc:  # 早期启动阶段导入失败不应阻断启动
+        print(f"⚠️ [Sync] 无法导入依赖同步标记接口，依赖可能未同步：{exc}")
+        return
+    try:
+        mark()
+        print("📦 [Sync] 本次合并改动了依赖声明，已标记启动前重新同步依赖。")
+    except OSError as exc:
+        print(f"⚠️ [Sync] 写入依赖同步标记失败，依赖可能未同步：{exc}")
+
+
 def _print_conflict_report(conflicts: List[str]) -> None:
     """打印醒目的冲突阻断报告。
 
@@ -244,6 +295,7 @@ def sync_with_upstream() -> bool:
                     )
                 else:
                     print("🚀 [Sync] 发现官方最新更新，正在合并至本地...")
+                    head_before = get_head_revision()
                     merge_res = run_git(
                         [
                             "git",
@@ -260,6 +312,10 @@ def sync_with_upstream() -> bool:
                         _print_conflict_report(conflicts)
                         return False
                     print("🎉 [Sync] 成功合并官方更新！")
+                    # 合并会引入新依赖，而启动器的依赖同步发生在本次合并之前，
+                    # 必须标记让父监督器在创建 WebUI 前重新同步，否则导入即崩溃。
+                    if dependencies_changed(head_before):
+                        mark_dependency_sync_pending()
 
         # 合并与否都要尝试推送：上一次推送失败时，合并结果仍留在本地，
         # 这里负责在下次启动把它补推到 Fork。
