@@ -2520,6 +2520,12 @@ FleetAffinityTraining:
     value: 100
     validate: [1, 200]
 
+FleetDorm:
+  Enabled: false
+  Floor:
+    value: floor_1
+    option: [floor_1, floor_2]
+
 FleetTraining:
   FullScanRecord:
     type: stored

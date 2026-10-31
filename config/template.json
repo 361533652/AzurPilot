@@ -3809,6 +3809,10 @@
       "Enabled": false,
       "Target": 100
     },
+    "FleetDorm": {
+      "Enabled": false,
+      "Floor": "floor_1"
+    },
     "FleetTraining": {
       "FullScanRecord": "2020-01-01 00:00:00",
       "CheckIntervalHours": 6.0,

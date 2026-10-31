@@ -139,6 +139,7 @@ def preflight_rotation(runner, battle, mode):
     current_fleet = None
     equipment_enabled = config.cross_get(EQUIPMENT_PATH + '.Enabled', False) is True
     equipment_used = False
+    replaced_fleets = set()
     full_scanned = False
     try:
         fresh_readings = {}
@@ -188,6 +189,7 @@ def preflight_rotation(runner, battle, mode):
                 result = config.cross_get('FleetInfo.FleetInfo.Result', {})
                 fresh_readings = {number: recorded_morale(result, number) for number in range(1, 7)}
             full_scanned = training.sources_refreshed
+            replaced_fleets.update(training.replaced_fleets)
         for role, fleet in selected.items():
             current_fleet = fleet
             if training is not None and fleet in training.replaced_fleets:
@@ -290,6 +292,7 @@ def preflight_rotation(runner, battle, mode):
                 equipment.apply_pending()
             if not paused:
                 states[str(fleet)] = dict(last_source=source, completed_at=now().isoformat(timespec='seconds'))
+                replaced_fleets.add(fleet)
             else:
                 progress['paused'] = True
             config.cross_set(ROTATION_PATH + '.State', states)
@@ -304,6 +307,8 @@ def preflight_rotation(runner, battle, mode):
             manager.finish_rotation()
             if equipment_used:
                 manager._commit_formation()
+            from module.dorm.fleet_rotation import rest_after_rotation
+            rest_after_rotation(manager, replaced_fleets, committed=equipment_used)
             config.update()
             runner.config.update()
             campaign.emotion = RotationEmotion(config, context, rules, selected)
