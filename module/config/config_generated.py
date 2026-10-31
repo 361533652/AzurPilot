@@ -1198,6 +1198,10 @@ class GeneratedConfig:
     FleetAffinityTraining_Enabled = False
     FleetAffinityTraining_Target = 100
 
+    # 配置组 `FleetDorm`
+    FleetDorm_Enabled = False
+    FleetDorm_Floor = 'floor_1'  # floor_1, floor_2
+
     # 配置组 `FleetTraining`
     FleetTraining_FullScanRecord = datetime.datetime(2020, 1, 1, 0, 0)
     FleetTraining_CheckIntervalHours = 6.0
