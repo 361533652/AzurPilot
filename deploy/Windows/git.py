@@ -170,7 +170,7 @@ class GitManager(DeployConfig):
             logger.warning(
                 f'当前镜像源 {current_url} 获取失败（可能触发限流或风控），自动切换至同级分流镜像 {peer_url} 重试'
             )
-            git = f'"{self.git}" {GIT_HTTP_OPTIONS} -c http.userAgent={self.git_user_agent()}'
+            git = f'"{self.git}"'
             if self.execute(f'{git} remote set-url {source} {peer_url}', allow_failure=True):
                 if hasattr(self, 'Repository'):
                     self.Repository = peer_url
@@ -200,16 +200,12 @@ class GitManager(DeployConfig):
             proxy (str): HTTP/HTTPS 代理地址。
             ssl_verify (bool): 是否校验 SSL 证书。
         """
-        # 所有 git 命令统一带随机 UA，绕过 gitcode 等仓库对特定 UA 的 418 封禁
-        git = f'"{self.git}" {GIT_HTTP_OPTIONS} -c http.userAgent={self.git_user_agent()}'
+        # HTTP 参数只在 fetch/pull 时传入，本地仓库操作不需要请求头。
+        git = f'"{self.git}"'
 
         logger.hr('Git Init', 1)
-        if not self.execute(f'{git} init', allow_failure=True):
-            self.remove('./.git/config')
-            self.remove('./.git/index')
-            self.remove('./.git/HEAD')
-            self.remove('./.git/ORIG_HEAD')
-            self.execute(f'{git} init')
+        # 启动或权限错误应直接报告，不能靠删除现有仓库元数据重试。
+        self.execute(f'{git} init')
         Progress.GitInit()
 
         logger.hr('Set Git Proxy', 1)
@@ -262,7 +258,7 @@ class GitManager(DeployConfig):
         Progress.GitCheckout()
 
         logger.hr('Show Version', 1)
-        self.execute(f'{git} --no-pager log --no-merges -1')
+        self.execute(f'"{self.git}" --no-pager log --no-merges -1')
         Progress.GitShowVersion()
 
     @property
