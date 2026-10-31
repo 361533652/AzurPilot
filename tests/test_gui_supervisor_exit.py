@@ -57,6 +57,24 @@ class TestGuiStartup(unittest.TestCase):
                     supervisor.assert_not_called()
                     service.assert_called_once_with(None, None)
 
+    def test_main_does_not_sync_upstream(self):
+        """main() 不得执行上游同步。
+
+        上游同步会联网、增删远程仓库并改写工作区。它只应发生在脚本入口，
+        因为启动器以脚本方式运行 gui.py；而 main() 会被单元测试直接调用，
+        一旦把同步放进 main()，CI 检出就会因合并冲突被提前拦成 70，
+        迁移失败等断言也随之失效。
+        """
+        with patch.object(logger, 'set_file_logger'), patch(
+            'module.persistence.database.initialize'
+        ), patch('gui.set_start_method'), patch(
+            'gui.State', deploy_config=SimpleNamespace(EnableReload=True)
+        ), patch('gui.run_webui_supervisor', return_value=0), patch(
+            'deploy.sync_upstream.sync_with_upstream', return_value=False
+        ) as sync:
+            self.assertEqual(main(), 0)
+        sync.assert_not_called()
+
 
 class TestSupervisorExitCode(unittest.TestCase):
     """启动失败必须以对应的具体非零退出码结束。"""
