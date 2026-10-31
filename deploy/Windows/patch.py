@@ -132,11 +132,10 @@ def patch_uiautomator2():
     if "url.startswith('https://atx.azurpilot.com/')" not in content and marker in content:
         fallback = '''    if url.startswith('https://atx.azurpilot.com/'):
         from urllib3.exceptions import HTTPError as Urllib3HTTPError
-        from deploy.http import RequestException, download_file
 
         try:
-            return download_file(url, storepath)
-        except (RequestException, requests.RequestException, Urllib3HTTPError,
+            return cache_download(url, filename, storepath=storepath, logger=logger)
+        except (requests.RequestException, Urllib3HTTPError,
                 FileNotFoundError, AssertionError, TypeError, ValueError) as exc:
             logger.warning('ATX Agent 镜像下载失败，回退 GitHub：%s', exc)
         github_url = GITHUB_BASEURL + '/atx-agent/releases/download/%s/%s' % (
@@ -147,23 +146,6 @@ def patch_uiautomator2():
         content = content.replace(marker, fallback + marker, 1)
         modified = True
         logger.info(f'{init_file} atx-agent GitHub fallback patched')
-
-    # 升级已有补丁，避免已安装环境继续使用仅支持 HTTP/1.1 的下载器。
-    legacy_download = """        from urllib3.exceptions import HTTPError as Urllib3HTTPError
-
-        try:
-            return cache_download(url, filename, storepath=storepath, logger=logger)
-        except (requests.RequestException, Urllib3HTTPError,"""
-    modern_download = """        from urllib3.exceptions import HTTPError as Urllib3HTTPError
-        from deploy.http import RequestException, download_file
-
-        try:
-            return download_file(url, storepath)
-        except (RequestException, requests.RequestException, Urllib3HTTPError,"""
-    if legacy_download in content:
-        content = content.replace(legacy_download, modern_download, 1)
-        modified = True
-        logger.info(f'{init_file} atx-agent HTTP/3 download patched')
 
     # 修补 appdir
     if cache_dir and os.path.exists(cache_dir):
