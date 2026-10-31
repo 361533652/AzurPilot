@@ -250,7 +250,10 @@ class DeployConfig(DeployConfigTransaction, ConfigModel):
         if not output:
             command = command + ' >nul 2>nul'
         logger.info(command)
-        error_code = os.system(command)
+        # cmd /c strips the outer quote pair. Preserve both the executable's
+        # quotes and quoted arguments (for example a browser User-Agent).
+        shell_command = f'"{command}"' if os.name == 'nt' and command.startswith('"') else command
+        error_code = os.system(shell_command)
         if error_code:
             if allow_failure:
                 logger.info(f"[ allowed failure ], error_code: {error_code}")
