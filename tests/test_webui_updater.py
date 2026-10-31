@@ -17,7 +17,7 @@ class TestGitInstall(unittest.TestCase):
                 manager = Mock(spec=GitManager)
                 manager.GitOverCdn = use_cdn
                 manager.goc_client.update.return_value = cdn_success
-                with patch('deploy.git.requests.get') as request:
+                with patch('deploy.git.http.get') as request:
                     GitManager.git_install(manager)
 
                 request.assert_not_called()

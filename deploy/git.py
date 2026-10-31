@@ -3,11 +3,12 @@ import subprocess
 import time
 from typing import Optional
 
-import requests
+from deploy import http
 
 from deploy.api_endpoints import FORCE_UPDATE_CONTROL_URL as CLOUD_FORCE_UPDATE_CONTROL_URL
 from deploy.config import GIT_OVER_CDN_FALLBACK_REPOSITORIES, DeployConfig, ErrorCodes, ExecutionError
 from deploy.git_over_cdn.client import GitOverCdnClient
+from deploy.http import GIT_HTTP_OPTIONS
 from deploy.git_over_cdn.endpoints import CLOUDFLARE_UPDATE_URLS, FALLBACK_UPDATE_URLS
 from deploy.logger import logger
 from deploy.utils import *
@@ -111,7 +112,7 @@ class GitManager(DeployConfig):
         """
         ua = self.git_user_agent()
         for i in range(max_retry):
-            git = f'"{self.git}" -c http.userAgent={ua}'
+            git = f'"{self.git}" {GIT_HTTP_OPTIONS} -c http.userAgent={ua}'
             logger.info(f'Use git User-Agent: {ua}')
             if self.execute(f'{git} fetch {source} {branch}'):
                 return
@@ -127,13 +128,13 @@ class GitManager(DeployConfig):
             logger.warning(
                 f'当前镜像源 {current_url} 获取失败（可能触发限流或风控），自动切换至同级分流镜像 {peer_url} 重试'
             )
-            git = f'"{self.git}" -c http.userAgent={self.git_user_agent()}'
+            git = f'"{self.git}" {GIT_HTTP_OPTIONS} -c http.userAgent={self.git_user_agent()}'
             if self.execute(f'{git} remote set-url {source} {peer_url}', allow_failure=True):
                 if hasattr(self, 'Repository'):
                     self.Repository = peer_url
                 ua = self.git_user_agent()
                 for i in range(max_retry):
-                    git = f'"{self.git}" -c http.userAgent={ua}'
+                    git = f'"{self.git}" {GIT_HTTP_OPTIONS} -c http.userAgent={ua}'
                     logger.info(f'Use git User-Agent: {ua}')
                     if self.execute(f'{git} fetch {source} {branch}'):
                         return
@@ -159,7 +160,7 @@ class GitManager(DeployConfig):
             ssl_verify (bool): 是否校验 SSL 证书。
         """
         # 所有 git 命令统一带随机 UA，绕过 gitcode 等仓库对特定 UA 的 418 封禁
-        git = f'"{self.git}" -c http.userAgent={self.git_user_agent()}'
+        git = f'"{self.git}" {GIT_HTTP_OPTIONS} -c http.userAgent={self.git_user_agent()}'
 
         logger.hr('Git Init', 1)
         if not self.execute(f'{git} init', allow_failure=True):
@@ -200,7 +201,7 @@ class GitManager(DeployConfig):
                 os.remove(lock_file)
         self.execute(f'{git} reset --hard {source}/{branch}')
         # pull 联网，与 fetch 用不同 UA，降低同源请求的可归集性
-        git = f'"{self.git}" -c http.userAgent={self.git_user_agent()}'
+        git = f'"{self.git}" {GIT_HTTP_OPTIONS} -c http.userAgent={self.git_user_agent()}'
         self.execute(f'{git} pull --ff-only {source} {branch}')
 
         logger.hr('Show Version', 1)
@@ -233,10 +234,10 @@ class GitManager(DeployConfig):
         """
         logger.info(f'Check cloud force update control: {CLOUD_FORCE_UPDATE_CONTROL_URL}')
         try:
-            resp = requests.get(
+            resp = http.get(
                 CLOUD_FORCE_UPDATE_CONTROL_URL,
                 timeout=5,
-                headers={'User-Agent': 'alas AzurPilot'},
+                headers={'User-Agent': http.USER_AGENT},
             )
             resp.raise_for_status()
         except Exception as e:

@@ -8,10 +8,11 @@ import tarfile
 import urllib.request
 from pathlib import Path
 
+from deploy import http
 # 安卓运行包永不本地编译前端：源码变更后由宿主从其 CI 发布渠道拉取按提交发布的
 # 预构建 dist（frontend-<commit>.tar.xz + .sha256）。基址由宿主注入（含镜像前缀）。
 ANDROID_DIST_BASE_ENV = 'AZURPILOT_ANDROID_DIST_BASE'
-_ANDROID_UA = 'Mozilla/5.0 (X11; Linux x86_64) AzurPilot-Android-Frontend'
+_ANDROID_UA = http.BROWSER_USER_AGENT
 
 
 def android_dist_base():
@@ -59,10 +60,13 @@ def android_dist_ready(commit, root=None):
         return False
     url = f'{base}/frontend-{commit}.tar.xz.sha256'
     try:
+        if http.is_service_url(url):
+            with http.head(url, download=True, timeout=10, allow_redirects=True) as response:
+                return response.status_code == 200
         request = urllib.request.Request(url, method='HEAD', headers={'User-Agent': _ANDROID_UA})
         with urllib.request.urlopen(request, timeout=10) as response:
             return response.status == 200
-    except OSError:
+    except (OSError, http.RequestException):
         return False
 
 
@@ -70,9 +74,15 @@ def _android_download(url, target, timeout=300):
     """下载文件到 target 并返回字节数；网络错误统一转 RuntimeError。"""
     request = urllib.request.Request(url, headers={'User-Agent': _ANDROID_UA})
     try:
+        if http.is_service_url(url):
+            with http.get(url, download=True, stream=True, timeout=timeout) as response, open(target, 'wb') as f:
+                response.raise_for_status()
+                for chunk in response.iter_content(65536):
+                    f.write(chunk)
+            return target.stat().st_size
         with urllib.request.urlopen(request, timeout=timeout) as response, open(target, 'wb') as f:
             shutil.copyfileobj(response, f)
-    except OSError as exc:
+    except (OSError, http.RequestException) as exc:
         raise RuntimeError(f'下载失败: {url} ({exc})') from exc
     return target.stat().st_size
 
@@ -103,8 +113,14 @@ def _android_fetch_dist(directory, root):
         logger.info(f'预构建前端下载完成: {size} bytes')
         request = urllib.request.Request(
             f'{base}/{stem}.tar.xz.sha256', headers={'User-Agent': _ANDROID_UA})
-        with urllib.request.urlopen(request, timeout=30) as response:
-            expected = response.read().decode('ascii', 'replace').strip().split()[0]
+        if http.is_service_url(request.full_url):
+            with http.get(request.full_url, download=True, timeout=30) as response:
+                response.raise_for_status()
+                checksum = response.content
+        else:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                checksum = response.read()
+        expected = checksum.decode('ascii', 'replace').strip().split()[0]
         digest = hashlib.sha256(tar_path.read_bytes()).hexdigest()
         if not expected or digest != expected.lower():
             raise RuntimeError(f'预构建前端校验失败: 期望 {expected[:12]}…, 实际 {digest[:12]}…')
