@@ -12,8 +12,10 @@
 被 `git reset --hard origin/<分支>` 抹掉，白合一轮。
 """
 
+import os
 import subprocess
 import sys
+import time
 from typing import List, Optional
 
 # 兼容 Windows 控制台，防止 emoji/特殊符号打印导致 UnicodeEncodeError
@@ -31,9 +33,48 @@ UPSTREAM_NAME = "upstream"
 ORIGIN_NAME = "origin"
 STASH_MESSAGE = "auto-sync-pre-stash"
 
+# 网络命令的墙钟上限（秒）。GitHub 拉包在国内可能慢到 2 分钟以上，
+# 同步发生在启动链路上，绝不能让界面无限停在「正在启动」。
+FETCH_TIMEOUT = 90
+PUSH_TIMEOUT = 120
+# 单次 fetch 传输失败后不再重试拉取，直接按「无更新」继续启动。
+# 低速中断：45 秒内平均速度低于 1KB/s 判定链路已死，交给 git 自己退出，
+# 避免只能靠墙钟超时杀进程。
+GIT_HTTP_CONFIG = [
+    "-c", "http.lowSpeedLimit=1000",
+    "-c", "http.lowSpeedTime=45",
+]
+# 冷却期（分钟）：短时间内连续重启时复用上次的 fetch 结果，
+# 不必每次都重走一遍慢链路。
+FETCH_COOLDOWN_MINUTES = 10
+LAST_FETCH_STAMP = "./config/sync-upstream-last-fetch"
+
+
+def _kill_process_tree(proc) -> None:
+    """结束 git 进程及其子进程。
+
+    git fetch 会派生 git-remote-https / git index-pack 等子进程，只杀父进程
+    会留下孤儿继续占着连接与索引锁。
+
+    Args:
+        proc: 已结束或仍在运行的子进程对象。
+    """
+    if proc is None or proc.poll() is not None:
+        return
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+            capture_output=True,
+        )
+    else:
+        proc.kill()
+
 
 def run_git(
-    cmd: List[str], check: bool = False, capture_output: bool = True
+    cmd: List[str],
+    check: bool = False,
+    capture_output: bool = True,
+    timeout: Optional[int] = None,
 ) -> subprocess.CompletedProcess:
     """运行 Git 命令并统一编码。
 
@@ -41,18 +82,65 @@ def run_git(
         cmd: 完整命令行列表，首元素为 ``git``。
         check: 是否在非零退出码时抛出 CalledProcessError。
         capture_output: 是否捕获标准输出与标准错误。
+        timeout: 墙钟超时秒数；超时后结束整棵进程树并按失败返回。
 
     Returns:
-        subprocess.CompletedProcess: 命令执行结果。
+        subprocess.CompletedProcess: 命令执行结果；超时返回 returncode 124。
     """
-    return subprocess.run(
+    if timeout is None:
+        return subprocess.run(
+            cmd,
+            capture_output=capture_output,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=check,
+        )
+
+    proc = subprocess.Popen(
         cmd,
-        capture_output=capture_output,
+        stdout=subprocess.PIPE if capture_output else None,
+        stderr=subprocess.PIPE if capture_output else None,
         text=True,
         encoding="utf-8",
         errors="replace",
-        check=check,
     )
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _kill_process_tree(proc)
+        # 杀完再收一次，避免管道写满让子进程卡在退出上。
+        try:
+            stdout, stderr = proc.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            stdout, stderr = "", ""
+        return subprocess.CompletedProcess(
+            cmd, 124, stdout or "", (stderr or "") + f"\n[Sync] 超过 {timeout}s 未完成，已中止"
+        )
+    return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
+
+
+def _fetch_is_recent() -> bool:
+    """判断冷却期内是否已经成功 fetch 过。
+
+    Returns:
+        bool: 距上次成功 fetch 小于冷却时间返回 True。
+    """
+    try:
+        with open(LAST_FETCH_STAMP, encoding="utf-8") as f:
+            last = float(f.read().strip())
+    except (OSError, ValueError):
+        return False
+    return (time.time() - last) < FETCH_COOLDOWN_MINUTES * 60
+
+
+def _mark_fetched() -> None:
+    """记录本次成功 fetch 的时间戳。"""
+    try:
+        with open(LAST_FETCH_STAMP, "w", encoding="utf-8") as f:
+            f.write(str(time.time()))
+    except OSError:
+        pass
 
 
 def get_current_branch() -> str:
@@ -165,7 +253,9 @@ def push_to_origin(branch: Optional[str] = None) -> bool:
         return True
 
     print(f"📤 [Sync] 本地领先 {ORIGIN_NAME}/{branch}，正在推送...")
-    push_res = run_git(["git", "push", ORIGIN_NAME, branch])
+    push_res = run_git(
+        ["git", *GIT_HTTP_CONFIG, "push", ORIGIN_NAME, branch], timeout=PUSH_TIMEOUT
+    )
     if push_res.returncode == 0:
         print(f"✨ [Sync] 个人 Fork 仓库已同步更新至最新！")
         return True
@@ -273,14 +363,33 @@ def sync_with_upstream() -> bool:
         has_stash = "Saved working directory" in stash_res.stdout
 
     try:
-        print(f"📥 [Sync] 正在拉取官方上游最新状态 (git fetch {UPSTREAM_NAME})...")
-        fetch_res = run_git(["git", "fetch", UPSTREAM_NAME])
-        if fetch_res.returncode != 0:
-            print("⚠️ [Sync] 无法连接到上游仓库（可能网络波动），本次跳过合并。")
+        if _fetch_is_recent():
+            print(
+                f"⏩ [Sync] {FETCH_COOLDOWN_MINUTES} 分钟内已成功拉取过，"
+                f"跳过网络 fetch，直接按本地引用检查更新。"
+            )
+            fetch_ok = True
         else:
+            print(f"📥 [Sync] 正在拉取官方上游最新状态 (git fetch {UPSTREAM_NAME})...")
+            fetch_res = run_git(
+                ["git", *GIT_HTTP_CONFIG, "fetch", UPSTREAM_NAME], timeout=FETCH_TIMEOUT
+            )
+            fetch_ok = fetch_res.returncode == 0
+            if not fetch_ok:
+                reason = (fetch_res.stderr or fetch_res.stdout or "").strip().splitlines()
+                print(
+                    f"⚠️ [Sync] 拉取上游失败（{reason[-1] if reason else '网络波动'}），"
+                    f"本次跳过合并。"
+                )
+            else:
+                _mark_fetched()
+
+        if fetch_ok:
             print(f"📥 [Sync] 正在拉取个人 Fork 最新状态 (git fetch {ORIGIN_NAME})...")
             if has_origin_remote():
-                run_git(["git", "fetch", ORIGIN_NAME])
+                run_git(
+                    ["git", *GIT_HTTP_CONFIG, "fetch", ORIGIN_NAME], timeout=FETCH_TIMEOUT
+                )
 
             upstream_ref = f"{UPSTREAM_NAME}/{branch}"
             if run_git(["git", "rev-parse", "--verify", "--quiet", upstream_ref]).returncode != 0:
