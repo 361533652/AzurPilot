@@ -337,8 +337,11 @@ def _print_conflict_report(conflicts: List[str]) -> None:
     print("!" * 64 + "\n")
 
 
-def sync_with_upstream() -> bool:
+def sync_with_upstream(force: bool = False) -> bool:
     """执行上游同步、冲突检测与 Fork 推送。
+
+    Args:
+        force: 为 True 时忽略 10 分钟 fetch 冷却，强制联网拉取（手动更新场景）。
 
     Returns:
         bool: True 表示同步完成或无需同步且环境安全；
@@ -363,7 +366,7 @@ def sync_with_upstream() -> bool:
         has_stash = "Saved working directory" in stash_res.stdout
 
     try:
-        if _fetch_is_recent():
+        if not force and _fetch_is_recent():
             print(
                 f"⏩ [Sync] {FETCH_COOLDOWN_MINUTES} 分钟内已成功拉取过，"
                 f"跳过网络 fetch，直接按本地引用检查更新。"

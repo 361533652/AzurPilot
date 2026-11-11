@@ -1275,17 +1275,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    # 上游同步只在真实启动时执行：它会联网、增删远程仓库并改写工作区，
-    # 而 main() 也由单元测试直接调用，不能把这类副作用塞进 main()。
-    # 启动器与 Alas.bat 都以脚本方式运行本文件，因此这条路径必然生效。
-    try:
-        from deploy.sync_upstream import sync_with_upstream
-    except Exception as exc:  # 同步器不可用不应阻断启动
-        logger.warning('[GUI] 上游同步模块不可用，跳过同步：%s', exc)
-    else:
-        if not sync_with_upstream():
-            logger.critical(
-                '[GUI] 检测到与上游官方代码冲突，启动已拦截！请在 DSH 中召唤小肥鱼排错。'
-            )
-            sys.exit(EXIT_STARTUP_FAILURE)
+    # 启动不自动同步上游：更新改为 WebUI 中的手动「检查更新 / 更新」操作，
+    # 避免每次启动都联网拉取并重建前端；本地合并结果由手动更新流程维护。
     sys.exit(main())

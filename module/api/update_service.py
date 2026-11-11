@@ -128,13 +128,20 @@ class UpdateService:
         return any(self.is_ancestor(local, base) for base in REWRITE_BASES)
 
     def heads(self) -> tuple[str, str]:
-        """获取本地分支与追踪的远程上游分支的最新提交哈希。
+        """获取本地分支与官方上游分支的最新提交哈希。
 
         Returns:
-            tuple[str, str]: (本地提交哈希, 远程提交哈希)。
+            tuple[str, str]: (本地提交哈希, 官方上游提交哈希)。
         """
         local = self.git('rev-parse', '--verify', 'HEAD', optional=True)
-        upstream = self.git('rev-parse', '--verify', f'refs/remotes/origin/{self.updater.Branch}', optional=True)
+        # 手动更新以官方 upstream 为比较基准；未配置 upstream 时回退 origin。
+        upstream = ''
+        for remote in ('upstream', 'origin'):
+            upstream = self.git(
+                'rev-parse', '--verify', f'refs/remotes/{remote}/{self.updater.Branch}', optional=True,
+            )
+            if upstream:
+                break
         return local, upstream
 
     def status(self) -> dict:
@@ -253,7 +260,7 @@ class UpdateService:
                         raise ApiError('UPDATE_BUSY', '更新器正在处理其他操作')
                     self.updater.state = 'checking'
                     owns_check = True
-                    self.updater.fetch_update('origin', self.updater.Branch, max_retry=3, delay=1)
+                    self.updater.fetch_update('upstream', self.updater.Branch, max_retry=3, delay=1)
                     local, upstream = self.heads()
                     behind = int(self.git('rev-list', '--count', f'{local}..{upstream}')) if local and upstream else 0
                     self.updater.state = bool(behind)

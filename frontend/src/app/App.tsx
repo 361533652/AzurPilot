@@ -268,6 +268,7 @@ export function App() {
         ? <Link className="breadcrumb-current" to={`${base}/task/${currentTask}`}><strong>{currentTaskLabel}</strong></Link>
         : activeSection && <strong className="breadcrumb-current">{activeSection}</strong>}</div>}
     {!legacyShell && <TabBarResizeHandle label={ui('nav.tabSize')}/>}
+    <Link className="topbar-update-link icon-button" to="/updater" title={ui('nav.updater')} aria-label={ui('nav.updater')}><Download size={16}/></Link>
   </header>
   // 旧版在居中页名下方显示实例标签与任务切换器。
   const pageNav = <div className="legacy-page-nav">

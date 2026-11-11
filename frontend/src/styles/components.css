@@ -1,4 +1,4 @@
-/* 壁纸层的定位与铺法：外壳级规则，所有皮肤共用（材质皮肤另有淡入动画）。 */
+﻿/* 壁纸层的定位与铺法：外壳级规则，所有皮肤共用（材质皮肤另有淡入动画）。 */
 /* 让壁纸层（z-index: -1）留在 #root 的层叠上下文里：否则它会被画布底色盖住，只有材质皮肤看得见。 */
 #root {isolation: isolate}
 .wallpaper {position: fixed; inset: 0; z-index: -1; pointer-events: none; background: none; overflow: hidden}
@@ -1295,3 +1295,7 @@
 /* 从搜索跳进来的那一项：短暂描边，说明"就是这一项"。 */
 .field-row.is-search-target { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
 .config-group.is-search-target { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--theme-radius-panel, 26px); }
+
+/* 顶栏常驻更新入口：手动更新模式下随手可见，无需翻侧边栏。 */
+.topbar-update-link {margin-left: auto; flex-shrink: 0; text-decoration: none;}
+.topbar-update-link:hover {color: var(--accent); background: var(--surface-hover, rgba(0,0,0,.05));}

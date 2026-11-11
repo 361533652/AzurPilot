@@ -163,7 +163,15 @@ class Updater(DeployConfig, RuntimeGitManager):
                 # 失败时回退到 git pull
                 pass
 
-        source = "origin"
+        # 手动更新以官方 upstream 为基准；未配置时自动补齐，失败则回退 origin。
+        source = "upstream"
+        try:
+            from deploy.sync_upstream import ensure_upstream
+
+            ensure_upstream()
+        except Exception as exc:
+            logger.warning(f"配置官方上游远程源失败，回退 origin：{exc}")
+            source = "origin"
         # gitcode 等镜像会对固定 git UA 返回 418，改用随机 UA 重试
         try:
             self._fetch_with_retry(source, self.Branch, max_retry=3, delay=1)
@@ -171,14 +179,9 @@ class Updater(DeployConfig, RuntimeGitManager):
             logger.warning("Git获取失败")
             return False
 
-        log = self.execute_output(
-            f'"{self.git}" log --not --remotes={source}/* -1 --oneline'
-        )
-        if log:
-            logger.info(
-                f"[WebUI-更新] 无法在上游找到本地提交 {log.split()[0]}，跳过更新"
-            )
-            return False
+        # 本地可能持有尚未推送的上游合并提交（fork 同步场景），
+        # 它们不该被误判为“开发者未推送提交”而跳过更新检查；
+        # 手动更新走 merge 流程，不会覆盖本地提交，这里直接比较上游引用。
 
         sha1, _, _, message = self.get_commit(f"..{source}/{self.Branch}")
 
@@ -319,6 +322,11 @@ class Updater(DeployConfig, RuntimeGitManager):
         next_check = 0.0
         while True:
             now = time.monotonic()
+            if self.delay <= 0:
+                # 手动更新模式：0 表示禁用后台自动检查，仅保留 WebUI 手动触发。
+                th._task.delay = 30
+                yield
+                continue
             if now >= next_check:
                 self.check_update()
                 next_check = now + self.delay
@@ -331,16 +339,27 @@ class Updater(DeployConfig, RuntimeGitManager):
         return super().git_install()
 
     def update(self):
-        """执行实际的代码拉取与更新。
+        """手动更新：同步官方上游并推送个人 Fork，由父进程热重载生效。
 
         Returns:
             若更新成功返回 True，否则返回 False。
         """
         logger.hr("[WebUI-更新] 执行更新")
         try:
-            self.git_install()
-        except ExecutionError:
+            from deploy.sync_upstream import sync_with_upstream
+        except Exception as exc:
+            logger.exception_context(
+                title='上游同步模块不可用',
+                exc=exc,
+                impact='无法执行官方上游合并，更新已中止。',
+                action='检查 deploy/sync_upstream.py 是否存在后重新启动。',
+                level=50,
+            )
             return False
+        try:
+            if not sync_with_upstream(force=True):
+                logger.error("[WebUI-更新] 上游同步失败或存在代码冲突")
+                return False
         except Exception as exc:
             logger.exception_context(
                 title='更新执行异常',
