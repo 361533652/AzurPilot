@@ -41,7 +41,10 @@ TAB_DELTA = (395, 230)
 TAB_SIZE = (376, 211)
 NAME_AREA = (29, 18, 270, 48)
 SEASON_TASK_TAB = 3
-MAX_PAGES = 20
+MAX_PAGES = 30
+SCROLL_PAGE = 0.5
+# OCR 丢空格、少几个字母时仍可纠正；超过 max(3, 任务名长度/2) 视为读错
+MATCH_MIN_DISTANCE = 3
 ISLAND_SEASON_TASK_SCROLL = Scroll(
     ISLAND_SEASON_TASK_SCROLL_AREA.button, color=(128, 128, 128), name='ISLAND_SEASON_TASK_SCROLL')
 
@@ -89,8 +92,15 @@ def match_task_name(name, task_ids):
         distance = levenshtein_distance(name, task['name'][server.server])
         if best is None or distance <= best:
             best, code = distance, task_id
-    if code is not None and DIC_ISLAND_TASK[code]['name'][server.server] != name:
-        logger.warning(f'[岛屿-季节任务] 任务名纠正: {name} -> {DIC_ISLAND_TASK[code]["name"][server.server]}')
+    if code is None:
+        return None
+    target = DIC_ISLAND_TASK[code]['name'][server.server]
+    # 编辑距离过大说明 OCR 读到的不是任务名（如只读到一个字母 F），不能硬配成最接近的任务
+    if best > max(MATCH_MIN_DISTANCE, len(target) // 2):
+        logger.warning(f'[岛屿-季节任务] 任务名「{name}」与任务表差距过大，不予识别')
+        return None
+    if target != name:
+        logger.warning(f'[岛屿-季节任务] 任务名纠正: {name} -> {target}')
     return code
 
 
@@ -177,12 +187,13 @@ class IslandSeasonTaskScanner(IslandUI):
     @cached_property
     def season_task_grid(self):
         grid = None
+        self.season_task_rows_found = False
         for _ in self.loop(timeout=3):
             rows = self._task_rows()
+            self.season_task_rows_found = len(rows) >= 1
             if len(rows) >= 1:
                 origin_y = min(rows[:, 1]) + DETECT_AREA[1] - NAME_AREA[1]
             else:
-                logger.warning('[岛屿-季节任务] 未识别到任务卡片，假设位于顶部')
                 origin_y = DETECT_AREA[1] - NAME_AREA[1]
             grid = ButtonGrid(origin=(DETECT_AREA[0], origin_y), delta=TAB_DELTA, button_shape=TAB_SIZE,
                               grid_shape=(3, max(len(rows), 1)), name='SEASON_TASK_GRID')
@@ -204,11 +215,29 @@ class IslandSeasonTaskScanner(IslandUI):
         return ids
 
     def scan_unfinished(self):
-        """从顶部扫到第一个「已领取」任务或底部，返回未完成任务 ID（已排序：可领取在前，已领取在后）。"""
+        """从顶部扫到第一个「已领取」任务或底部，返回未完成任务 ID（已排序：可领取在前，已领取在后）。
+
+        Returns:
+            list[int] | None: 未完成任务 ID；第一页就识别不到任务卡片（页面未就绪或不在任务标签）时为 None，
+                调用方应保留原有目标，避免写入错误目标。
+        """
+        # 新季节首次打开任务页时卡片列表加载较慢（实测国际服冬季首日），滚动条出现前读不到卡片
+        for _ in self.loop(skip_first=False, timeout=10):
+            if ISLAND_SEASON_TASK_SCROLL.appear(main=self):
+                break
         ISLAND_SEASON_TASK_SCROLL.set_top(main=self, skip_first_screenshot=False)
         unfinished = []
-        for _ in range(MAX_PAGES):
-            for task_id, button in zip(self.task_ids_on_page, self.season_task_grid.buttons):
+        for page in range(MAX_PAGES):
+            del_cached_property(self, 'season_task_grid')
+            del_cached_property(self, 'task_ids_on_page')
+            grid = self.season_task_grid
+            if not self.season_task_rows_found:
+                if page == 0:
+                    logger.warning('[岛屿-季节任务] 未识别到任务卡片，本次不更新季节任务目标')
+                    return None
+                return unfinished
+            page_ids = self.task_ids_on_page
+            for task_id, button in zip(page_ids, grid.buttons):
                 if TEMPLATE_ISLAND_SEASON_TASK_OBTAINED.match(self.image_crop(button.area, copy=True)):
                     logger.info('[岛屿-季节任务] 遇到已领取任务，停止扫描')
                     return unfinished
@@ -218,21 +247,23 @@ class IslandSeasonTaskScanner(IslandUI):
                     unfinished.append(task_id)
             if ISLAND_SEASON_TASK_SCROLL.at_bottom(main=self):
                 return unfinished
-            ISLAND_SEASON_TASK_SCROLL.next_page(main=self, skip_first_screenshot=False)
-            del_cached_property(self, 'season_task_grid')
-            del_cached_property(self, 'task_ids_on_page')
+            # 只识别完整露出奖励图标的行，翻 0.8 页（约 1.5 行）会漏掉露出一半的那一行
+            # （实测国际服漏读 3 个任务）；半页约 0.9 行，相邻页重叠，重复任务已去重
+            ISLAND_SEASON_TASK_SCROLL.next_page(main=self, page=SCROLL_PAGE, skip_first_screenshot=False)
         logger.warning(f'[岛屿-季节任务] 翻页次数达到上限 {MAX_PAGES}')
         return unfinished
 
     def scan_season_task_targets(self):
         """
         Returns:
-            dict[int, int]: 未完成季节任务需要的物品 {物品ID: 数量}。
+            dict[int, int] | None: 未完成季节任务需要的物品 {物品ID: 数量}；识别不到任务卡片时为 None。
         """
         logger.hr('Scan island season tasks', level=1)
         self.ui_ensure(page_island_season)
         self._season_bottom_navbar.set(self, left=SEASON_TASK_TAB)
         self.receive_all_reward()
         unfinished = self.scan_unfinished()
+        if unfinished is None:
+            return None
         logger.info(f'[岛屿-季节任务] 未完成任务 {len(unfinished)} 个: {unfinished}')
         return task_item_targets(unfinished)

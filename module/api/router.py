@@ -64,7 +64,8 @@ class Router:
             'schema.get': Method(p.SchemaParams, lambda x: configs.schema(x.language)),
             'search.content': Method(p.SearchContentParams, lambda x: search.search_content(x.query)),
             'instances.list': Method(p.Params, lambda _: runtime.instances()),
-            'instances.create': Method(p.CreateParams, lambda x: configs.create(x.name, x.source, x.import_file), True),
+            'instances.create': Method(p.CreateParams, lambda x: configs.create(
+                x.name, x.source, x.import_file, emulator=x.emulator), True),
             'instances.importable': Method(p.Params, lambda _: configs.importable()),
             'instances.importConfig': Method(p.ImportParams, lambda x: configs.save_import(x.name, x.content), True),
             'instances.delete': Method(p.RevisionParams, self.delete, True),
@@ -89,7 +90,7 @@ class Router:
             'mind.recognize': Method(p.MindFileParams, lambda x: self.mind.recognize(x.instance, x.filename, x.content)),
             'stock.status': Method(p.InstanceParams, lambda x: self.stock_exchange.status(x.instance)),
             'stock.rebuild': Method(p.StockRebuildParams, lambda x: self.stock_exchange.rebuild(x.instance, x.confirm, x.scope), True),
-            'stock.request': Method(p.StockRequestParams, lambda x: self.stock_exchange.request(x.instance, x.path, x.method, x.body, x.etag), True),
+            'stock.register': Method(p.StockRegisterParams, lambda x: self.stock_exchange.register(x.instance, x.username, x.noticeVersion), True),
             'scheduler.start': Method(p.InstanceParams, lambda x: runtime.start(x.instance), True),
             'scheduler.stop': Method(p.InstanceParams, lambda x: runtime.stop(x.instance), True),
             'scheduler.program.catalog': Method(p.InstanceParams, lambda x: self.programs.catalog(x.instance)),
@@ -336,9 +337,8 @@ class Router:
                 raise p.ApiError('SIMULATOR_RUNNING', '请先中断大世界模拟器再删除实例')
             result = self.configs.delete(params.instance, params.revision)
             if self._stock_exchange is not None:
-                # 配置删除只撤销内存会话；交易文件检查留给茗交所自身。
+                # 配置删除只撤销股票同步监视；身份检查留给茗交所自身。
                 with self._stock_exchange.lock:
-                    self._stock_exchange.sessions.pop(params.instance, None)
                     self._stock_exchange.monitors.discard(params.instance)
             if self._opsi_simulator is not None:
                 self._opsi_simulator.manager.discard(params.instance)

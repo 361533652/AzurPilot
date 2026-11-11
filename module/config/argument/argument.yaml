@@ -129,6 +129,10 @@ Emulator:
     type: checkbox
     value: false
     option: [true, false]
+  DisableChannelFloat:
+    type: checkbox
+    value: false
+    option: [true, false]
   ScreenshotDedithering: false
   AdbRestart: false
 EmulatorInfo:
@@ -1641,8 +1645,19 @@ OpsiDaily:
 OpsiObscure:
   SkipHazard2Obscure: false
   ForceRun: false
+  # 实验性全图扫描，有概率卡死；自律及当前视野扫描后未遇到事件时，只扫描一次全图。
+  FullScan: false
+  # 全图扫描之后（未开启则在自律及当前视野扫描之后）仍无事件时，切换舰队扫描雷达。
+  # 不做固定坐标巡逻，也不隐式启动全图扫描；默认关闭。
+  RadarScan: false
+  # 本海域跨重启仅续接一次；成功退出后清除，第二次重启回来正常退出。
+  ResumeState:
+    type: stored
+    value: null
+    display: hide
 OpsiAbyssal:
   ForceRun: false
+  ContinueAfterRestart: false
 OpsiStronghold:
   SubmarineEveryCombat: false
   ForceRun: false
@@ -1781,6 +1796,8 @@ OpsiScheduling:
     value: OpsiStronghold > OpsiObscure > OpsiAbyssal > OpsiMeowfficerFarming
   ObscureAbyssalCheckDelayDays:
     value: 0
+  StrongholdCheckDelayDays:
+    value: 0
   MonthEndActionPointCleanupEnable:
     value: false
     option: [true, false]
@@ -1830,6 +1847,9 @@ IslandFarm:
   CropTargets:
     type: textarea
     value: ''
+  DefaultCrop:
+    value: wheat
+    option: [ wheat, corn, rice, chinese_cabbage, potato, soybean, pasture, coffee_bean ]
   PlantPotatoes:
     value: 4
     option: [ 0, 1, 2, 3, 4 ]
@@ -1844,6 +1864,9 @@ IslandOrchard:
     type: textarea
     value: ''
   IgnoreAvocado: true
+  DefaultCrop:
+    value: rubber
+    option: [ apple, citrus, banana, mango, lemon, avocado, rubber, pear, persimmon, sugar_tangerine, green_jujube ]
   PlantRubber:
     value: 0
     option: [ 0, 1, 2, 3, 4 ]
@@ -1859,6 +1882,9 @@ IslandNursery:
     type: textarea
     value: ''
   IgnorePineapple: true
+  DefaultCrop:
+    value: lavender
+    option: [ carrot, onion, flax, strawberry, cotton, tea, lavender, pineapple, asparagus ]
   PlantLavender:
     value: 2
     option: [ 0, 1, 2 ]
@@ -1879,17 +1905,29 @@ IslandFishery:
   Positions:
     value: 3
     option: [ 1, 2, 3 ]
-  MinBass: 50
-  MinYellowfinTuna: 50
   MinShell: 50
+  MinCatfish: 0
+  MinKoiCarp: 0
+  MinCommonCarp: 0
   MinShrimp: 50
   MinCrayfish: 50
+  MinBass: 50
   MinCrab: 50
   MinSquid: 50
+  MinMackerel: 0
+  MinTuna: 0
+  MinSalmon: 0
+  MinRedSeaBream: 0
+  MinYellowfinTuna: 50
   MinSeaCucumber: 50
+  MinFreshwaterFishMeat: 0
+  MinSaltwaterFishMeat: 0
   PlantYellowfinTuna:
     value: 3
     option: [ 0, 1, 2, 3 ]
+  DefaultFish:
+    value: yellowfin_tuna
+    option: [ shell, catfish, koi_carp, common_carp, shrimp, crayfish, bass, crab, squid, mackerel, tuna, salmon, red_sea_bream, yellowfin_tuna, sea_cucumber ]
   RancherFilter: |-
     WorkerJuu
 IslandMine:
@@ -1899,6 +1937,9 @@ IslandMine:
   MineSilver:
     value: 1
     option: [ 0, 1, 2, 3, 4 ]
+  DefaultOre:
+    value: Silver
+    option: [ Copper, Aluminium, Iron, Sulphur, Silver ]
   WorkerFilter: |-
     WorkerJuu
   MinCopper:
@@ -1918,6 +1959,9 @@ IslandForest:
   CutElegant:
     value: 1
     option: [ 0, 1, 2, 3, 4 ]
+  DefaultWood:
+    value: Elegant
+    option: [ Practical, Selected, Elegant ]
   WorkerFilter: |-
     WorkerJuu
   MinElegant:
@@ -1939,48 +1983,48 @@ IslandRestaurant:
   DoubleBambooShoots: false
   Meal1:
     value: tofu_meat
-    option: [ None, tofu, omurice, cabbage_tofu, salad, tofu_meat, tofu_combo, hearty_meal , double_bamboo_shoots, asparagus_shrimp, fish_chip, fo_tiao, onion_fish, matsutake_chicken_soup, persimmon_cake]
+    option: [ None, tofu, omurice, cabbage_tofu, salad, tofu_meat, tofu_combo, hearty_meal , double_bamboo_shoots, asparagus_shrimp, fish_chip, fo_tiao, onion_fish, matsutake_chicken_soup, persimmon_cake, shiitake_chicken_soup, green_jujube_porridge]
   MealNumber1:
     value: 7
   Meal2:
     value: hearty_meal
-    option: [ None, tofu, omurice, cabbage_tofu, salad, tofu_meat, tofu_combo, hearty_meal , double_bamboo_shoots, asparagus_shrimp, fish_chip, fo_tiao, onion_fish, matsutake_chicken_soup, persimmon_cake]
+    option: [ None, tofu, omurice, cabbage_tofu, salad, tofu_meat, tofu_combo, hearty_meal , double_bamboo_shoots, asparagus_shrimp, fish_chip, fo_tiao, onion_fish, matsutake_chicken_soup, persimmon_cake, shiitake_chicken_soup, green_jujube_porridge]
   MealNumber2:
     value: 7
   Meal3:
     value: omurice
-    option: [ None, tofu, omurice, cabbage_tofu, salad, tofu_meat, tofu_combo, hearty_meal , double_bamboo_shoots, asparagus_shrimp, fish_chip, fo_tiao, onion_fish, matsutake_chicken_soup, persimmon_cake]
+    option: [ None, tofu, omurice, cabbage_tofu, salad, tofu_meat, tofu_combo, hearty_meal , double_bamboo_shoots, asparagus_shrimp, fish_chip, fo_tiao, onion_fish, matsutake_chicken_soup, persimmon_cake, shiitake_chicken_soup, green_jujube_porridge]
   MealNumber3:
     value: 7
   Meal4:
     value: None
-    option: [ None, tofu, omurice, cabbage_tofu, salad, tofu_meat, tofu_combo, hearty_meal , double_bamboo_shoots, asparagus_shrimp, fish_chip, fo_tiao, onion_fish, matsutake_chicken_soup, persimmon_cake]
+    option: [ None, tofu, omurice, cabbage_tofu, salad, tofu_meat, tofu_combo, hearty_meal , double_bamboo_shoots, asparagus_shrimp, fish_chip, fo_tiao, onion_fish, matsutake_chicken_soup, persimmon_cake, shiitake_chicken_soup, green_jujube_porridge]
   MealNumber4:
     value: 0
   Meal5:
     value: None
-    option: [ None, tofu, omurice, cabbage_tofu, salad, tofu_meat, tofu_combo, hearty_meal , double_bamboo_shoots, asparagus_shrimp, fish_chip, fo_tiao, onion_fish, matsutake_chicken_soup, persimmon_cake]
+    option: [ None, tofu, omurice, cabbage_tofu, salad, tofu_meat, tofu_combo, hearty_meal , double_bamboo_shoots, asparagus_shrimp, fish_chip, fo_tiao, onion_fish, matsutake_chicken_soup, persimmon_cake, shiitake_chicken_soup, green_jujube_porridge]
   MealNumber5:
     value: 0
   Meal6:
     value: None
-    option: [ None, tofu, omurice, cabbage_tofu, salad, tofu_meat, tofu_combo, hearty_meal , double_bamboo_shoots, asparagus_shrimp, fish_chip, fo_tiao, onion_fish, matsutake_chicken_soup, persimmon_cake]
+    option: [ None, tofu, omurice, cabbage_tofu, salad, tofu_meat, tofu_combo, hearty_meal , double_bamboo_shoots, asparagus_shrimp, fish_chip, fo_tiao, onion_fish, matsutake_chicken_soup, persimmon_cake, shiitake_chicken_soup, green_jujube_porridge]
   MealNumber6:
     value: 0
   Meal7:
     value: None
-    option: [ None, tofu, omurice, cabbage_tofu, salad, tofu_meat, tofu_combo, hearty_meal , double_bamboo_shoots, asparagus_shrimp, fish_chip, fo_tiao, onion_fish, matsutake_chicken_soup, persimmon_cake]
+    option: [ None, tofu, omurice, cabbage_tofu, salad, tofu_meat, tofu_combo, hearty_meal , double_bamboo_shoots, asparagus_shrimp, fish_chip, fo_tiao, onion_fish, matsutake_chicken_soup, persimmon_cake, shiitake_chicken_soup, green_jujube_porridge]
   MealNumber7:
     value: 0
   Meal8:
     value: None
-    option: [ None, tofu, omurice, cabbage_tofu, salad, tofu_meat, tofu_combo, hearty_meal , double_bamboo_shoots, asparagus_shrimp, fish_chip, fo_tiao, onion_fish, matsutake_chicken_soup, persimmon_cake]
+    option: [ None, tofu, omurice, cabbage_tofu, salad, tofu_meat, tofu_combo, hearty_meal , double_bamboo_shoots, asparagus_shrimp, fish_chip, fo_tiao, onion_fish, matsutake_chicken_soup, persimmon_cake, shiitake_chicken_soup, green_jujube_porridge]
   MealNumber8:
     value: 0
 IslandRestaurantNextTask:
   AwayCook:
     value: None
-    option: [ None, tofu, omurice, cabbage_tofu, salad, tofu_meat, tofu_combo, hearty_meal , double_bamboo_shoots, asparagus_shrimp, fish_chip, fo_tiao, onion_fish, matsutake_chicken_soup, persimmon_cake]
+    option: [ None, tofu, omurice, cabbage_tofu, salad, tofu_meat, tofu_combo, hearty_meal , double_bamboo_shoots, asparagus_shrimp, fish_chip, fo_tiao, onion_fish, matsutake_chicken_soup, persimmon_cake, shiitake_chicken_soup, green_jujube_porridge]
 IslandTeahouse:
   PostNumber:
     value: 2
@@ -2090,48 +2134,48 @@ IslandJuuEatery:
     WorkerJuu
   Meal1:
     value: berry_orange
-    option: [ None, apple_pie, corn_cup, orange_pie, banana_crepe, orchard_duo, rice_mango, succulently_sweet, berry_orange, strawberry_charlotte, seafood_rice ]
+    option: [ None, apple_pie, corn_cup, orange_pie, banana_crepe, orchard_duo, rice_mango, succulently_sweet, berry_orange, strawberry_charlotte, seafood_rice, water_chestnut_cake, sugar_tangerine_daifuku ]
   MealNumber1:
     value: 7
   Meal2:
     value: succulently_sweet
-    option: [ None, apple_pie, corn_cup, orange_pie, banana_crepe, orchard_duo, rice_mango, succulently_sweet, berry_orange, strawberry_charlotte, seafood_rice ]
+    option: [ None, apple_pie, corn_cup, orange_pie, banana_crepe, orchard_duo, rice_mango, succulently_sweet, berry_orange, strawberry_charlotte, seafood_rice, water_chestnut_cake, sugar_tangerine_daifuku ]
   MealNumber2:
     value: 7
   Meal3:
     value: rice_mango
-    option: [ None, apple_pie, corn_cup, orange_pie, banana_crepe, orchard_duo, rice_mango, succulently_sweet, berry_orange, strawberry_charlotte, seafood_rice ]
+    option: [ None, apple_pie, corn_cup, orange_pie, banana_crepe, orchard_duo, rice_mango, succulently_sweet, berry_orange, strawberry_charlotte, seafood_rice, water_chestnut_cake, sugar_tangerine_daifuku ]
   MealNumber3:
     value: 7
   Meal4:
     value: None
-    option: [ None, apple_pie, corn_cup, orange_pie, banana_crepe, orchard_duo, rice_mango, succulently_sweet, berry_orange, strawberry_charlotte, seafood_rice ]
+    option: [ None, apple_pie, corn_cup, orange_pie, banana_crepe, orchard_duo, rice_mango, succulently_sweet, berry_orange, strawberry_charlotte, seafood_rice, water_chestnut_cake, sugar_tangerine_daifuku ]
   MealNumber4:
     value: 0
   Meal5:
     value: None
-    option: [ None, apple_pie, corn_cup, orange_pie, banana_crepe, orchard_duo, rice_mango, succulently_sweet, berry_orange, strawberry_charlotte, seafood_rice ]
+    option: [ None, apple_pie, corn_cup, orange_pie, banana_crepe, orchard_duo, rice_mango, succulently_sweet, berry_orange, strawberry_charlotte, seafood_rice, water_chestnut_cake, sugar_tangerine_daifuku ]
   MealNumber5:
     value: 0
   Meal6:
     value: None
-    option: [ None, apple_pie, corn_cup, orange_pie, banana_crepe, orchard_duo, rice_mango, succulently_sweet, berry_orange, strawberry_charlotte, seafood_rice ]
+    option: [ None, apple_pie, corn_cup, orange_pie, banana_crepe, orchard_duo, rice_mango, succulently_sweet, berry_orange, strawberry_charlotte, seafood_rice, water_chestnut_cake, sugar_tangerine_daifuku ]
   MealNumber6:
     value: 0
   Meal7:
     value: None
-    option: [ None, apple_pie, corn_cup, orange_pie, banana_crepe, orchard_duo, rice_mango, succulently_sweet, berry_orange, strawberry_charlotte, seafood_rice ]
+    option: [ None, apple_pie, corn_cup, orange_pie, banana_crepe, orchard_duo, rice_mango, succulently_sweet, berry_orange, strawberry_charlotte, seafood_rice, water_chestnut_cake, sugar_tangerine_daifuku ]
   MealNumber7:
     value: 0
   Meal8:
     value: None
-    option: [ None, apple_pie, corn_cup, orange_pie, banana_crepe, orchard_duo, rice_mango, succulently_sweet, berry_orange, strawberry_charlotte, seafood_rice ]
+    option: [ None, apple_pie, corn_cup, orange_pie, banana_crepe, orchard_duo, rice_mango, succulently_sweet, berry_orange, strawberry_charlotte, seafood_rice, water_chestnut_cake, sugar_tangerine_daifuku ]
   MealNumber8:
     value: 0
 IslandJuuEateryNextTask:
   AwayCook:
     value: None
-    option: [ None, apple_pie, corn_cup, orange_pie, banana_crepe, orchard_duo, rice_mango, succulently_sweet, berry_orange, strawberry_charlotte, seafood_rice ]
+    option: [ None, apple_pie, corn_cup, orange_pie, banana_crepe, orchard_duo, rice_mango, succulently_sweet, berry_orange, strawberry_charlotte, seafood_rice, water_chestnut_cake, sugar_tangerine_daifuku ]
 IslandJuuCoffee:
   PostNumber:
     value: 2
@@ -2187,18 +2231,30 @@ WoodProcessing:
   Positions:
     value: 2
     option: [ 0, 1, 2 ]
+  Products:
+    value: ""
+    preserve_empty: true
 ElectronicProcessing:
   Positions:
     value: 2
     option: [ 0, 1, 2 ]
+  Products:
+    value: ""
+    preserve_empty: true
 Industrial:
   Positions:
     value: 2
     option: [ 0, 1, 2 ]
+  Products:
+    value: ""
+    preserve_empty: true
 Handmade:
   Positions:
     value: 2
     option: [ 0, 1, 2 ]
+  Products:
+    value: ""
+    preserve_empty: true
 IslandAirDrop:
   LastSteal: 2020-01-01 00:00:00
   VisitOtherIsland: true
@@ -2295,6 +2351,11 @@ _IslandBusinessChar: &IslandBusinessChar
     - RoyalFortune
     - DaVinci
     - Taihou
+    - Nagato
+    - Agir
+    - HwahJah
+    - Argus
+    - Ognevoy
 
 _IslandBusinessProduct1: &IslandBusinessProduct1
   type: select
@@ -2309,6 +2370,8 @@ _IslandBusinessProduct1: &IslandBusinessProduct1
     - amaranth_rice_ball
     - matsutake_chicken_soup
     - persimmon_cake
+    - shiitake_chicken_soup
+    - green_jujube_porridge
 
 _IslandBusinessProduct2: &IslandBusinessProduct2
   type: select
@@ -2336,6 +2399,8 @@ _IslandBusinessProduct3: &IslandBusinessProduct3
     - berry_orange
     - strawberry_charlotte
     - seafood_rice
+    - water_chestnut_cake
+    - sugar_tangerine_daifuku
 
 _IslandBusinessProduct4: &IslandBusinessProduct4
   type: select
@@ -2389,6 +2454,8 @@ IslandBusinessShop1:
       - amaranth_rice_ball
       - matsutake_chicken_soup
       - persimmon_cake
+      - shiitake_chicken_soup
+      - green_jujube_porridge
   BoostReplaceFilter:
     value: |-
       30 > 20 > 10
@@ -2583,6 +2650,24 @@ IslandProductionPlanner:
     type: checkbox
     value: false
     option: [ true, false ]
+  Season:
+    value: auto
+    option: [ auto, season_1, season_2, season_3, season_4, season_5 ]
+  Priority:
+    value: pt
+    option: [ pt, coins ]
+  FillSparePosts:
+    type: checkbox
+    value: true
+    option: [ true, false ]
+  AutoPositions:
+    type: checkbox
+    value: true
+    option: [ true, false ]
+  UnlockedFish:
+    type: multiselect
+    value: [ shell, catfish, koi_carp, common_carp, shrimp, crayfish, bass, crab, squid, mackerel, tuna, salmon, red_sea_bream, yellowfin_tuna, sea_cucumber ]
+    option: [ shell, catfish, koi_carp, common_carp, shrimp, crayfish, bass, crab, squid, mackerel, tuna, salmon, red_sea_bream, yellowfin_tuna, sea_cucumber ]
   RescanTechnology:
     type: checkbox
     value: true
@@ -2594,6 +2679,14 @@ IslandProductionPlanner:
   SeasonTaskTargets:
     type: textarea
     value: ''
+  ScanCargoOrders:
+    type: checkbox
+    value: true
+    option: [ true, false ]
+  CargoTargets:
+    type: textarea
+    value: ''
+  CargoTargetDays: 1
   ExtraTargets:
     type: textarea
     value: ''

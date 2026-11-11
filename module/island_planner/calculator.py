@@ -208,6 +208,7 @@ class ProductionPlanCalculator:
             restaurant_settings=None,
             daily_profit_lower_limit=0,
             daily_buffer_safety_margin=0,
+            slot_limit=None,
     ):
         """
         Args:
@@ -225,7 +226,11 @@ class ProductionPlanCalculator:
             daily_profit_lower_limit (float): Minimum net coins per day.
             daily_buffer_safety_margin (float): Relative safety margin applied to
                 exported daily buffer amounts.
+            slot_limit (dict): {group: max posts}, e.g. {'field': 3}. Posts the user
+                configured the area tasks to run; unlocked slots beyond it are
+                treated as unavailable, so planned capacity matches what runs.
         """
+        self.slot_limit = dict(slot_limit) if slot_limit else {}
         self.activity_list = list(activity_list) if activity_list else []
         self.place_efficiency = dict(place_efficiency) if place_efficiency else {}
         self.daily_profit_lower_limit = float(daily_profit_lower_limit or 0)
@@ -325,6 +330,10 @@ class ProductionPlanCalculator:
             9212: technology_status.get(460101, False),
             9213: technology_status.get(460102, False)
         }
+        for group, limit in self.slot_limit.items():
+            available = [slot for slot in self.GROUP_TO_SLOTS.get(group, []) if self.slot_available.get(slot, False)]
+            for slot in available[max(int(limit), 0):]:
+                self.slot_available[slot] = False
         self.recipe_group = {}
         self.available_slot_recipes = set()
         for slot, slot_data in DIC_ISLAND_SLOT.items():
@@ -441,9 +450,9 @@ class ProductionPlanCalculator:
                 self.recipe_available.setdefault(recipe_id, True)
             else:
                 self.recipe_available.setdefault(recipe_id, False)
-        for recipe_id in self.available_slot_recipes:
-            if recipe_id >= 9900000:
-                self.recipe_available[recipe_id] = True
+        # AzurPilot: ALAS 在这里把岗位上列出的季节配方一律设为可用。岗位的 activity_formula
+        # 只列出数据里最新一季的配方，季节未开始（如台服仍在上一季）或手动选了其他季节时
+        # 也会被当成可用。季节配方只看所选季节的活动（type 5004）是否包含，见上方循环。
 
         self.mining_additional = technology_status.get(220401, False)
         self.wood_additional = technology_status.get(210401, False)
