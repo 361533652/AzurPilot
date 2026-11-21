@@ -1462,7 +1462,7 @@
     },
     "Campaign": {
       "Name": "D3",
-      "Event": "war_archives_20251023_cn",
+      "Event": "war_archives_20230817_cn",
       "Mode": "normal",
       "UseClearMode": true,
       "UseFleetLock": true,
@@ -3426,6 +3426,7 @@
       "MinTuna": 0,
       "MinSalmon": 0,
       "MinRedSeaBream": 0,
+      "MinBlackPorgy": 0,
       "MinYellowfinTuna": 50,
       "MinSeaCucumber": 50,
       "MinFreshwaterFishMeat": 0,
@@ -4055,6 +4056,7 @@
         "tuna",
         "salmon",
         "red_sea_bream",
+        "black_porgy",
         "yellowfin_tuna",
         "sea_cucumber"
       ],
