@@ -378,6 +378,72 @@ def _print_conflict_report(conflicts: List[str]) -> None:
     print("!" * 64 + "\n")
 
 
+def check_upstream(force: bool = False) -> None:
+    """启动期只检查上游是否有新提交，不执行合并。
+
+    启动期合并的代价太高：上游一旦改到本地也在改的文件，`git merge` 会把冲突
+    标记直接写进源码，前端 tsc 随即报 TS1185 构建失败，WebUI 起不来，用户只能
+    看到一串错误窗。因此启动链路只做只读检查，真正的合并交给用户在 WebUI 更新器
+    里手动触发（见 updater.update → sync_with_upstream）。
+
+    该函数永不阻断启动：任何失败都只打印提示后返回。
+
+    Args:
+        force: 为 True 时忽略 fetch 冷却，强制联网拉取。
+    """
+    print("=" * 60)
+    print("🌊 [AzurPilot] 启动前检查：查询官方上游是否有新版本...")
+    print("=" * 60)
+
+    if not ensure_upstream():
+        print(f"⚠️ [Check] 配置 {UPSTREAM_NAME} 远程仓库失败，跳过检查继续启动。")
+        return
+
+    branch = get_current_branch()
+    print(f"📌 [Check] 当前分支: {branch}")
+
+    if not force and _fetch_is_recent():
+        print(
+            f"⏩ [Check] {FETCH_COOLDOWN_MINUTES} 分钟内已成功拉取过，"
+            f"直接按本地引用检查。"
+        )
+    else:
+        print(f"📥 [Check] 正在拉取官方上游最新状态 (git fetch {UPSTREAM_NAME})...")
+        fetch_res = run_git(
+            ["git", *GIT_HTTP_CONFIG, "fetch", UPSTREAM_NAME], timeout=FETCH_TIMEOUT
+        )
+        if fetch_res.returncode != 0:
+            reason = (fetch_res.stderr or fetch_res.stdout or "").strip().splitlines()
+            print(
+                f"⚠️ [Check] 拉取上游失败（{reason[-1] if reason else '网络波动'}），"
+                f"跳过检查继续启动。"
+            )
+            return
+        _mark_fetched()
+
+    if has_origin_remote():
+        run_git(["git", *GIT_HTTP_CONFIG, "fetch", ORIGIN_NAME], timeout=FETCH_TIMEOUT)
+
+    upstream_ref = f"{UPSTREAM_NAME}/{branch}"
+    if run_git(["git", "rev-parse", "--verify", "--quiet", upstream_ref]).returncode != 0:
+        print(f"ℹ️ [Check] 上游不存在对应分支 {upstream_ref}，跳过检查。")
+        return
+
+    behind = run_git(["git", "rev-list", "--count", f"HEAD..{upstream_ref}"]).stdout.strip()
+    behind_count = int(behind) if behind.isdigit() else 0
+    if behind_count:
+        print(f"✨ [Check] 官方上游有 {behind_count} 个新提交待更新。")
+        print("👉 [Check] 启动不会被阻塞；请到 WebUI「更新器」页面点击「更新」执行合并。")
+    else:
+        print(f"✅ [Check] 当前分支已包含官方 {upstream_ref} 的所有最新代码。")
+
+    origin_ref = f"{ORIGIN_NAME}/{branch}"
+    if has_origin_remote() and run_git(["git", "rev-parse", "--verify", "--quiet", origin_ref]).returncode == 0:
+        unpushed = run_git(["git", "rev-list", "--count", f"{origin_ref}..HEAD"]).stdout.strip()
+        if unpushed.isdigit() and int(unpushed):
+            print(f"📤 [Check] 本地有 {unpushed} 个提交尚未推送到个人 Fork，更新时会一并推送。")
+
+
 def sync_with_upstream(force: bool = False) -> bool:
     """执行上游同步、冲突检测与 Fork 推送。
 
@@ -490,4 +556,7 @@ def sync_with_upstream(force: bool = False) -> bool:
 
 
 if __name__ == "__main__":
-    sys.exit(0 if sync_with_upstream() else 1)
+    # 命令行入口（Alas.bat）同启动链路一样只检查不合并：合并交由 WebUI 更新器
+    # 手动触发，避免启动期把冲突标记写进源码导致前端构建失败。
+    check_upstream(force=True)
+    sys.exit(0)

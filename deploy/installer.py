@@ -22,11 +22,14 @@ class Installer(GitManager, PipManager, AdbManager, AppManager, AlasManager):
         并以分类错误码退出，供启动器结构化识别。
         """
         from deploy.atomic import atomic_failure_cleanup
-        from deploy.sync_upstream import is_local_ahead_of_origin, sync_with_upstream
+        from deploy.sync_upstream import check_upstream, is_local_ahead_of_origin
         atomic_failure_cleanup('./config')
-        if not sync_with_upstream():
-            print("[Installer] 上游同步发生代码冲突，安装与启动流程已阻断。")
-            exit(1)
+        # 启动期只检查不合并：合并若撞上冲突会把冲突标记写进源码，前端 tsc 报
+        # TS1185 直接构建失败，WebUI 起不来。合并改由 WebUI 更新器手动触发。
+        try:
+            check_upstream()
+        except Exception as exc:
+            print(f"[Installer] 上游检查失败，继续启动：{exc}")
         try:
             if is_local_ahead_of_origin():
                 # 本地领先 origin 说明上一步没能把合并结果推上去。git_install 会执行

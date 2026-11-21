@@ -196,13 +196,27 @@ class TestUpdaterReload(unittest.TestCase):
         updater._run_update.assert_not_called()
 
     def test_update_converts_unexpected_error_to_recoverable_failure(self):
+        """update() 走 sync_with_upstream；意外异常要转成可恢复的失败而不是抛出。"""
         updater = object.__new__(Updater)
-        updater.git_install = Mock(side_effect=RuntimeError("network broken"))
-
-        with patch("module.runtime.updater.logger.exception_context") as log_error:
+        with patch("deploy.sync_upstream.sync_with_upstream",
+                   side_effect=RuntimeError("network broken")), \
+                patch("module.runtime.updater.logger.exception_context") as log_error:
             self.assertFalse(updater.update())
 
         log_error.assert_called_once()
+
+    def test_update_reports_conflict_as_failure(self):
+        """上游同步返回 False（代码冲突）时 update() 必须判为失败。"""
+        updater = object.__new__(Updater)
+        with patch("deploy.sync_upstream.sync_with_upstream", return_value=False):
+            self.assertFalse(updater.update())
+
+    def test_update_succeeds_when_sync_succeeds(self):
+        """上游同步成功时 update() 返回 True。"""
+        updater = object.__new__(Updater)
+        with patch("deploy.sync_upstream.sync_with_upstream", return_value=True) as sync:
+            self.assertTrue(updater.update())
+        sync.assert_called_once_with(force=True)
 
     def test_trigger_reload_sets_parent_event_immediately(self):
         Updater._trigger_reload()

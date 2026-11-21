@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from deploy.sync_upstream import dependencies_changed, push_to_origin
+from deploy.sync_upstream import check_upstream, dependencies_changed, push_to_origin
 
 
 def run_git(repo, *args):
@@ -110,6 +110,67 @@ class DependenciesChangedTests(unittest.TestCase):
     def test_missing_base_returns_false(self):
         """合并前 HEAD 读取失败时按无变化处理，不阻断启动。"""
         self.assertFalse(dependencies_changed(""))
+
+
+class CheckUpstreamTests(unittest.TestCase):
+    """验证启动期只检查不合并。
+
+    启动期合并一旦撞上冲突，会把冲突标记写进源码，前端 tsc 报 TS1185 直接
+    构建失败、WebUI 起不来。所以 check_upstream 必须只读：只 fetch 与统计落后
+    提交数，绝不改动 HEAD 与工作区。
+    """
+
+    def setUp(self):
+        self._cwd = os.getcwd()
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.addCleanup(os.chdir, self._cwd)
+        root = Path(self._tmp.name)
+        self.remote = root / "remote.git"
+        self.repo = root / "work"
+        subprocess.run(["git", "init", "--bare", str(self.remote)], check=True,
+                       capture_output=True, text=True, encoding="utf-8")
+        subprocess.run(["git", "init", "-b", "master", str(self.repo)], check=True,
+                       capture_output=True, text=True, encoding="utf-8")
+        for key, value in (("user.email", "test@example.com"), ("user.name", "test")):
+            run_git(self.repo, "config", key, value)
+        run_git(self.repo, "remote", "add", "origin", str(self.remote))
+        run_git(self.repo, "remote", "add", "upstream", str(self.remote))
+        (self.repo / "shared.txt").write_text("base\n", encoding="utf-8")
+        run_git(self.repo, "add", ".")
+        run_git(self.repo, "commit", "-m", "base")
+        run_git(self.repo, "push", "-u", "origin", "master")
+        # 远端（同时充当 upstream）改同一文件，制造真正的冲突前提。
+        other = root / "other"
+        subprocess.run(["git", "clone", str(self.remote), str(other)], check=True,
+                       capture_output=True, text=True, encoding="utf-8")
+        run_git(other, "config", "user.email", "test@example.com")
+        run_git(other, "config", "user.name", "test")
+        (other / "shared.txt").write_text("upstream-changed\n", encoding="utf-8")
+        run_git(other, "add", ".")
+        run_git(other, "commit", "-m", "upstream change")
+        run_git(other, "push", "origin", "master")
+        # 本地也改同一文件。
+        (self.repo / "shared.txt").write_text("local-changed\n", encoding="utf-8")
+        run_git(self.repo, "add", ".")
+        run_git(self.repo, "commit", "-m", "local change")
+        self.head = self.git("rev-parse", "HEAD")
+        os.chdir(self.repo)
+
+    def git(self, *args):
+        return subprocess.run(["git", *args], cwd=self.repo, check=True,
+                              capture_output=True, text=True, encoding="utf-8").stdout.strip()
+
+    def test_check_never_merges_or_dirties_worktree(self):
+        """即使上游改到同一文件，检查也只报告有新提交，不改 HEAD、不产生冲突标记。"""
+        check_upstream(force=True)
+        self.assertEqual(self.git("rev-parse", "HEAD"), self.head)
+        self.assertEqual(self.git("status", "--porcelain"), "")
+        content = (self.repo / "shared.txt").read_text(encoding="utf-8")
+        self.assertNotIn("<<<<<<<", content)
+        self.assertEqual(content.strip(), "local-changed")
+        # 只读检查不会创建 MERGE_HEAD。
+        self.assertFalse((self.repo / ".git" / "MERGE_HEAD").exists())
 
 
 class PushToOriginTests(unittest.TestCase):
