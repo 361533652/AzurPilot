@@ -115,14 +115,14 @@ export function createMockState({ empty = false } = {}) {
   const commits = Array.from({ length: 123 }, (_, index) => ({ sha: createHash('sha1').update(`mock-commit-${123 - index}`).digest('hex'), author: 'AzurPilot', date: new Date(Date.UTC(2026, 8, 14, 0, -index)).toISOString(), message: index === 0 ? 'feat(webui): 新增主页与实例状态\n\n统一全局设置和更新入口。' : `fix(runtime): 改善任务运行稳定性 ${123 - index}` }))
   let localHead = commits[3].sha
   let upstreamHead = commits[0].sha
-  // 端到端场景开关：模拟本地与更新源历史分叉（镜像重写历史导致 SHA 不匹配）。
+  // 端到端场景开关：模拟本地有尚未推送到个人 Fork 的提交（更新会一并推送上去）。
   let divergedUpdater = false
   const divergedLocalHead = createHash('sha1').update('mock-diverged-local').digest('hex')
   const setUpdateScenario = mode => {
     divergedUpdater = mode === 'diverged'
     localHead = divergedUpdater ? divergedLocalHead : commits[3].sha
   }
-  const updateStatus = () => ({ state: localHead === upstreamHead ? 'idle' : 'available', localHead, upstreamHead, branch: 'dev', ahead: divergedUpdater ? 1 : 0, behind: divergedUpdater ? 3 : commits.findIndex(item => item.sha === localHead), available: localHead !== upstreamHead, busy: false, canApply: localHead !== upstreamHead, canCancel: false, error: '', shaMismatch: divergedUpdater })
+  const updateStatus = () => ({ state: localHead === upstreamHead ? 'idle' : 'available', localHead, upstreamHead, branch: 'dev', ahead: divergedUpdater ? 1 : 0, behind: divergedUpdater ? 3 : commits.findIndex(item => item.sha === localHead), available: localHead !== upstreamHead, busy: false, canApply: localHead !== upstreamHead, canCancel: false, error: '', shaMismatch: divergedUpdater, unpushed: divergedUpdater ? 1 : 0 })
   let mockClients = [
     { id: '11112222333344445555666677778888', created_at: 1729214415 },
     { id: 'aaaabbbbccccddddeeeeffff00001111', created_at: 1729214533 },

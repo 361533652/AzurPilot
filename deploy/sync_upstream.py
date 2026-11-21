@@ -253,19 +253,60 @@ def push_to_origin(branch: Optional[str] = None) -> bool:
         return True
 
     print(f"📤 [Sync] 本地领先 {ORIGIN_NAME}/{branch}，正在推送...")
+    if _push_once(branch):
+        print(f"✨ [Sync] 个人 Fork 仓库已同步更新至最新！")
+        return True
+
+    # 推送被拒最常见的原因是 Fork 上出现了本地没有的提交（例如在 GitHub 网页上
+    # 直接编辑、或另一台机器推送过），普通 push 会因非快进而永久失败，光靠
+    # 「下次启动重试」永远推不上去。这里先把 Fork 的历史合并进来再推一次，
+    # 冲突交给调用方按既有的阻断流程处理。
+    remote_ref = f"{ORIGIN_NAME}/{branch}"
+    if run_git(["git", "rev-parse", "--verify", "--quiet", remote_ref]).returncode != 0:
+        return False
+    behind = run_git(["git", "log", f"HEAD..{remote_ref}", "--oneline"]).stdout.strip()
+    if not behind:
+        print(
+            f"⚠️ [Sync] 推送未完成（网络波动或权限问题），"
+            f"更新已保留在本地，下次启动会自动重试推送。"
+        )
+        return False
+
+    print(f"🔄 [Sync] {remote_ref} 上有本地没有的提交，先合并 Fork 历史再重试推送...")
+    merge_res = run_git(
+        ["git", "merge", remote_ref, "--no-edit", "-m", f"merge: 合并 {remote_ref} 上的远端提交"]
+    )
+    conflicts = get_conflicted_files()
+    if merge_res.returncode != 0 or conflicts:
+        _print_conflict_report(conflicts)
+        return False
+    if _push_once(branch):
+        print(f"✨ [Sync] 已合并 {remote_ref} 的远端提交并同步至 Fork！")
+        return True
+    print(
+        f"⚠️ [Sync] 合并 Fork 历史后推送仍然失败，更新已保留在本地，"
+        f"下次启动会自动重试推送。"
+    )
+    return False
+
+
+def _push_once(branch: str) -> bool:
+    """执行一次推送并打印失败原因。
+
+    Args:
+        branch: 目标分支名。
+
+    Returns:
+        bool: 推送成功返回 True，否则返回 False。
+    """
     push_res = run_git(
         ["git", *GIT_HTTP_CONFIG, "push", ORIGIN_NAME, branch], timeout=PUSH_TIMEOUT
     )
     if push_res.returncode == 0:
-        print(f"✨ [Sync] 个人 Fork 仓库已同步更新至最新！")
         return True
     detail = (push_res.stderr or push_res.stdout or "").strip().splitlines()
     if detail:
         print(f"⚠️ [Sync] 推送至 {ORIGIN_NAME} 失败：{detail[-1]}")
-    print(
-        f"⚠️ [Sync] 推送未完成（网络波动或权限问题），"
-        f"更新已保留在本地，下次启动会自动重试推送。"
-    )
     return False
 
 

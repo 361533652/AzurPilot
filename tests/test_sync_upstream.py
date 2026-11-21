@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from deploy.sync_upstream import dependencies_changed
+from deploy.sync_upstream import dependencies_changed, push_to_origin
 
 
 def run_git(repo, *args):
@@ -110,6 +110,65 @@ class DependenciesChangedTests(unittest.TestCase):
     def test_missing_base_returns_false(self):
         """合并前 HEAD 读取失败时按无变化处理，不阻断启动。"""
         self.assertFalse(dependencies_changed(""))
+
+
+class PushToOriginTests(unittest.TestCase):
+    """验证推送被非快进拒绝时会先合并 Fork 历史再重试。
+
+    场景：Fork 上出现了本地没有的提交（网页直接编辑、另一台机器推送），
+    普通 push 会永久失败，必须先把远端提交合并进来。
+    """
+
+    def setUp(self):
+        self._cwd = os.getcwd()
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.addCleanup(os.chdir, self._cwd)
+        root = Path(self._tmp.name)
+        self.remote = root / "remote.git"
+        self.repo = root / "work"
+        subprocess.run(["git", "init", "--bare", str(self.remote)], check=True,
+                       capture_output=True, text=True, encoding="utf-8")
+        subprocess.run(["git", "init", "-b", "master", str(self.repo)], check=True,
+                       capture_output=True, text=True, encoding="utf-8")
+        for key, value in (("user.email", "test@example.com"), ("user.name", "test")):
+            run_git(self.repo, "config", key, value)
+        run_git(self.repo, "remote", "add", "origin", str(self.remote))
+        (self.repo / "base.txt").write_text("base\n", encoding="utf-8")
+        run_git(self.repo, "add", ".")
+        run_git(self.repo, "commit", "-m", "base")
+        run_git(self.repo, "push", "-u", "origin", "master")
+        # 模拟另一处修改并推到 Fork：本地此时落后，远端 ahead。
+        other = root / "other"
+        subprocess.run(["git", "clone", str(self.remote), str(other)], check=True,
+                       capture_output=True, text=True, encoding="utf-8")
+        run_git(other, "config", "user.email", "test@example.com")
+        run_git(other, "config", "user.name", "test")
+        (other / "remote.txt").write_text("remote\n", encoding="utf-8")
+        run_git(other, "add", ".")
+        run_git(other, "commit", "-m", "remote change")
+        run_git(other, "push", "origin", "master")
+        # 本地再做一个自己的提交：两边分叉，push 必然非快进。
+        (self.repo / "local.txt").write_text("local\n", encoding="utf-8")
+        run_git(self.repo, "add", ".")
+        run_git(self.repo, "commit", "-m", "local change")
+        run_git(self.repo, "fetch", "origin")
+        os.chdir(self.repo)
+
+    def test_non_fast_forward_push_merges_remote_history(self):
+        """Fork 上有本地没有的提交时，推送应通过合并后重试成功。"""
+        self.assertTrue(push_to_origin("master"))
+        # 合并后本地历史应同时包含两边内容。
+        log = subprocess.run(["git", "log", "--oneline"], cwd=self.repo, check=True,
+                             capture_output=True, text=True, encoding="utf-8").stdout
+        self.assertIn("local change", log)
+        self.assertIn("remote change", log)
+        # 推送后 Fork 与本地一致。
+        remote_head = subprocess.run(["git", "rev-parse", "master"], cwd=self.remote, check=True,
+                                     capture_output=True, text=True, encoding="utf-8").stdout.strip()
+        local_head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.repo, check=True,
+                                    capture_output=True, text=True, encoding="utf-8").stdout.strip()
+        self.assertEqual(remote_head, local_head)
 
 
 if __name__ == "__main__":

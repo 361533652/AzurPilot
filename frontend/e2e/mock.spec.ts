@@ -1525,16 +1525,16 @@ test('Logo 旁更新提示、完整提交分页、获取和应用更新', async 
   await page.screenshot({path: 'test-results/updater-dark.png'})
 })
 
-test('SHA 不匹配警告与更新确认弹窗', async ({page}) => {
+test('未推送提交提示与更新确认弹窗', async ({page}) => {
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
-  // mock 服务切到分叉场景：本地 HEAD 不在更新源历史上，模拟镜像重写历史后的 SHA 分离。
+  // mock 服务切到分叉场景：本地有 Fork 上没有的提交，更新会一并推送上去。
   await fetch('http://127.0.0.1:22492/__mock/updater?mode=diverged')
   await page.goto('/#/updater')
-  await expect(page.locator('.mismatch-note')).toContainText('SHA 不匹配')
+  await expect(page.locator('.mismatch-note')).toContainText('尚未推送到个人 Fork')
   await page.getByRole('button', {name: '更新', exact: true}).click()
-  await expect(page.locator('.modal h2')).toHaveText('SHA 不匹配')
-  await expect(page.locator('.modal')).toContainText('GitCode')
+  await expect(page.locator('.modal h2')).toHaveText('确认推送本地提交')
+  await expect(page.locator('.modal')).toContainText('个人 Fork')
   // 取消不更新：弹窗关闭且状态保持有更新可用。
   await page.locator('.modal').getByRole('button', {name: '取消', exact: true}).click()
   await expect(page.locator('.modal')).toHaveCount(0)

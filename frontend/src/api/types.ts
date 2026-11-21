@@ -14,8 +14,10 @@ export interface Instance { name: string; status: Status; serial: string; server
 export interface UpdateStatus {
   state: string; localHead: string | null; upstreamHead: string | null; branch: string
   ahead: number; behind: number; available: boolean; busy: boolean; canApply: boolean; canCancel: boolean; error: string
-  /** 本地与更新源历史互不包含（例如镜像重写历史导致 SHA 分离），更新前需弹窗确认。 */
+  /** 本地存在尚未推送到个人 Fork（origin）的提交，更新会把这些提交一并推送上去，需先确认。 */
   shaMismatch?: boolean
+  /** 本地领先 origin 的提交数；0 表示 Fork 已包含本地全部提交。 */
+  unpushed?: number
   managedByAndroid?: boolean
 }
 interface Commit { sha: string; author: string; date: string; message: string }

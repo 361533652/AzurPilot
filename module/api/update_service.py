@@ -144,6 +144,16 @@ class UpdateService:
                 break
         return local, upstream
 
+    def origin_head(self) -> str:
+        """获取个人 Fork（origin）分支的最新提交哈希。
+
+        Returns:
+            str: origin 对应分支的提交哈希；未配置 origin 或缺少该分支时返回空字符串。
+        """
+        return self.git(
+            'rev-parse', '--verify', f'refs/remotes/origin/{self.updater.Branch}', optional=True,
+        )
+
     def status(self) -> dict:
         """查询当前更新状态元数据。
 
@@ -157,7 +167,8 @@ class UpdateService:
             return {'state': 'android', 'localHead': commit, 'upstreamHead': commit,
                     'branch': 'dev', 'ahead': 0, 'behind': 0, 'available': False,
                     'busy': False, 'error': '', 'canApply': False, 'canCancel': False,
-                    'shaMismatch': False, 'managedByAndroid': True}
+                    'shaMismatch': False, 'unpushed': 0,
+                    'managedByAndroid': True}
         local, upstream = self.heads()
         ahead = behind = 0
         if local and upstream:
@@ -166,21 +177,29 @@ class UpdateService:
             # 自己的提交，按"只是落后"处理，让前端可以正常确认更新。
             if ahead and self.stale_upstream_head(local):
                 ahead = 0
-        # 剩余的 ahead 是真分叉：本地与上游互不包含（例如镜像仓库重写过历史导致
-        # SHA 分离，或本地有自己的提交）。更新仍允许，但由前端弹窗向用户确认后果。
-        mismatch = bool(local and upstream and ahead and behind)
+        # 更新走 merge + 推送，本地领先官方 upstream 是 Fork 维护者的正常状态
+        # （自己的提交官方还没有），不会丢东西，因此不再据此报警。
+        # 真正有丢失风险的是本地有 origin（个人 Fork）上没有的提交：更新会在
+        # 本地合并后整条推上去，需要用户知道这些提交会被发布到自己的 Fork。
+        origin = self.origin_head()
+        unpushed = 0
+        if local and origin:
+            unpushed = int(self.git('rev-list', '--count', f'{origin}..{local}') or 0)
+        mismatch = bool(local and unpushed)
         from module.runtime.setting import State
         state = self.updater.state
         busy = self.operation is not None or state not in (0, 1, 'failed', 'finish') or getattr(self.updater, '_force_update_checking', False)
         visible_state = {0: 'idle', 1: 'available'}.get(state, state)
         if self.operation == 'fetch' or self.operation == 'apply' and state in (0, 1, 'finish'):
             visible_state = self.operation
+        # 没有新代码但 Fork 落后时同样允许执行：更新会补推尚未推送的提交。
+        pending = bool(behind or unpushed)
         return {'state': visible_state,
                 'localHead': local or None, 'upstreamHead': upstream or None,
                 'branch': self.updater.Branch, 'ahead': ahead, 'behind': behind,
                 'available': behind > 0 or state == 1, 'busy': busy, 'error': self.error,
-                'shaMismatch': mismatch,
-                'canApply': bool(local and upstream and behind and not busy
+                'shaMismatch': mismatch, 'unpushed': unpushed,
+                'canApply': bool(local and upstream and pending and not busy
                                  and State.restart_event is not None and State.dependency_sync_event is not None),
                 'canCancel': state in ('start', 'wait'), 'managedByAndroid': False}
 
@@ -261,9 +280,17 @@ class UpdateService:
                     self.updater.state = 'checking'
                     owns_check = True
                     self.updater.fetch_update('upstream', self.updater.Branch, max_retry=3, delay=1)
+                    # Fork 也必须刷新：未推送提交数的计算依赖 origin/<branch>，
+                    # 只拉上游会让「Fork 落后要补推」这种状态看不到。
+                    try:
+                        self.updater.fetch_update('origin', self.updater.Branch, max_retry=1, delay=1)
+                    except Exception:
+                        pass
                     local, upstream = self.heads()
                     behind = int(self.git('rev-list', '--count', f'{local}..{upstream}')) if local and upstream else 0
-                    self.updater.state = bool(behind)
+                    origin = self.origin_head()
+                    unpushed = int(self.git('rev-list', '--count', f'{origin}..{local}')) if local and origin else 0
+                    self.updater.state = bool(behind or unpushed)
             else:
                 if self.updater.state == 'finish':
                     self.updater.state = 0

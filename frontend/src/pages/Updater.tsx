@@ -41,7 +41,7 @@ export function Updater() {
     try {await api.request(method, {}); refresh()}
     catch (error) {setError((error as Error).message)} finally {setBusy(false)}
   }
-  /* SHA 不匹配时更新会重置掉本地独有的提交，先弹窗确认再执行。 */
+  /* 本地有尚未推送到 Fork 的提交时，更新会把它们一并推送上去，先弹窗确认再执行。 */
   function requestUpdate() {
     if (data?.shaMismatch) setConfirmMismatch(true)
     else void act('updater.apply')
@@ -67,7 +67,7 @@ export function Updater() {
         </div>
         <code title={sha ?? ''}>{sha ?? ui('common.notFetched')}</code>
       </div>)}</div>
-      {data.shaMismatch ? <p className="mismatch-note" role="alert"><TriangleAlert size={15}/><span>{ui('updater.shaMismatch.banner')}</span></p>
+      {data.shaMismatch ? <p className="mismatch-note" role="alert"><TriangleAlert size={15}/><span>{ui('updater.shaMismatch.banner', {count: data.unpushed ?? 0})}</span></p>
         : data.ahead > 0 && <p className="muted">{ui('updater.aheadCommits', {count: data.ahead})}</p>}
       {!data.managedByAndroid && <section className="panel commit-panel"><div className="panel-heading"><div><GitCommitHorizontal size={18}/><h2>{ui('updater.commits')}</h2><span className="count-badge">{history?.total ?? '—'}</span></div>
         <div className="branch-summary"><GitBranch size={16}/><span>{data.branch}</span></div>
@@ -80,7 +80,7 @@ export function Updater() {
         <div className="commit-pagination"><span>{history?.total ? `${offset + 1}–${Math.min(offset + 50, history.total)} / ${history.total}` : '0'}</span><button className="button" disabled={loading || offset === 0} onClick={() => setOffset(value => Math.max(0, value - 50))}>{ui('common.previous')}</button><button className="button" disabled={loading || !history?.hasMore} onClick={() => setOffset(value => value + 50)}>{ui('common.next')}</button></div>
       </section>}
       {confirmMismatch && <Modal title={ui('updater.shaMismatch.title')} onClose={() => setConfirmMismatch(false)}>
-        <p>{ui('updater.shaMismatch.body', {count: data?.ahead ?? 0})}</p>
+        <p>{ui('updater.shaMismatch.body', {count: data?.unpushed ?? 0})}</p>
         <ul className="mismatch-reasons">
           <li>{ui('updater.shaMismatch.reasonMirror')}</li>
           <li>{ui('updater.shaMismatch.reasonLocal')}</li>

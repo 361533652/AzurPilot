@@ -28,6 +28,9 @@ class UpdateServiceTest(unittest.TestCase):
         self.base = self.git('rev-parse', 'HEAD')
         self.git('commit', '--allow-empty', '-m', '新增主页\n\n保留完整正文与 --- 分隔符。')
         self.remote = self.git('rev-parse', 'HEAD')
+        # 官方 upstream 与个人 Fork 是两条独立引用：上游比本地新 1 个提交，
+        # Fork 与上游一致，因此此时既没有未推送提交，也需要更新。
+        self.git('update-ref', 'refs/remotes/upstream/dev', self.remote)
         self.git('update-ref', 'refs/remotes/origin/dev', self.remote)
         self.git('reset', '--hard', self.base)
 
@@ -49,12 +52,24 @@ class UpdateServiceTest(unittest.TestCase):
         self.assertIn('保留完整正文与 --- 分隔符。', first['entries'][0]['message'])
         self.assertEqual(second['entries'][0]['sha'], self.base)
 
-    def test_diverged_history_reports_mismatch_and_allows_confirmed_apply(self):
-        """本地与上游历史互不包含时报告 SHA 不匹配；更新改由前端弹窗确认放行。"""
+    def test_forkahead_of_upstream_is_not_a_mismatch(self):
+        """本地领先官方 upstream 是 Fork 维护者的正常状态，不应触发确认弹窗。"""
+        self.git('commit', '--allow-empty', '-m', '本地修改')
+        self.git('update-ref', 'refs/remotes/origin/dev', self.git('rev-parse', 'HEAD'))
+        with patch.object(State, 'restart_event', threading.Event()), patch.object(State, 'dependency_sync_event', threading.Event()):
+            status = self.service.status()
+        self.assertEqual((status['ahead'], status['behind']), (1, 1))
+        self.assertEqual(status['unpushed'], 0)
+        self.assertFalse(status['shaMismatch'])
+        self.assertTrue(status['canApply'])
+
+    def test_unpushed_commits_report_mismatch_and_allow_confirmed_apply(self):
+        """本地有 Fork 上没有的提交时提示确认；更新会把这些提交一并推送上去。"""
         self.git('commit', '--allow-empty', '-m', '本地修改')
         with patch.object(State, 'restart_event', threading.Event()), patch.object(State, 'dependency_sync_event', threading.Event()):
             status = self.service.status()
         self.assertEqual((status['ahead'], status['behind']), (1, 1))
+        self.assertEqual(status['unpushed'], 1)
         self.assertTrue(status['shaMismatch'])
         self.assertTrue(status['canApply'])
         self.assertEqual(self.service.commits()['total'], 3)
@@ -73,7 +88,7 @@ class UpdateServiceTest(unittest.TestCase):
         self.git('checkout', '-q', '--orphan', 'rewritten')
         self.git('commit', '--allow-empty', '-m', '重写后的提交')
         rewritten = self.git('rev-parse', 'HEAD')
-        self.git('update-ref', 'refs/remotes/origin/dev', rewritten)
+        self.git('update-ref', 'refs/remotes/upstream/dev', rewritten)
         self.git('checkout', '-q', 'dev')
         self.git('reset', '--hard', self.base)
         with patch.object(State, 'restart_event', threading.Event()), patch.object(State, 'dependency_sync_event', threading.Event()):
@@ -82,7 +97,8 @@ class UpdateServiceTest(unittest.TestCase):
                 migrated = self.service.status()
         self.assertGreater(diverged['ahead'], 0)
         self.assertTrue(diverged['canApply'])
-        self.assertTrue(diverged['shaMismatch'])
+        # Fork 上没有本地提交，因此没有推送风险，无需确认弹窗。
+        self.assertFalse(diverged['shaMismatch'])
         self.assertEqual(migrated['ahead'], 0)
         self.assertTrue(migrated['canApply'])
         self.assertFalse(migrated['shaMismatch'])
@@ -90,6 +106,7 @@ class UpdateServiceTest(unittest.TestCase):
     def test_missing_upstream_and_no_supervisor_are_readable(self):
         with patch.object(State, 'restart_event', None):
             self.assertFalse(self.service.status()['canApply'])
+        self.git('update-ref', '-d', 'refs/remotes/upstream/dev')
         self.git('update-ref', '-d', 'refs/remotes/origin/dev')
         self.assertIsNone(self.service.status()['upstreamHead'])
         self.assertEqual(self.service.commits()['total'], 1)
@@ -102,7 +119,9 @@ class UpdateServiceTest(unittest.TestCase):
                 self.service.start('fetch')
             thread.assert_called_once()
         self.service._run('fetch')
-        self.updater.fetch_update.assert_called_once_with('origin', 'dev', max_retry=3, delay=1)
+        # 上游与个人 Fork 都要刷新，未推送提交数才有依据。
+        self.updater.fetch_update.assert_any_call('upstream', 'dev', max_retry=3, delay=1)
+        self.updater.fetch_update.assert_any_call('origin', 'dev', max_retry=1, delay=1)
         self.assertIsNone(self.service.operation)
         self.assertEqual(self.updater.state, 1)
         self.assertEqual(self.git('rev-parse', 'HEAD'), self.base)
