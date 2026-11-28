@@ -234,6 +234,51 @@ def is_local_ahead_of_origin(branch: Optional[str] = None) -> bool:
     return bool(res.stdout.strip())
 
 
+def preview_merge_conflicts(ref: str) -> Optional[List[str]]:
+    """在不触碰工作区的前提下预演合并，返回会冲突的文件列表。
+
+    直接用 `git merge` 试错代价太高：一旦有冲突，冲突标记会被写进源码，
+    前端 tsc 随即构建失败、WebUI 起不来，工作区还停留在合并中间态。
+    `git merge-tree --write-tree` 只在对象库里算一次三方合并，不碰索引与
+    工作区，可以安全地用来"先检查再合并"。
+
+    Args:
+        ref: 要合并进来的引用，例如 `upstream/master`。
+
+    Returns:
+        List[str]: 冲突文件列表；空列表表示可以无冲突合并。
+        None 表示当前 Git 不支持预演（版本过旧），调用方应回退到直接合并。
+    """
+    attempts = (
+        ["git", "merge-tree", "--write-tree", "--name-only", "HEAD", ref],
+        ["git", "merge-tree", "--write-tree", "HEAD", ref],
+    )
+    for index, args in enumerate(attempts):
+        res = run_git(args)
+        stderr = (res.stderr or "").lower()
+        # 老版本 Git 不认识 --write-tree / --name-only，换下一种形式再试。
+        if res.returncode == 129 or "unknown option" in stderr or "not a valid" in stderr:
+            continue
+        if res.returncode == 0:
+            return []
+        # 输出形如：<tree oid> / <冲突文件...> / 空行 / <Auto-merging 等说明>。
+        # 第一个空行是分界，之后的都是人读的消息，不能当成文件名。
+        raw = res.stdout.splitlines()
+        if not raw:
+            return ["(无法解析冲突文件)"]
+        body: List[str] = []
+        for line in raw[1:]:
+            if not line.strip():
+                break
+            text = line.split("\t", 1)[1] if "\t" in line else line
+            if text.strip():
+                body.append(text.strip())
+        if body:
+            return body
+        return ["(无法解析冲突文件)"]
+    return None
+
+
 def push_to_origin(branch: Optional[str] = None) -> bool:
     """把当前分支推送到 origin，无需推送时视为成功。
 
@@ -272,13 +317,20 @@ def push_to_origin(branch: Optional[str] = None) -> bool:
         )
         return False
 
+    preview = preview_merge_conflicts(remote_ref)
+    if preview:
+        _print_conflict_report(preview)
+        print("🛡️ [Sync] 已预检到与 Fork 的冲突，未执行合并，本地合并结果保持原样。")
+        return False
+
     print(f"🔄 [Sync] {remote_ref} 上有本地没有的提交，先合并 Fork 历史再重试推送...")
     merge_res = run_git(
         ["git", "merge", remote_ref, "--no-edit", "-m", f"merge: 合并 {remote_ref} 上的远端提交"]
     )
     conflicts = get_conflicted_files()
     if merge_res.returncode != 0 or conflicts:
-        _print_conflict_report(conflicts)
+        run_git(["git", "merge", "--abort"])
+        _print_conflict_report(conflicts or preview or [])
         return False
     if _push_once(branch):
         print(f"✨ [Sync] 已合并 {remote_ref} 的远端提交并同步至 Fork！")
@@ -513,6 +565,20 @@ def sync_with_upstream(force: bool = False) -> bool:
                         f"✅ [Sync] 当前分支已包含官方 {upstream_ref} 的所有最新代码，无需合并。"
                     )
                 else:
+                    # 先预演再合并：冲突会污染工作区并让前端构建失败，必须在
+                    # 动用真正的 merge 之前就拦下来。
+                    preview = preview_merge_conflicts(upstream_ref)
+                    if preview:
+                        merge_conflicted = True
+                        _print_conflict_report(preview)
+                        print(
+                            "🛡️ [Sync] 已预检到冲突，未执行合并，工作区保持干净。\n"
+                            "👉 请在本地解决这些文件与官方改动的差异后重试更新。"
+                        )
+                        return False
+                    if preview is None:
+                        print("ℹ️ [Sync] 当前 Git 不支持合并预演，直接合并并在冲突时回滚。")
+
                     print("🚀 [Sync] 发现官方最新更新，正在合并至本地...")
                     head_before = get_head_revision()
                     merge_res = run_git(
@@ -528,7 +594,10 @@ def sync_with_upstream(force: bool = False) -> bool:
                     conflicts = get_conflicted_files()
                     if merge_res.returncode != 0 or conflicts:
                         merge_conflicted = True
-                        _print_conflict_report(conflicts)
+                        # 预演不可用或预演与实况不一致时，把工作区恢复干净，
+                        # 避免冲突标记留在源码里让下一次启动的前端构建失败。
+                        run_git(["git", "merge", "--abort"])
+                        _print_conflict_report(conflicts or preview or [])
                         return False
                     print("🎉 [Sync] 成功合并官方更新！")
                     # 合并会引入新依赖，而启动器的依赖同步发生在本次合并之前，

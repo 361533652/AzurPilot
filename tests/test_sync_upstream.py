@@ -10,7 +10,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from deploy.sync_upstream import check_upstream, dependencies_changed, push_to_origin
+from deploy.sync_upstream import (
+    check_upstream,
+    dependencies_changed,
+    preview_merge_conflicts,
+    push_to_origin,
+    sync_with_upstream,
+)
 
 
 def run_git(repo, *args):
@@ -170,6 +176,81 @@ class CheckUpstreamTests(unittest.TestCase):
         self.assertNotIn("<<<<<<<", content)
         self.assertEqual(content.strip(), "local-changed")
         # 只读检查不会创建 MERGE_HEAD。
+        self.assertFalse((self.repo / ".git" / "MERGE_HEAD").exists())
+
+
+class PreviewMergeTests(unittest.TestCase):
+    """验证合并预演：先检查再合并，冲突时绝不污染工作区。
+
+    直接 git merge 撞冲突会把冲突标记写进源码，前端 tsc 报 TS1185 构建失败、
+    WebUI 起不来。preview_merge_conflicts 用 merge-tree 只在对象库里算，
+    预演后工作区必须保持干净。
+    """
+
+    def setUp(self):
+        self._cwd = os.getcwd()
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.addCleanup(os.chdir, self._cwd)
+        root = Path(self._tmp.name)
+        self.remote = root / "remote.git"
+        self.repo = root / "work"
+        subprocess.run(["git", "init", "--bare", str(self.remote)], check=True,
+                       capture_output=True, text=True, encoding="utf-8")
+        subprocess.run(["git", "init", "-b", "master", str(self.repo)], check=True,
+                       capture_output=True, text=True, encoding="utf-8")
+        for key, value in (("user.email", "test@example.com"), ("user.name", "test")):
+            run_git(self.repo, "config", key, value)
+        run_git(self.repo, "remote", "add", "origin", str(self.remote))
+        run_git(self.repo, "remote", "add", "upstream", str(self.remote))
+        (self.repo / "shared.txt").write_text("base\n", encoding="utf-8")
+        (self.repo / "other.txt").write_text("other\n", encoding="utf-8")
+        run_git(self.repo, "add", ".")
+        run_git(self.repo, "commit", "-m", "base")
+        run_git(self.repo, "push", "-u", "origin", "master")
+        other = root / "other"
+        subprocess.run(["git", "clone", str(self.remote), str(other)], check=True,
+                       capture_output=True, text=True, encoding="utf-8")
+        run_git(other, "config", "user.email", "test@example.com")
+        run_git(other, "config", "user.name", "test")
+        (other / "shared.txt").write_text("upstream-changed\n", encoding="utf-8")
+        (other / "other.txt").write_text("upstream-other\n", encoding="utf-8")
+        run_git(other, "add", ".")
+        run_git(other, "commit", "-m", "upstream change")
+        run_git(other, "push", "origin", "master")
+        (self.repo / "shared.txt").write_text("local-changed\n", encoding="utf-8")
+        (self.repo / "other.txt").write_text("local-other\n", encoding="utf-8")
+        run_git(self.repo, "add", ".")
+        run_git(self.repo, "commit", "-m", "local change")
+        run_git(self.repo, "fetch", "upstream")
+        self.head = self.git("rev-parse", "HEAD")
+        os.chdir(self.repo)
+
+    def git(self, *args):
+        return subprocess.run(["git", *args], cwd=self.repo, check=True,
+                              capture_output=True, text=True, encoding="utf-8").stdout.strip()
+
+    def test_preview_reports_conflict_files_without_touching_worktree(self):
+        """预演只报告会冲突的文件名，且不修改工作区与 HEAD。"""
+        conflicts = preview_merge_conflicts("upstream/master")
+        self.assertEqual(sorted(conflicts or []), ["other.txt", "shared.txt"])
+        self.assertEqual(self.git("rev-parse", "HEAD"), self.head)
+        self.assertEqual(self.git("status", "--porcelain"), "")
+        self.assertNotIn("<<<<<<<", (self.repo / "shared.txt").read_text(encoding="utf-8"))
+        self.assertFalse((self.repo / ".git" / "MERGE_HEAD").exists())
+
+    def test_preview_returns_empty_when_merge_is_clean(self):
+        """没有冲突时预演返回空列表。"""
+        self.git("checkout", "-q", "-b", "clean")
+        self.git("reset", "--hard", "HEAD~1")
+        self.assertEqual(preview_merge_conflicts("upstream/master"), [])
+
+    def test_sync_blocks_on_conflict_and_leaves_worktree_clean(self):
+        """sync_with_upstream 预检到冲突后直接返回 False，不执行 merge。"""
+        self.assertFalse(sync_with_upstream(force=True))
+        self.assertEqual(self.git("rev-parse", "HEAD"), self.head)
+        self.assertEqual(self.git("status", "--porcelain"), "")
+        self.assertNotIn("<<<<<<<", (self.repo / "shared.txt").read_text(encoding="utf-8"))
         self.assertFalse((self.repo / ".git" / "MERGE_HEAD").exists())
 
 
