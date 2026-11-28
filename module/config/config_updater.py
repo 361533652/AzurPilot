@@ -460,7 +460,7 @@ class ConfigGenerator:
         for package, server_and_channel in VALID_CHANNEL_PACKAGE.items():
             server, channel = server_and_channel
             name = deep_get(new, keys=['Emulator', 'PackageName', to_package(server)])
-            if lang == SERVER_TO_LANG[server]:
+            if lang == SERVER_TO_LANG.get(server) or (server == 'cn' and lang in ('zh-CN', 'zh-CN-neko')):
                 value = f'{name} {channel}渠道服 {package}'
             else:
                 value = f'{name} {package}'
@@ -586,7 +586,7 @@ class ConfigGenerator:
                             for task in RAIDS:
                                 insert(task)
                     elif event.is_war_archives:
-                        for task in WAR_ARCHIVES:
+                        for task in WAR_ARCHIVES + ['OperationHandover']:
                             insert(task)
                     elif event.is_coalition:
                         if not hasattr(self, f'_{server}_latest_coalition_date'):

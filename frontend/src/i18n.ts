@@ -10,20 +10,23 @@ import {fleetTechZhCN, fleetTechZhTW, fleetTechEnUS, fleetTechJaJP} from './flee
 import {mindZhCN, mindZhTW, mindEnUS, mindJaJP} from './mind/i18n'
 import {resourceZhCN, resourceZhTW, resourceEnUS, resourceJaJP} from './i18n.resources'
 import {colorZhCN, colorZhTW, colorEnUS, colorJaJP} from './i18n.colors'
+import {zhCNNeko} from './i18n.neko'
 
 /** 界面语言代码；与 languages 的显示名键一一对应，也用作各语言包的导出名后缀。 */
-export type Language = 'zh-CN' | 'zh-TW' | 'en-US' | 'ja-JP'
+export type Language = 'zh-CN' | 'zh-TW' | 'en-US' | 'ja-JP' | 'zh-CN-neko'
 type TranslationParams = Record<string, string | number>
 
-/** 四种界面语言的显示名，各自用原文书写（如「简体中文」），供语言选择器渲染。 */
+/** 界面语言的显示名，各自用原文书写（如「简体中文」），供语言选择器渲染。 */
 export const languages: Record<Language, string> = {
   'zh-CN': '简体中文',
   'zh-TW': '繁體中文',
   'en-US': 'English',
   'ja-JP': '日本語',
+  'zh-CN-neko': "猫娘语 (ฅ'ω'ฅ)",
 }
 
 const zhCN = {
+  'table.horizontalScroll': '横向滚动表格',
   'nav.plugins': "插件",
   'plugins.installed': "已安装插件",
   'plugins.import': "导入 .apu",
@@ -532,9 +535,18 @@ const zhCN = {
   'updater.expandDetails': '展开详情',
   'updater.noCommits': '暂无提交记录',
   'updater.androidManaged': 'Android 版会在 App 启动时检查整包更新，源码、前端和兼容清单将一同切换。请完全退出并重新打开 App 以检查更新。',
+  'updater.mirrorchyan.title': 'Mirror 酱更新',
+  'updater.mirrorchyan.badge': '推荐',
+  'updater.mirrorchyan.desc': '推荐使用 Mirror 酱更新，下载更快、更稳定！',
+  'updater.mirrorchyan.toggle': '启用',
+  'updater.mirrorchyan.cdkPlaceholder': '输入 Mirror 酱 CDK',
+  'updater.mirrorchyan.cdkSaved': '已配置 CDK（留空保持不变）',
+  'updater.mirrorchyan.getCdk': '获取 CDK',
+  'updater.mirrorchyan.save': '保存',
+  'updater.mirrorchyan.saved': '已保存',
   'edit.draftReadError': '浏览器草稿无法读取，请保持页面打开直到保存完成。',
   'edit.draftPersistError': '浏览器无法保留草稿，请保持页面打开直到保存完成。',
-  'edit.unsaved': '配置尚未全部保存，请先修正错误或等待连接恢复。',
+  'edit.conflict': '配置已在其他位置更改。草稿仍保留，请重新加载后重新编辑。', 'edit.reloadDiscard': '放弃草稿并重新加载', 'edit.unsaved': '配置尚未全部保存，请先修正错误或等待连接恢复。',
   'edit.invalidNumber': '请输入完整、有效的数字。',
   'edit.invalidInteger': '请输入有效整数。',
   'edit.numberOutOfRange': '数字超出可精确表示的范围。',
@@ -558,6 +570,7 @@ export type UiKey = keyof typeof zhCN
 export type UiTranslator = (key: UiKey, params?: TranslationParams) => string
 
 const enUS: Record<UiKey, string> = {
+  'table.horizontalScroll': 'Scroll table horizontally',
   'nav.plugins': "Plugins",
   'plugins.installed': "Installed plugins",
   'plugins.import': "Import .apu",
@@ -708,13 +721,14 @@ const enUS: Record<UiKey, string> = {
   'stats.hideCard': 'Hide card', 'stats.showCard': 'Show card',
   'stats.linkCards': 'Link with the next card', 'stats.unlinkCards': 'Split the two cards apart',
   'stats.orderHandle': 'Drag to reorder', 'stats.orderUp': 'Move up', 'stats.orderDown': 'Move down', 'stats.orderHint': "Drag the handle at a card's top-left corner to reorder, or use the move up and move down buttons.",
-  'updater.state.idle': 'Up to date', 'updater.state.android': 'Managed by Android app', 'updater.state.available': 'New version available', 'updater.state.fetch': 'Fetching updates', 'updater.state.checking': 'Checking for updates', 'updater.state.apply': 'Updating', 'updater.state.start': 'Preparing update', 'updater.state.wait': 'Waiting for tasks to finish', 'updater.state.reload': 'Restarting', 'updater.state.failed': 'Update failed', 'updater.state.finish': 'Update complete', 'updater.state.cancel': 'Canceling', 'updater.noVersion': 'Version information unavailable', 'updater.fetch': 'Fetch updates', 'updater.update': 'Update', 'updater.cancel': 'Cancel update', 'updater.localAhead': 'Local ahead', 'updater.localBehind': 'Local behind', 'updater.localHead': 'Local HEAD', 'updater.upstreamHead': 'Upstream HEAD', 'updater.aheadCommits': 'Local is ahead by {count} commits', 'updater.shaMismatch.banner': '{count} local commits are not pushed to your fork yet; updating pushes them along', 'updater.shaMismatch.title': 'Confirm pushing local commits', 'updater.shaMismatch.body': '{count} local commits are not on your fork (origin) yet. Updating merges the official upstream and then pushes the whole branch, so these commits will appear on your fork. Possible causes:', 'updater.shaMismatch.reasonMirror': 'These are your own local changes that have not been pushed yet.', 'updater.shaMismatch.reasonLocal': 'A previous push failed and its merge result stayed local; this run pushes it again.', 'updater.shaMismatch.confirm': 'Update anyway', 'updater.commits': 'Commit history', 'updater.expandDetails': 'Show details', 'updater.noCommits': 'No commits', 'updater.androidManaged': 'The Android app checks for an atomic runtime update at startup. Fully close and reopen the app to check for updates.',
-  'edit.draftReadError': 'The browser draft could not be read. Keep this page open until saving finishes.', 'edit.draftPersistError': 'The browser could not preserve the draft. Keep this page open until saving finishes.', 'edit.unsaved': 'Not all configuration changes are saved. Fix the error or wait for the connection to recover.', 'edit.invalidNumber': 'Enter a complete, valid number.', 'edit.invalidInteger': 'Enter a valid integer.', 'edit.numberOutOfRange': 'The number is outside the precisely representable range.', 'edit.validateRange': 'Enter a value between {min} and {max}.', 'api.requestFailed': 'Request failed', 'api.disconnected': 'Connection lost; the operation result is unknown. Reconnect and check the current state.', 'api.notConnected': 'Not connected to the service yet. Try again shortly.', 'api.timeout': 'Request timed out; the operation may still be running. Refresh the state to confirm.', 'field.loadingEditor': 'Loading editor…', 'storage.content': 'Storage content', 'storage.clear': 'Clear storage', 'error.pageTitle': 'Something went wrong', 'error.pageHint': 'Tasks are still running in the background. Reload the page to restore the console.', 'error.reload': 'Reload page',
+  'updater.state.idle': 'Up to date', 'updater.state.android': 'Managed by Android app', 'updater.state.available': 'New version available', 'updater.state.fetch': 'Fetching updates', 'updater.state.checking': 'Checking for updates', 'updater.state.apply': 'Updating', 'updater.state.start': 'Preparing update', 'updater.state.wait': 'Waiting for tasks to finish', 'updater.state.reload': 'Restarting', 'updater.state.failed': 'Update failed', 'updater.state.finish': 'Update complete', 'updater.state.cancel': 'Canceling', 'updater.noVersion': 'Version information unavailable', 'updater.fetch': 'Fetch updates', 'updater.update': 'Update', 'updater.cancel': 'Cancel update', 'updater.localAhead': 'Local ahead', 'updater.localBehind': 'Local behind', 'updater.localHead': 'Local HEAD', 'updater.upstreamHead': 'Upstream HEAD', 'updater.aheadCommits': 'Local is ahead by {count} commits', 'updater.shaMismatch.banner': '{count} local commits are not pushed to your fork yet; updating pushes them along', 'updater.shaMismatch.title': 'Confirm pushing local commits', 'updater.shaMismatch.body': '{count} local commits are not on your fork (origin) yet. Updating merges the official upstream and then pushes the whole branch, so these commits will appear on your fork. Possible causes:', 'updater.shaMismatch.reasonMirror': 'These are your own local changes that have not been pushed yet.', 'updater.shaMismatch.reasonLocal': 'A previous push failed and its merge result stayed local; this run pushes it again.', 'updater.shaMismatch.confirm': 'Update anyway', 'updater.commits': 'Commit history', 'updater.expandDetails': 'Show details', 'updater.noCommits': 'No commits', 'updater.androidManaged': 'The Android app checks for an atomic runtime update at startup. Fully close and reopen the app to check for updates.', 'updater.mirrorchyan.title': 'MirrorChyan Updates', 'updater.mirrorchyan.badge': 'Recommended', 'updater.mirrorchyan.desc': 'Recommended: use MirrorChyan for faster and more reliable updates!', 'updater.mirrorchyan.toggle': 'Enable', 'updater.mirrorchyan.cdkPlaceholder': 'Enter MirrorChyan CDK', 'updater.mirrorchyan.cdkSaved': 'CDK configured (leave blank to keep)', 'updater.mirrorchyan.getCdk': 'Get CDK', 'updater.mirrorchyan.save': 'Save', 'updater.mirrorchyan.saved': 'Saved',
+  'edit.draftReadError': 'The browser draft could not be read. Keep this page open until saving finishes.', 'edit.draftPersistError': 'The browser could not preserve the draft. Keep this page open until saving finishes.', 'edit.conflict': 'These settings changed elsewhere. Your draft is preserved; reload and edit again.', 'edit.reloadDiscard': 'Discard draft and reload', 'edit.unsaved': 'Not all configuration changes are saved. Fix the error or wait for the connection to recover.', 'edit.invalidNumber': 'Enter a complete, valid number.', 'edit.invalidInteger': 'Enter a valid integer.', 'edit.numberOutOfRange': 'The number is outside the precisely representable range.', 'edit.validateRange': 'Enter a value between {min} and {max}.', 'api.requestFailed': 'Request failed', 'api.disconnected': 'Connection lost; the operation result is unknown. Reconnect and check the current state.', 'api.notConnected': 'Not connected to the service yet. Try again shortly.', 'api.timeout': 'Request timed out; the operation may still be running. Refresh the state to confirm.', 'field.loadingEditor': 'Loading editor…', 'storage.content': 'Storage content', 'storage.clear': 'Clear storage', 'error.pageTitle': 'Something went wrong', 'error.pageHint': 'Tasks are still running in the background. Reload the page to restore the console.', 'error.reload': 'Reload page',
   'nav.newBadge': 'New',
   'field.yaml': 'YAML',
 }
 
 const jaJP: Record<UiKey, string> = {
+  'table.horizontalScroll': '表を横にスクロール',
   'nav.plugins': "プラグイン",
   'plugins.installed': "インストール済みプラグイン",
   'plugins.import': ".apu をインポート",
@@ -862,8 +876,8 @@ const jaJP: Record<UiKey, string> = {
   'stats.hideCard': 'カードを隠す', 'stats.showCard': 'カードを表示',
   'stats.linkCards': '次のカードと連結', 'stats.unlinkCards': '連結を解除',
   'stats.orderHandle': 'ドラッグで並べ替え', 'stats.orderUp': '上へ移動', 'stats.orderDown': '下へ移動', 'stats.orderHint': 'カード左上の把手をドラッグするか、上へ／下へボタンで並べ替えできます。',
-  'updater.state.idle': '最新です', 'updater.state.android': 'Android アプリが管理', 'updater.state.available': '新しいバージョンがあります', 'updater.state.fetch': '更新を取得中', 'updater.state.checking': '更新を確認中', 'updater.state.apply': '更新中', 'updater.state.start': '更新準備中', 'updater.state.wait': 'タスク終了待ち', 'updater.state.reload': '再起動中', 'updater.state.failed': '更新失敗', 'updater.state.finish': '更新完了', 'updater.state.cancel': 'キャンセル中', 'updater.noVersion': 'バージョン情報未取得', 'updater.fetch': '更新を取得', 'updater.update': '更新', 'updater.cancel': '更新をキャンセル', 'updater.localAhead': 'ローカルが先行', 'updater.localBehind': 'ローカルが遅延', 'updater.localHead': 'ローカル HEAD', 'updater.upstreamHead': '上流 HEAD', 'updater.aheadCommits': 'ローカルが {count} コミット先行', 'updater.shaMismatch.banner': 'ローカルの {count} 件のコミットがまだ Fork にプッシュされていません。更新すると一緒にプッシュされます', 'updater.shaMismatch.title': 'ローカルコミットのプッシュ確認', 'updater.shaMismatch.body': 'ローカルの {count} 件のコミットがまだ個人 Fork（origin）にプッシュされていません。更新は公式上流をマージした後、ブランチ全体をプッシュするため、これらのコミットが Fork に反映されます。考えられる原因:', 'updater.shaMismatch.reasonMirror': '自分で行ったローカル変更がまだプッシュされていません。', 'updater.shaMismatch.reasonLocal': '前回のプッシュが失敗し、マージ結果がローカルに残っています。今回まとめてプッシュします。', 'updater.shaMismatch.confirm': 'それでも更新', 'updater.commits': 'コミット履歴', 'updater.expandDetails': '詳細を表示', 'updater.noCommits': 'コミットはありません', 'updater.androidManaged': 'Android 版はアプリ起動時にランタイム全体の更新を確認します。更新確認にはアプリを完全に終了して再起動してください。',
-  'edit.unsaved': '設定がすべて保存されていません。エラーを修正するか接続の復旧を待ってください。', 'edit.invalidNumber': '完全で有効な数値を入力してください。', 'edit.invalidInteger': '有効な整数を入力してください。', 'edit.numberOutOfRange': '数値が正確に表現できる範囲を超えています。', 'edit.validateRange': '{min} から {max} の範囲で入力してください。', 'api.requestFailed': 'リクエストに失敗しました', 'api.disconnected': '接続が切断され、操作結果を確認できません。再接続後に状態を確認してください。', 'api.notConnected': 'サービスにまだ接続されていません。しばらくしてから再試行してください。', 'api.timeout': 'リクエストがタイムアウトしました。処理が継続中の可能性があります。状態を更新して確認してください。', 'field.loadingEditor': 'エディターを読み込み中…', 'storage.content': 'ストレージ内容', 'storage.clear': 'ストレージを消去', 'error.pageTitle': 'ページで問題が発生しました', 'error.pageHint': 'タスクはバックグラウンドで実行中です。ページを再読み込みしてコンソールを復旧してください。', 'error.reload': '再読み込み',
+  'updater.state.idle': '最新です', 'updater.state.android': 'Android アプリが管理', 'updater.state.available': '新しいバージョンがあります', 'updater.state.fetch': '更新を取得中', 'updater.state.checking': '更新を確認中', 'updater.state.apply': '更新中', 'updater.state.start': '更新準備中', 'updater.state.wait': 'タスク終了待ち', 'updater.state.reload': '再起動中', 'updater.state.failed': '更新失敗', 'updater.state.finish': '更新完了', 'updater.state.cancel': 'キャンセル中', 'updater.noVersion': 'バージョン情報未取得', 'updater.fetch': '更新を取得', 'updater.update': '更新', 'updater.cancel': '更新をキャンセル', 'updater.localAhead': 'ローカルが先行', 'updater.localBehind': 'ローカルが遅延', 'updater.localHead': 'ローカル HEAD', 'updater.upstreamHead': '上流 HEAD', 'updater.aheadCommits': 'ローカルが {count} コミット先行', 'updater.shaMismatch.banner': 'ローカルの {count} 件のコミットがまだ Fork にプッシュされていません。更新すると一緒にプッシュされます', 'updater.shaMismatch.title': 'ローカルコミットのプッシュ確認', 'updater.shaMismatch.body': 'ローカルの {count} 件のコミットがまだ個人 Fork（origin）にプッシュされていません。更新は公式上流をマージした後、ブランチ全体をプッシュするため、これらのコミットが Fork に反映されます。考えられる原因:', 'updater.shaMismatch.reasonMirror': '自分で行ったローカル変更がまだプッシュされていません。', 'updater.shaMismatch.reasonLocal': '前回のプッシュが失敗し、マージ結果がローカルに残っています。今回まとめてプッシュします。', 'updater.shaMismatch.confirm': 'それでも更新', 'updater.commits': 'コミット履歴', 'updater.expandDetails': '詳細を表示', 'updater.noCommits': 'コミットはありません', 'updater.androidManaged': 'Android 版はアプリ起動時にランタイム全体の更新を確認します。更新確認にはアプリを完全に終了して再起動してください。', 'updater.mirrorchyan.title': 'MirrorChyan 更新', 'updater.mirrorchyan.badge': '推奨', 'updater.mirrorchyan.desc': 'より高速で安定した更新のため、MirrorChyan の利用を推奨します！', 'updater.mirrorchyan.toggle': '有効', 'updater.mirrorchyan.cdkPlaceholder': 'MirrorChyan CDK を入力', 'updater.mirrorchyan.cdkSaved': 'CDK 設定済み（空欄で維持）', 'updater.mirrorchyan.getCdk': 'CDK を取得', 'updater.mirrorchyan.save': '保存', 'updater.mirrorchyan.saved': '保存しました',
+  'edit.conflict': '設定が別の場所で変更されました。下書きは保持されています。再読み込みして編集し直してください。', 'edit.reloadDiscard': '下書きを破棄して再読み込み', 'edit.unsaved': '設定がすべて保存されていません。エラーを修正するか接続の復旧を待ってください。', 'edit.invalidNumber': '完全で有効な数値を入力してください。', 'edit.invalidInteger': '有効な整数を入力してください。', 'edit.numberOutOfRange': '数値が正確に表現できる範囲を超えています。', 'edit.validateRange': '{min} から {max} の範囲で入力してください。', 'api.requestFailed': 'リクエストに失敗しました', 'api.disconnected': '接続が切断され、操作結果を確認できません。再接続後に状態を確認してください。', 'api.notConnected': 'サービスにまだ接続されていません。しばらくしてから再試行してください。', 'api.timeout': 'リクエストがタイムアウトしました。処理が継続中の可能性があります。状態を更新して確認してください。', 'field.loadingEditor': 'エディターを読み込み中…', 'storage.content': 'ストレージ内容', 'storage.clear': 'ストレージを消去', 'error.pageTitle': 'ページで問題が発生しました', 'error.pageHint': 'タスクはバックグラウンドで実行中です。ページを再読み込みしてコンソールを復旧してください。', 'error.reload': '再読み込み',
   'nav.newBadge': '新着',
   'field.yaml': 'YAML',
   'log.tools': 'ログツール',
@@ -931,6 +945,7 @@ const jaJP: Record<UiKey, string> = {
 }
 
 const zhTW: Record<UiKey, string> = {
+  'table.horizontalScroll': '水平捲動表格',
   'nav.plugins': "外掛程式",
   'plugins.installed': "已安裝的外掛",
   'plugins.import': "匯入 .apu",
@@ -1071,8 +1086,8 @@ const zhTW: Record<UiKey, string> = {
   'stats.hideCard': '隱藏卡片', 'stats.showCard': '顯示卡片',
   'stats.linkCards': '與下一張組合', 'stats.unlinkCards': '拆開組合',
   'stats.orderHandle': '拖動排序', 'stats.orderUp': '上移', 'stats.orderDown': '下移', 'stats.orderHint': '拖動卡片左上角的把手可調整順序，也可用上移／下移按鈕。',
-  'updater.state.idle': '已是最新', 'updater.state.android': '由 Android App 管理', 'updater.state.available': '有新版本可用', 'updater.state.fetch': '正在取得更新', 'updater.state.checking': '正在檢查更新', 'updater.state.apply': '正在更新', 'updater.state.start': '準備更新', 'updater.state.wait': '等待任務結束', 'updater.state.reload': '正在重新啟動', 'updater.state.failed': '更新失敗', 'updater.state.finish': '更新完成', 'updater.state.cancel': '正在取消', 'updater.noVersion': '未取得版本資訊', 'updater.fetch': '取得更新', 'updater.update': '更新', 'updater.cancel': '取消更新', 'updater.localAhead': '本機領先', 'updater.localBehind': '本機落後', 'updater.localHead': '本機 HEAD', 'updater.upstreamHead': '上游 HEAD', 'updater.aheadCommits': '本機領先 {count} 個提交', 'updater.shaMismatch.banner': '本機有 {count} 個提交尚未推送到個人 Fork，更新會將它們一併推送上去', 'updater.shaMismatch.title': '確認推送本機提交', 'updater.shaMismatch.body': '本機有 {count} 個提交還沒推送到個人 Fork（origin）。更新會先合併官方上游，再把本機分支整條推送到 Fork，這些提交會出現在你的 Fork 上。可能的原因：', 'updater.shaMismatch.reasonMirror': '這些提交是你自己在本機做的改動，還沒推送。', 'updater.shaMismatch.reasonLocal': '上次更新時推送失敗，合併結果保留在本機，這次會一併補推。', 'updater.shaMismatch.confirm': '仍要更新', 'updater.commits': '提交記錄', 'updater.expandDetails': '展開詳情', 'updater.noCommits': '暫無提交記錄', 'updater.androidManaged': 'Android 版會在 App 啟動時檢查整包更新。請完全結束並重新開啟 App 以檢查更新。',
-  'edit.unsaved': '設定尚未全部儲存，請先修正錯誤或等待連線恢復。', 'edit.invalidNumber': '請輸入完整、有效的數字。', 'edit.invalidInteger': '請輸入有效整數。', 'edit.numberOutOfRange': '數字超出可精確表示的範圍。', 'edit.validateRange': '請輸入 {min} 到 {max} 之間的數值。', 'api.requestFailed': '請求失敗', 'api.disconnected': '連線已中斷；操作結果未確認，請重新連線後檢查狀態。', 'api.notConnected': '尚未連線到服務，請稍後重試。', 'api.timeout': '請求逾時；操作可能仍在執行，請重新整理狀態後確認。', 'field.loadingEditor': '正在載入編輯器…', 'storage.content': '儲存空間內容', 'storage.clear': '清除儲存空間', 'error.pageTitle': '頁面發生問題', 'error.pageHint': '任務仍在背景執行，請重新整理頁面恢復控制台。', 'error.reload': '重新整理頁面',
+  'updater.state.idle': '已是最新', 'updater.state.android': '由 Android App 管理', 'updater.state.available': '有新版本可用', 'updater.state.fetch': '正在取得更新', 'updater.state.checking': '正在檢查更新', 'updater.state.apply': '正在更新', 'updater.state.start': '準備更新', 'updater.state.wait': '等待任務結束', 'updater.state.reload': '正在重新啟動', 'updater.state.failed': '更新失敗', 'updater.state.finish': '更新完成', 'updater.state.cancel': '正在取消', 'updater.noVersion': '未取得版本資訊', 'updater.fetch': '取得更新', 'updater.update': '更新', 'updater.cancel': '取消更新', 'updater.localAhead': '本機領先', 'updater.localBehind': '本機落後', 'updater.localHead': '本機 HEAD', 'updater.upstreamHead': '上游 HEAD', 'updater.aheadCommits': '本機領先 {count} 個提交', 'updater.shaMismatch.banner': '本機有 {count} 個提交尚未推送到個人 Fork，更新會將它們一併推送上去', 'updater.shaMismatch.title': '確認推送本機提交', 'updater.shaMismatch.body': '本機有 {count} 個提交還沒推送到個人 Fork（origin）。更新會先合併官方上游，再把本機分支整條推送到 Fork，這些提交會出現在你的 Fork 上。可能的原因：', 'updater.shaMismatch.reasonMirror': '這些提交是你自己在本機做的改動，還沒推送。', 'updater.shaMismatch.reasonLocal': '上次更新時推送失敗，合併結果保留在本機，這次會一併補推。', 'updater.shaMismatch.confirm': '仍要更新', 'updater.commits': '提交記錄', 'updater.expandDetails': '展開詳情', 'updater.noCommits': '暫無提交記錄', 'updater.androidManaged': 'Android 版會在 App 啟動時檢查整包更新。請完全結束並重新開啟 App 以檢查更新。', 'updater.mirrorchyan.title': 'Mirror 醬更新', 'updater.mirrorchyan.badge': '推薦', 'updater.mirrorchyan.desc': '推薦使用 Mirror 醬更新，下載更快、更穩定！', 'updater.mirrorchyan.toggle': '啟用', 'updater.mirrorchyan.cdkPlaceholder': '輸入 Mirror 醬 CDK', 'updater.mirrorchyan.cdkSaved': '已設定 CDK（留空保持不變）', 'updater.mirrorchyan.getCdk': '取得 CDK', 'updater.mirrorchyan.save': '儲存', 'updater.mirrorchyan.saved': '已儲存',
+  'edit.conflict': '設定已在其他位置變更。草稿仍保留，請重新載入後重新編輯。', 'edit.reloadDiscard': '放棄草稿並重新載入', 'edit.unsaved': '設定尚未全部儲存，請先修正錯誤或等待連線恢復。', 'edit.invalidNumber': '請輸入完整、有效的數字。', 'edit.invalidInteger': '請輸入有效整數。', 'edit.numberOutOfRange': '數字超出可精確表示的範圍。', 'edit.validateRange': '請輸入 {min} 到 {max} 之間的數值。', 'api.requestFailed': '請求失敗', 'api.disconnected': '連線已中斷；操作結果未確認，請重新連線後檢查狀態。', 'api.notConnected': '尚未連線到服務，請稍後重試。', 'api.timeout': '請求逾時；操作可能仍在執行，請重新整理狀態後確認。', 'field.loadingEditor': '正在載入編輯器…', 'storage.content': '儲存空間內容', 'storage.clear': '清除儲存空間', 'error.pageTitle': '頁面發生問題', 'error.pageHint': '任務仍在背景執行，請重新整理頁面恢復控制台。', 'error.reload': '重新整理頁面',
   'nav.newBadge': '新',
   'field.yaml': 'YAML',
   'instance.created': '實例已建立，請設定模擬器連線',
@@ -1195,6 +1210,7 @@ const dictionaries: Record<Language, Record<UiKey, string>> = {
   'zh-TW': zhTW,
   'en-US': enUS,
   'ja-JP': jaJP,
+  'zh-CN-neko': zhCNNeko,
 }
 
 /** 判断任意字符串是否为受支持的界面语言，用于校验存储或 URL 里读出的旧值。 */
@@ -1202,9 +1218,9 @@ export function isLanguage(value: string | null | undefined): value is Language 
   return !!value && Object.prototype.hasOwnProperty.call(languages, value)
 }
 
-/** 映射成 BCP-47 地区标签，供 `<html lang>` 与 Intl、图表库使用；四个语言名本身合法，故原样返回。 */
-export function localeForLanguage(language: Language): string {
-  return language
+/** 映射成 BCP-47 地区标签，供 `<html lang>` 与 Intl、图表库使用；四个语言名本身合法，猫娘语回退简体中文以防 Intl 报错。 */
+export function localeForLanguage(language: Language | string): string {
+  return language === 'zh-CN-neko' ? 'zh-CN' : language
 }
 
 /** 按候选列表依次匹配语言；zh 系变体归并到繁/简两支，全部不中回落简体中文。 */

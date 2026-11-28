@@ -24,6 +24,8 @@ export interface UpdateStatus {
   shaMismatch?: boolean
   /** 本地领先 origin 的提交数；0 表示 Fork 已包含本地全部提交。 */
   unpushed?: number
+  mirrorChyanEnabled?: boolean
+  mirrorChyanConfigured?: boolean
   managedByAndroid?: boolean
 }
 interface Commit { sha: string; author: string; date: string; message: string }

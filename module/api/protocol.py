@@ -104,7 +104,7 @@ class AnnouncementParams(Params):
 
 class SchemaParams(Params):
     """配置界面架构查询参数模型。"""
-    language: Literal['zh-CN', 'en-US', 'ja-JP', 'zh-TW'] = 'zh-CN'
+    language: Literal['zh-CN', 'en-US', 'ja-JP', 'zh-TW', 'zh-CN-neko'] = 'zh-CN'
 
 
 class SearchContentParams(Params):
@@ -281,6 +281,7 @@ class ConfigChange(Params):
     """单个配置项修改条目模型。"""
     path: StrictStr = Field(min_length=1, max_length=180)
     value: Any
+    expected: Any = Field(default_factory=lambda: None)
 
 
 class PatchParams(InstanceParams):

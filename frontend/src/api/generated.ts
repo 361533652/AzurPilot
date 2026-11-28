@@ -4,7 +4,7 @@ export interface Parameters {
   "launcher.autostart.set": { enabled: boolean }
   "launcher.command.get": { commandId: string }
   "system.ping": Record<string, never>
-  "schema.get": { language?: "zh-CN" | "en-US" | "ja-JP" | "zh-TW" }
+  "schema.get": { language?: "zh-CN" | "en-US" | "ja-JP" | "zh-TW" | "zh-CN-neko" }
   "search.content": { query: string }
   "instances.list": Record<string, never>
   "instances.create": { name: string; source?: string | null; import_file?: string | null; emulator?: { serial: string; package_name: string; server_name: string } | null }
@@ -13,7 +13,7 @@ export interface Parameters {
   "instances.delete": { instance: string; revision: string }
   "config.get": { instance: string }
   "config.export": { instance: string }
-  "config.patch": { instance: string; revision?: string | null; changes: Array<{ path: string; value: unknown }> }
+  "config.patch": { instance: string; revision?: string | null; changes: Array<{ path: string; value: unknown; expected?: unknown }> }
   "fleetTraining.reset": { instance: string; revision: string }
   "overview.get": { instance: string }
   "dock.report": { instance: string }

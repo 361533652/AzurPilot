@@ -54,7 +54,6 @@ const styles = `
     .workbench-shell .workbench-content {padding:12px; scroll-padding:12px}
     .workbench-shell .workbench-overview {gap:16px}
     .workbench-shell .workbench-toolbar .task-picker {max-width:100%}
-    .workbench-shell .workbench-toolbar .task-picker-menu {left:0; right:auto; max-width:calc(100vw - 24px)}
   }
 `
 
@@ -174,6 +173,6 @@ function ComposedOverview({instance, data, onData, selectedResources, onResource
 
 export default defineTheme({
   id: 'workbench',
-  name: language => ({'zh-CN': '工作台', 'zh-TW': '工作台', 'en-US': 'Workbench', 'ja-JP': 'ワークベンチ'}[language]),
+  name: language => ({'zh-CN': '工作台', 'zh-TW': '工作台', 'en-US': 'Workbench', 'ja-JP': 'ワークベンチ', 'zh-CN-neko': "工作台喵~ (ฅ'ω'ฅ)"}[language]),
   components: {Shell: WorkbenchShell, Navigation: TopNavigation, Overview: WorkbenchOverview},
 })

@@ -20,11 +20,13 @@
 
 import time
 import module.base.utils as _base_utils
+import module.config.server as server
+from module.base.button import Button
 from module.base.timer import Timer
 from module.base.utils import *
 from module.exception import OSExploreError, OSZoneLockedError
 from module.logger import logger
-from module.config.utils import get_os_next_reset
+from module.config.utils import get_os_reset_cycle
 from module.ocr.ocr import Digit
 from module.os.assets import *
 from module.os.tasks.smart_explore import SMART_EXPLORE_DELAY_TASKS, SMART_EXPLORE_TASK_MIN_ZONES, _smart_explore_pending
@@ -37,6 +39,20 @@ from module.ui.assets import BACK_ARROW
 ZONE_TYPES = [ZONE_DANGEROUS, ZONE_SAFE, ZONE_OBSCURE, ZONE_ABYSSAL, ZONE_STRONGHOLD, ZONE_ARCHIVE]
 # 海域选择按钮列表（与 ZONE_TYPES 一一对应）
 ZONE_SELECT = [SELECT_DANGEROUS, SELECT_SAFE, SELECT_OBSCURE, SELECT_ABYSSAL, SELECT_STRONGHOLD, SELECT_ARCHIVE]
+
+
+def _en_bold_select(name, area):
+    return Button(area=area, color=(), button=area, file=f'./assets/en/os/{name}.png', name=name)
+
+
+# 国际服的海域类型下拉选项现在是粗体，旧图只能匹配约 0.5，保留旧图并加入粗体图。
+# 只在国际服使用，资源生成器不会为没有国服底图的资源生成按钮，因此在这里定义。
+# 「Explorable」对应 SELECT_DANGEROUS，「Secured」对应 SELECT_SAFE。
+ZONE_SELECT_EN_BOLD = {
+    SELECT_STRONGHOLD: _en_bold_select('SELECT_STRONGHOLD_BOLD', (69, 251, 185, 275)),
+    SELECT_SAFE: _en_bold_select('SELECT_SAFE_BOLD', (86, 318, 169, 337)),
+    SELECT_DANGEROUS: _en_bold_select('SELECT_DANGEROUS_BOLD', (73, 384, 183, 408)),
+}
 # 固定海域检测的资源列表
 ASSETS_PINNED_ZONE = ZONE_TYPES + [ZONE_ENTRANCE, ZONE_SWITCH, ZONE_PINNED]
 
@@ -104,7 +120,7 @@ class GlobeOperation(ActionPointHandler):
             return
         count = Digit((1184, 411, 1244, 438), letter=(255, 207, 66), threshold=128,
                       name='OS_SUPPRESSION_COUNT').ocr(image)
-        reset = get_os_next_reset().isoformat()
+        reset = get_os_reset_cycle()
         if not SMART_EXPLORE_TASK_MIN_ZONES <= count <= 72:
             self._suppressed_zones_candidate = None
             return
@@ -242,8 +258,28 @@ class GlobeOperation(ActionPointHandler):
         """
         # 降低阈值到 0.75
         # 不确定原因，但有时字体不同会导致匹配困难
-        return [select for select in ZONE_SELECT if
-                self.appear(select, offset=self._zone_select_offset, similarity=self._zone_select_similarity)]
+        return [select for select in ZONE_SELECT if self._zone_select_appear(select) is not None]
+
+    def _zone_select_variants(self, select):
+        variants = [select]
+        if server.server == 'en' and select in ZONE_SELECT_EN_BOLD:
+            variants.append(ZONE_SELECT_EN_BOLD[select])
+        return variants
+
+    def _zone_select_appear(self, select, interval=0):
+        """
+        Args:
+            select (Button): SELECT_* 按钮之一。
+            interval (int): 点击间隔。
+
+        Returns:
+            Button | None: 当前出现的图（原图或国际服粗体图），没有则返回 None。
+        """
+        for variant in self._zone_select_variants(select):
+            if self.appear(variant, offset=self._zone_select_offset, similarity=self._zone_select_similarity,
+                           interval=interval):
+                return variant
+        return None
 
     def is_in_zone_select(self):
         """
@@ -296,8 +332,9 @@ class GlobeOperation(ActionPointHandler):
             # End
             if self.is_zone_pinned():
                 break
-            if self.appear_then_click(
-                    button, offset=self._zone_select_offset, similarity=self._zone_select_similarity, interval=5):
+            variant = self._zone_select_appear(button, interval=5)
+            if variant is not None:
+                self.device.click(variant)
                 continue
 
     def zone_type_select(self, types=('SAFE', 'DANGEROUS')):

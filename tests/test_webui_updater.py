@@ -16,6 +16,8 @@ class TestGitInstall(unittest.TestCase):
             with self.subTest(use_cdn=use_cdn, cdn_success=cdn_success):
                 manager = Mock(spec=GitManager)
                 manager.GitOverCdn = use_cdn
+                # 未显式赋值时 Mock 属性恒为真值，会误入 MirrorChyan 分支提前返回。
+                manager.MirrorChyan = False
                 manager.goc_client.update.return_value = cdn_success
                 with patch('deploy.git.requests.get') as request:
                     GitManager.git_install(manager)
