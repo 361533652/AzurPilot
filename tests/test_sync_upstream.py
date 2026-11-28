@@ -16,6 +16,7 @@ from deploy.sync_upstream import (
     preview_merge_conflicts,
     push_to_origin,
     sync_with_upstream,
+    verify_merge_complete,
 )
 
 
@@ -252,6 +253,90 @@ class PreviewMergeTests(unittest.TestCase):
         self.assertEqual(self.git("status", "--porcelain"), "")
         self.assertNotIn("<<<<<<<", (self.repo / "shared.txt").read_text(encoding="utf-8"))
         self.assertFalse((self.repo / ".git" / "MERGE_HEAD").exists())
+
+
+class VerifyMergeTests(unittest.TestCase):
+    """验证合并完整性检查。
+
+    git merge 返回 0 不代表上游改动都进来了：工作区被外部动过时可能只有
+    部分文件被更新，留下「测试引用新 API、实现还是旧版」的内部不一致，
+    前端 tsc 报 Module has no exported member，而 git status 完全干净。
+    """
+
+    def setUp(self):
+        self._cwd = os.getcwd()
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.addCleanup(os.chdir, self._cwd)
+        root = Path(self._tmp.name)
+        self.remote = root / "remote.git"
+        self.repo = root / "work"
+        subprocess.run(["git", "init", "--bare", str(self.remote)], check=True,
+                       capture_output=True, text=True, encoding="utf-8")
+        subprocess.run(["git", "init", "-b", "master", str(self.repo)], check=True,
+                       capture_output=True, text=True, encoding="utf-8")
+        for key, value in (("user.email", "test@example.com"), ("user.name", "test")):
+            run_git(self.repo, "config", key, value)
+        run_git(self.repo, "remote", "add", "origin", str(self.remote))
+        run_git(self.repo, "remote", "add", "upstream", str(self.remote))
+        (self.repo / "a.txt").write_text("base-a\n", encoding="utf-8")
+        (self.repo / "b.txt").write_text("base-b\n", encoding="utf-8")
+        run_git(self.repo, "add", ".")
+        run_git(self.repo, "commit", "-m", "base")
+        run_git(self.repo, "push", "-u", "origin", "master")
+        other = root / "other"
+        subprocess.run(["git", "clone", str(self.remote), str(other)], check=True,
+                       capture_output=True, text=True, encoding="utf-8")
+        run_git(other, "config", "user.email", "test@example.com")
+        run_git(other, "config", "user.name", "test")
+        (other / "a.txt").write_text("upstream-a\n", encoding="utf-8")
+        (other / "b.txt").write_text("upstream-b\n", encoding="utf-8")
+        run_git(other, "add", ".")
+        run_git(other, "commit", "-m", "upstream change")
+        run_git(other, "push", "origin", "master")
+        os.chdir(self.repo)
+
+    def git(self, *args):
+        return subprocess.run(["git", *args], cwd=self.repo, check=True,
+                              capture_output=True, text=True, encoding="utf-8").stdout.strip()
+
+    def test_complete_merge_reports_nothing(self):
+        """正常合并后校验应返回空列表。"""
+        before = self.git("rev-parse", "HEAD")
+        run_git(self.repo, "fetch", "upstream")
+        run_git(self.repo, "merge", "upstream/master", "--no-edit")
+        self.assertEqual(verify_merge_complete(before, "upstream/master"), [])
+
+    def test_incomplete_merge_is_detected(self):
+        """只有部分文件跟上了上游时必须报出来。"""
+        before = self.git("rev-parse", "HEAD")
+        run_git(self.repo, "fetch", "upstream")
+        run_git(self.repo, "merge", "upstream/master", "--no-edit")
+        # 模拟「合并后某个文件被回退成旧版」：b.txt 改回 base 内容。
+        (self.repo / "b.txt").write_text("base-b\n", encoding="utf-8")
+        missing = verify_merge_complete(before, "upstream/master")
+        self.assertEqual(missing, ["b.txt"])
+
+    def test_locally_modified_files_are_not_flagged(self):
+        """我们自己也改过的文件本来就与上游不同，不能算合并不完整。"""
+        # 先跟上游同步一次，再在本地单独改 a.txt，制造「双方都动过 a.txt」
+        # 但这次合并只带进 b.txt 改动的场景。
+        run_git(self.repo, "fetch", "upstream")
+        run_git(self.repo, "merge", "upstream/master", "--no-edit")
+        (self.repo / "a.txt").write_text("local-a\n", encoding="utf-8")
+        run_git(self.repo, "add", ".")
+        run_git(self.repo, "commit", "-m", "local edit to a")
+        before = self.git("rev-parse", "HEAD")
+        # 再让上游改 b.txt，使这次合并有真实的上游改动。
+        other_a = Path(self._tmp.name) / "other"
+        (other_a / "b.txt").write_text("upstream-b2\n", encoding="utf-8")
+        run_git(other_a, "add", ".")
+        run_git(other_a, "commit", "-m", "upstream change b")
+        run_git(other_a, "push", "origin", "master")
+        run_git(self.repo, "fetch", "upstream")
+        run_git(self.repo, "merge", "upstream/master", "--no-edit")
+        # a.txt 是我们的版本（与上游不同），b.txt 已跟上上游：不应报缺失。
+        self.assertEqual(verify_merge_complete(before, "upstream/master"), [])
 
 
 class PushToOriginTests(unittest.TestCase):

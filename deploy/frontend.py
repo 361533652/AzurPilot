@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -299,15 +300,126 @@ def _ensure_dependencies(command, directory, flags):
     logger.info(f'前端依赖安装完成，耗时 {time.perf_counter() - started:.2f} 秒')
 
 
+# 上一份可用产物的备份目录名（位于 frontend/ 下，不含在 dist 内，构建清空 dist 时不受影响）。
+_DIST_BACKUP = 'dist-last-good'
+
+
+def _dist_backup(directory):
+    """返回可用产物备份目录路径。"""
+    return directory / _DIST_BACKUP
+
+
+def _snapshot_dist(directory):
+    """把当前 dist 复制成"上一份可用产物"，供构建失败时回退。
+
+    构建（vite build）会清空 dist，一旦编译失败、或编译成功但产物残缺，
+    原始的可用产物就没了，WebUI 只能报错退出。所以构建前先留一份。
+
+    Args:
+        directory (Path): 前端工程目录。
+    """
+    from module.logger import logger
+    src = directory / 'dist'
+    if not (src / 'index.html').is_file():
+        return
+    target = _dist_backup(directory)
+    tmp = directory / f'.{_DIST_BACKUP}.tmp'
+    try:
+        shutil.rmtree(tmp, ignore_errors=True)
+        shutil.copytree(src, tmp)
+        shutil.rmtree(target, ignore_errors=True)
+        os.replace(tmp, target)
+    except OSError as exc:
+        logger.warning(f'无法备份现有前端产物，构建失败后将无法回退：{exc}')
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _restore_dist(directory):
+    """构建失败时把备份产物还原回 dist。
+
+    Args:
+        directory (Path): 前端工程目录。
+
+    Returns:
+        bool: 成功还原返回 True，没有可用备份返回 False。
+    """
+    from module.logger import logger
+    backup = _dist_backup(directory)
+    if not (backup / 'index.html').is_file():
+        return False
+    src = directory / 'dist'
+    tmp = directory / '.dist-restore.tmp'
+    try:
+        shutil.rmtree(tmp, ignore_errors=True)
+        shutil.copytree(backup, tmp)
+        shutil.rmtree(src, ignore_errors=True)
+        os.replace(tmp, src)
+    except OSError as exc:
+        logger.error(f'还原上一份前端产物失败：{exc}')
+        shutil.rmtree(tmp, ignore_errors=True)
+        return False
+    logger.warning('已回退到上一份可用的前端产物，WebUI 仍可启动（界面停留在旧版本）。')
+    return True
+
+
+def _dist_usable(directory):
+    """校验 dist 是否是能真正加载的产物。
+
+    Args:
+        directory (Path): 前端工程目录。
+
+    Returns:
+        bool: index.html 与它引用的每个 assets 条目都存在返回 True。
+    """
+    index = directory / 'dist/index.html'
+    if not index.is_file():
+        return False
+    try:
+        html = index.read_text(encoding='utf-8', errors='replace')
+    except OSError:
+        return False
+    for match in re.finditer(r'(?:src|href)="([^"]*assets/[^"]+)"', html):
+        target = directory / 'dist' / match.group(1).lstrip('/')
+        if not target.is_file():
+            return False
+    return True
+
+
+def _run_build(command, directory, flags):
+    """执行一次 npm run build，失败时记录输出并抛原始异常。
+
+    Args:
+        command (list): npm 命令前缀。
+        directory (Path): 前端工程目录。
+        flags (dict): 子进程创建标志。
+
+    Raises:
+        subprocess.CalledProcessError: 构建失败时抛出。
+        subprocess.TimeoutExpired: 构建超时时抛出。
+    """
+    try:
+        subprocess.run(
+            [*command, 'run', 'build'],
+            cwd=directory, check=True, timeout=_BUILD_TIMEOUT, capture_output=True, text=True,
+            encoding='utf-8', errors='replace', **flags,
+        )
+    except subprocess.CalledProcessError as exc:
+        _log_process_error(exc, stage='前端构建')
+        raise
+
+
 def ensure_frontend(root=None):
     """缺少或过期时构建前端；已有对应版本的产物不要求安装 Node。
+
+    构建失败时不会让启动直接崩掉：优先把 dist 还原到上一份可用产物，
+    让 WebUI 至少能以旧界面启动；没有可用备份时才向上抛错。
 
     Args:
         root (str | Path, optional): 项目根目录，默认为当前文件上两级目录。
 
     Raises:
         RuntimeError: 在 Android 环境缺少预构建产物时抛出。
-        subprocess.CalledProcessError: 前端构建命令执行失败时抛出。
+        subprocess.CalledProcessError: 前端构建命令执行失败且无法回退时抛出。
         subprocess.TimeoutExpired: 官方源安装或编译超时时抛出。
     """
     from module.logger import logger
@@ -332,15 +444,30 @@ def ensure_frontend(root=None):
         _ensure_dependencies(command, directory, flags)
         logger.info('正在构建 React 前端资源')
         started = time.perf_counter()
+        _snapshot_dist(directory)
         try:
-            subprocess.run(
-                [*command, 'run', 'build'],
-                cwd=directory, check=True, timeout=_BUILD_TIMEOUT, capture_output=True, text=True,
-                encoding='utf-8', errors='replace', **flags,
-            )
-        except subprocess.CalledProcessError as exc:
-            _log_process_error(exc, stage='前端构建')
-            raise
+            _run_build(command, directory, flags)
+            if not _dist_usable(directory):
+                raise subprocess.CalledProcessError(1, [*command, 'run', 'build'],
+                                                    output='构建产物不完整：dist/index.html 缺少引用的资源')
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            # 编译失败或产物残缺：留一份干净的备份再试一次，避免一次偶发的
+            # 文件占用/内存抖动就让整个启动失败。
+            logger.warning('前端构建失败，使用干净依赖重新尝试一次')
+            _restore_dist(directory)
+            try:
+                _ensure_dependencies(command, directory, flags)
+                _snapshot_dist(directory)
+                _run_build(command, directory, flags)
+                if not _dist_usable(directory):
+                    raise subprocess.CalledProcessError(1, [*command, 'run', 'build'],
+                                                        output='构建产物不完整：dist/index.html 缺少引用的资源')
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+                # 仍然失败：回退到上一份可用产物，让 WebUI 以旧界面启动。
+                if _restore_dist(directory):
+                    logger.warning('重试仍未通过，已回退到上一份可用产物；请稍后到更新器查看构建日志')
+                    return
+                raise exc
         atomic_write(str(marker), fingerprint + '\n')
         logger.info(f'React 前端构建完成，耗时 {time.perf_counter() - started:.2f} 秒')
 

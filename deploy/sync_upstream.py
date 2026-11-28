@@ -279,6 +279,54 @@ def preview_merge_conflicts(ref: str) -> Optional[List[str]]:
     return None
 
 
+def verify_merge_complete(before: str, ref: str, current: str = '') -> List[str]:
+    """校验合并结果确实包含了上游全部改动。
+
+    合并"成功"不等于合并"完整"：工作区被外部动过、或合并被中途干扰时，
+    可能只有部分文件被更新，留下"测试引用新 API、实现还是旧版"的内部不一致，
+    前端 tsc 会报一堆 Module has no exported member，且从 git status 上看不出
+    任何异常。这里逐文件比对内容哈希，把没跟上的文件挑出来。
+
+    Args:
+        before: 合并前的 HEAD。
+        ref: 被合并的上游引用，例如 `upstream/master`。
+        current: 要校验的提交；留空表示校验当前工作区（合并刚完成时的用法）。
+
+    Returns:
+        List[str]: 合并后仍与上游不一致的文件列表；空列表表示合并完整。
+    """
+    base = run_git(["git", "merge-base", before, ref]).stdout.strip()
+    if not base:
+        return []
+    theirs = run_git(["git", "diff", "--name-only", base, ref])
+    ours = run_git(["git", "diff", "--name-only", base, before])
+    if theirs.returncode != 0:
+        return []
+    # 只有"上游改了、我们没碰过"的文件才必须与上游逐字节一致；双方都动过的
+    # 文件是人工解决冲突的结果，本来就会和上游不同，不能算作合并不完整。
+    ours_files = {line.strip() for line in ours.stdout.splitlines() if line.strip()}
+    files = [line.strip() for line in theirs.stdout.splitlines()
+             if line.strip() and line.strip() not in ours_files]
+    if not files:
+        return []
+    missing: List[str] = []
+    for path in files:
+        upstream_blob = run_git(["git", "rev-parse", f"{ref}:{path}"])
+        if upstream_blob.returncode != 0:
+            # 上游删除了该文件，交给 git 自己判断，这里不报。
+            continue
+        if current:
+            actual = run_git(["git", "rev-parse", f"{current}:{path}"])
+        else:
+            actual = run_git(["git", "hash-object", "--", path])
+        if actual.returncode != 0:
+            missing.append(path)
+            continue
+        if actual.stdout.strip() != upstream_blob.stdout.strip():
+            missing.append(path)
+    return missing
+
+
 def push_to_origin(branch: Optional[str] = None) -> bool:
     """把当前分支推送到 origin，无需推送时视为成功。
 
@@ -411,6 +459,24 @@ def mark_dependency_sync_pending() -> None:
         print("📦 [Sync] 本次合并改动了依赖声明，已标记启动前重新同步依赖。")
     except OSError as exc:
         print(f"⚠️ [Sync] 写入依赖同步标记失败，依赖可能未同步：{exc}")
+
+
+def _print_incomplete_report(files: List[str]) -> None:
+    """打印合并结果不完整的报告。
+
+    Args:
+        files: 合并后仍与上游不一致的文件列表。
+    """
+    print("\n" + "!" * 64)
+    print("🚨 【AzurPilot 合并校验】合并结果与上游不一致，已回滚到合并前状态！")
+    print("!" * 64)
+    print("⚠️ 下列文件没有被上游版本覆盖（很可能是合并过程被干扰）：")
+    for path in files[:30]:
+        print(f"   ❌ {path}")
+    if len(files) > 30:
+        print(f"   … 另有 {len(files) - 30} 个文件")
+    print("👉 已执行 git reset --hard 恢复到合并前，工作区保持可用。")
+    print("!" * 64 + "\n")
 
 
 def _print_conflict_report(conflicts: List[str]) -> None:
@@ -599,11 +665,22 @@ def sync_with_upstream(force: bool = False) -> bool:
                         run_git(["git", "merge", "--abort"])
                         _print_conflict_report(conflicts or preview or [])
                         return False
+                    # 合并"成功"不代表合并"完整"：逐文件核对是否真的跟上了上游，
+                    # 避免留下"测试新、实现旧"的内部不一致却毫无提示。
+                    incomplete = verify_merge_complete(head_before, upstream_ref)
+                    if incomplete:
+                        _print_incomplete_report(incomplete)
+                        run_git(["git", "reset", "--hard", head_before])
+                        merge_conflicted = True
+                        return False
                     print("🎉 [Sync] 成功合并官方更新！")
                     # 合并会引入新依赖，而启动器的依赖同步发生在本次合并之前，
-                    # 必须标记让父监督器在创建 WebUI 前重新同步，否则导入即崩溃。
-                    if dependencies_changed(head_before):
-                        mark_dependency_sync_pending()
+                    # 必须让父监督器在创建 WebUI 前重新同步，否则导入即崩溃。
+                    try:
+                        dependencies_changed(head_before) and mark_dependency_sync_pending()
+                    except Exception as exc:
+                        # 依赖标记失败不应让合并结果作废，但必须让它可见。
+                        print(f"⚠️ [Sync] 无法检查依赖变化，启动前请手动同步依赖：{exc}")
 
         # 合并与否都要尝试推送：上一次推送失败时，合并结果仍留在本地，
         # 这里负责在下次启动把它补推到 Fork。

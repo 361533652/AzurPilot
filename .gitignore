@@ -102,6 +102,8 @@ __pycache__/
 build/
 develop-eggs/
 dist/
+# 构建失败时用于回退的上一份可用前端产物
+dist-last-good/
 downloads/
 eggs/
 .eggs/

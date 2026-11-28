@@ -9,7 +9,14 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import urlsplit
 
-from deploy.frontend import ensure_frontend, npm_command, source_fingerprint
+from deploy.frontend import (
+    _dist_usable,
+    _restore_dist,
+    _snapshot_dist,
+    ensure_frontend,
+    npm_command,
+    source_fingerprint,
+)
 
 
 class FrontendLockfileTests(unittest.TestCase):
@@ -48,6 +55,70 @@ class FrontendBuildTests(unittest.TestCase):
                 ensure_frontend(root)
                 command.assert_not_called()
                 fetch.assert_called_once_with(root / 'frontend', root)
+
+    def test_failed_build_restores_previous_artifact(self):
+        """构建失败时必须回退到上一份可用产物，而不是让启动直接崩掉。"""
+        with tempfile.TemporaryDirectory() as directory:
+            frontend = Path(directory) / 'frontend'
+            (frontend / 'dist').mkdir(parents=True)
+            (frontend / 'dist/index.html').write_text('<div>旧界面</div>', encoding='utf-8')
+            (frontend / 'package.json').write_text('{}')
+            _snapshot_dist(frontend)
+
+            def broken_build(command, target, flags):
+                # 模拟 vite build 清空 dist 后编译失败。
+                import shutil as _shutil
+                _shutil.rmtree(target / 'dist', ignore_errors=True)
+                raise subprocess.CalledProcessError(1, ['npm', 'run', 'build'], output='tsc failed')
+
+            with patch('deploy.frontend.npm_command', return_value=['npm']), \
+                    patch('deploy.frontend._ensure_dependencies'), \
+                    patch('deploy.frontend._run_build', side_effect=broken_build), \
+                    patch('deploy.frontend.config_transaction',
+                          contextmanager(lambda *a, **k: (yield))):
+                # 重试也失败，最终应回退并正常返回，不抛异常。
+                ensure_frontend(directory)
+
+            restored = frontend / 'dist/index.html'
+            self.assertTrue(restored.is_file())
+            self.assertIn('旧界面', restored.read_text(encoding='utf-8'))
+
+    def test_build_retry_recovers_on_second_attempt(self):
+        """第一次构建失败、第二次成功时应正常完成，不触发回退。"""
+        with tempfile.TemporaryDirectory() as directory:
+            frontend = Path(directory) / 'frontend'
+            (frontend / 'dist').mkdir(parents=True)
+            (frontend / 'package.json').write_text('{}')
+            calls = {'n': 0}
+
+            def flaky_build(command, target, flags):
+                calls['n'] += 1
+                if calls['n'] == 1:
+                    raise subprocess.CalledProcessError(1, ['npm'], output='flaky')
+                (target / 'dist').mkdir(parents=True, exist_ok=True)
+                (target / 'dist/index.html').write_text('<div>新界面</div>', encoding='utf-8')
+
+            with patch('deploy.frontend.npm_command', return_value=['npm']), \
+                    patch('deploy.frontend._ensure_dependencies'), \
+                    patch('deploy.frontend._run_build', side_effect=flaky_build), \
+                    patch('deploy.frontend.config_transaction',
+                          contextmanager(lambda *a, **k: (yield))):
+                ensure_frontend(directory)
+
+            self.assertEqual(calls['n'], 2)
+            self.assertIn('新界面', (frontend / 'dist/index.html').read_text(encoding='utf-8'))
+
+    def test_dist_usable_rejects_missing_assets(self):
+        """index.html 引用了不存在的 bundle 时判定产物不可用。"""
+        with tempfile.TemporaryDirectory() as directory:
+            frontend = Path(directory) / 'frontend'
+            (frontend / 'dist').mkdir(parents=True)
+            (frontend / 'dist/index.html').write_text(
+                '<script type="module" src="/assets/app.js"></script>', encoding='utf-8')
+            self.assertFalse(_dist_usable(frontend))
+            (frontend / 'dist/assets').mkdir()
+            (frontend / 'dist/assets/app.js').write_text('// app', encoding='utf-8')
+            self.assertTrue(_dist_usable(frontend))
 
     @unittest.skipUnless(os.name == 'nt', '仅验证 Windows 的 npm 启动方式')
     def test_windows_launches_npm_javascript_with_node(self):
@@ -255,12 +326,13 @@ class FrontendInstallTests(unittest.TestCase):
         self.assertEqual(self.marker.read_text(encoding='utf-8'), 'old\n')
 
     def test_build_failure_does_not_retry_install_or_update_marker(self):
+        """构建失败会重试一次，但不会重复安装依赖，也不会更新产物指纹。"""
         error = subprocess.CalledProcessError(1, self.build)
-        self.outcomes = iter([None, error])
-        with self.assertRaises(subprocess.CalledProcessError) as raised:
-            ensure_frontend(self.root)
-        self.assertIs(raised.exception, error)
-        self.assert_commands(self.mirror, self.build)
+        # 依赖安装一次；构建失败后重试一次，两次都失败。
+        self.outcomes = iter([None, error, error])
+        ensure_frontend(self.root)
+        # mirror 安装只发生一次，build 调用两次（原始 + 重试）。
+        self.assert_commands(self.mirror, self.build, self.build)
         self.assertEqual(self.marker.read_text(encoding='utf-8'), 'old\n')
         self.assertTrue(self.dependencies_marker.is_file())
 
